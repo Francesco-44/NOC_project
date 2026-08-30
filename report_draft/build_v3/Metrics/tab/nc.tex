@@ -1,0 +1,23 @@
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Closed-loop outcome against the control horizon at fixed prediction horizon.}
+  \label{res:tab:nc}
+  \begin{tabular}{lrrrcrrr}
+    \toprule
+    scenario & $N$ & $N_c$ & vars & goal & TTG [s] & min clear.\ [m] & p95 [ms] \\
+    \midrule
+    narrow\_gap & 5 & 1 & 39 & yes & 9.4 & 0.450 & 21.8 \\
+    narrow\_gap & 5 & 5 & 51 & yes & 9.4 & 0.450 & 12.2 \\
+    narrow\_gap & 15 & 1 & 99 & yes & 9.4 & 0.450 & 18.7 \\
+    narrow\_gap & 15 & 5 & 111 & yes & 9.4 & 0.450 & 48.6 \\
+    narrow\_gap & 15 & 15 & 141 & yes & 9.4 & 0.450 & 40.2 \\
+    u\_trap & 5 & 1 & 39 & yes & 12.8 & 0.000 & 6.3 \\
+    u\_trap & 5 & 5 & 51 & yes & 12.8 & 0.000 & 11.4 \\
+    u\_trap & 15 & 1 & 99 & yes & 12.8 & 0.000 & 11.2 \\
+    u\_trap & 15 & 5 & 111 & yes & 12.8 & 0.000 & 25.7 \\
+    u\_trap & 15 & 15 & 141 & yes & 12.8 & 0.000 & 23.8 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+

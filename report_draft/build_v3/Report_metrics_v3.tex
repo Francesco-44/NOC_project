@@ -1,0 +1,1731 @@
+% =============================================================================
+% Report_metrics.tex — BOZZA di riscrittura del report, con le metriche vive.
+%
+% Va in  Latex_noc/  ACCANTO a Report.tex, non in una sottocartella: le tre
+% dipendenze di percorso del report (\graphicspath{{Images/}},
+% \input{Configuration_files/config}, \bibliography{bibliography}) sono tutte
+% relative alla cartella di compilazione.
+%
+% Report.tex NON e' toccato. Questo file e' la versione che, quando sara'
+% definitiva, lo sostituira'.
+%
+% I NUMERI NON SONO SCRITTI A MANO. Vengono da Metrics/metrics_macros.tex e
+% dalle tabelle in Metrics/tab/, generate da  python3 viz/make_results.py  nel
+% repo del codice e pubblicate con  python3 viz/publish_tex.py.
+% Per aggiornare il report a una campagna nuova: rigenerare, ripubblicare,
+% ricompilare. Nessuna cifra da inseguire a mano.
+% =============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{titlesec}
+\usepackage{color}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\graphicspath{{Images/}{Metrics/fig/}}
+\usepackage{eso-pic}
+\usepackage{subfig}
+\usepackage{caption}
+\usepackage{transparent}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{bm}
+\usepackage[overload]{empheq}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{colortbl}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage[colorlinks=true,linkcolor=black,anchorcolor=black,citecolor=black,filecolor=black,menucolor=black,runcolor=black,urlcolor=black]{hyperref}
+\usepackage{cleveref}
+\usepackage[square, numbers, sort&compress]{natbib}
+\bibliographystyle{plain}
+\usepackage{appendix}
+\usepackage{enumitem}
+\usepackage{amsthm,thmtools,xcolor}
+\usepackage{comment}
+\usepackage{fancyhdr}
+\usepackage{tcolorbox}
+
+\newcommand{\bea}{\begin{eqnarray}}
+\newcommand{\eea}{\end{eqnarray}}
+\newcommand{\e}[1]{\times 10^{#1}}
+\newcommand{\pdev}[2]{\frac{\partial#1}{\partial#2}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\astar}{$A^\star$}
+\newcommand{\Astar}{A^\star}
+\newcommand{\Jobs}{J_{\mathrm{obs}}}
+\newcommand{\Wobs}{W_{\mathrm{obs}}}
+\newcommand{\aobs}{\alpha_{\mathrm{obs}}}
+\newcommand{\robs}{r_{\mathrm{obs}}}
+\newcommand{\Rjerk}{R_{\mathrm{jerk}}}
+\newcommand{\dsafe}{d_{\mathrm{safe}}}
+\newcommand{\Ninput}{N_c}
+% simboli delle sezioni sul basso livello (§\ref{sec:champ}, §\ref{sec:g1rl})
+\newcommand{\Tstr}{T_{\mathrm{str}}}
+\newcommand{\Tst}{T_{\mathrm{st}}}
+\newcommand{\Tsw}{T_{\mathrm{sw}}}
+\newcommand{\pf}{p^{\mathrm{f}}}
+\newcommand{\qdef}{q^{\mathrm{def}}}
+
+\input{Configuration_files/config}
+
+% --- metriche: macro e tabelle, generate dal repo del codice ----------------
+\input{Metrics/metrics_macros}
+\renewcommand{\restabdir}{Metrics/tab}
+
+\renewcommand{\title}{Numerical Optimization for Map-Free Navigation:\\[2pt]
+  Rolling-Horizon $A^\star$ and Nonlinear MPC on a Bipedal Humanoid}
+\newcommand{\course}{062047 -- Numerical Optimization for Control}
+\newcommand{\advisor}{Prof. Lorenzo Mario Fagiano}
+\newcommand{\groupmembers}{Mateo Gomez \\ Lorenzo Ortolani \\ Francesco Pedrini}
+\newcommand{\YEAR}{2025-2026}
+\newcommand{\keywords}{Nonlinear Model Predictive Control, Interior-Point Optimization, Exact Penalty Methods, Algorithmic Differentiation, Rolling-Horizon Planning, Legged Robot Navigation}
+\renewcommand{\abstract}{Navigating an unknown environment without a prior map can be posed as two
+optimization programs solved at every control cycle: a discrete shortest-path problem on an occupancy grid
+rebuilt from the current LiDAR scan, and a continuous nonlinear program that turns the resulting geometric
+reference into a body-frame velocity command subject to the actual kinematics, the actual input limits and a
+clearance requirement. This report analyses that pair as optimization problems rather than as a robotics
+pipeline. The program deployed on a Unitree~G1 humanoid is stated in full, its structure measured
+($\resNvar$ decision variables, a $\resJacDensity\%$ dense constraint Jacobian), and every design decision it
+embodies tested against the alternative the theory offers: mid-point against Euler integration, algorithmic
+against numerical differentiation, exact against quasi-Newton Hessians, interior-point against active-set
+solvers, sparse against condensed parametrisations, a smooth penalty against an exact $\ell^1$ relaxation of
+the clearance constraint, a time-parametrised against a path-parametrised reference, and a terminal
+equilibrium constraint against none. The first- and second-order optimality conditions are verified on
+recorded missions rather than assumed. Several of the measurements contradict the design: the deployed
+horizon is dominated on every objective, the integrator that is $\resIntegratorGain\times$ more accurate
+buys nothing in closed loop, and the constraint that decides the outcome is not the one the cost was tuned
+around. Every number in this document is generated from the deployed code by a single command and enters the
+text through macros, so the report cannot silently diverge from the software it describes.}
+
+\begin{document}
+
+\input{Configuration_files/title_page_report}
+
+\tableofcontents
+\vspace{10pt}
+
+%=============================================================================
+\section*{Acronyms}
+\addcontentsline{toc}{section}{Acronyms and notation}
+
+\noindent\begin{tabularx}{\textwidth}{@{}lX@{\hspace{1.2em}}lX@{}}
+AD    & algorithmic differentiation      & LTI   & linear time-invariant \\
+AMO   & Adaptive Motion Optimization     & MPC   & model predictive control \\
+DARE  & discrete algebraic Riccati equation & NLP & nonlinear program \\
+FHOCP & finite-horizon optimal control problem & PD & proportional--derivative \\
+IK    & inverse kinematics               & PPO   & proximal policy optimization \\
+IMU   & inertial measurement unit        & QP    & quadratic program \\
+KKT   & Karush--Kuhn--Tucker             & RL    & reinforcement learning \\
+LICQ  & linear independence constraint qualification & ROS & Robot Operating System \\
+LiDAR & light detection and ranging      & SQP   & sequential quadratic programming \\
+\end{tabularx}
+
+\section*{Notation}
+
+\noindent All physical quantities carry SI units. Vectors are columns; $\|\cdot\|$ without
+subscript is the Euclidean norm. Subscript $k$ indexes a node inside the prediction horizon,
+subscript $j$ an obstacle. The symbol $\lambda_{\min}(\cdot)$ denotes the smallest eigenvalue of its
+argument, and is not related to the multipliers $\lambda$.
+
+\vspace{4pt}
+\noindent\begin{tabularx}{\textwidth}{@{}lX@{\hspace{1.0em}}lX@{}}
+\multicolumn{4}{@{}l}{\textit{State, input and model}}\\[2pt]
+$x$ & state, Eq.~\eqref{eq:state}   & $\tau_v,\tau_w$ & actuator time constants [s] \\
+$u$ & commanded body twist          & $\nu_v,\nu_w$ & discrete lag coefficients, Eq.~\eqref{eq:veldisc} \\
+$p_x,p_y,\psi$ & world-frame pose [m], [rad] & $\Delta t$ & sampling time [s] \\
+$v_x,v_y,\omega$ & body twist [m/s], [rad/s] & $N$ & prediction horizon [steps] \\
+$t$ & continuous time [s]           & $\Ninput$ & control horizon [steps] \\[4pt]
+
+\multicolumn{4}{@{}l}{\textit{Environment and reference}}\\[2pt]
+$\mathcal{P}_k$ & LiDAR point cloud at cycle $k$ & $\delta$ & occupancy grid resolution [m] \\
+$P(c)$ & occupancy of cell $c$      & $\sigma$ & Gaussian inflation width [m] \\
+$x_g$ & goal position [m]           & $\theta$ & path abscissa, Sec.~\ref{sec:pathfollow} \\
+$v_{\mathrm{ref}}$ & cruise speed [m/s] & $\pi_k$ & \astar{} path at cycle $k$ \\[4pt]
+
+\multicolumn{4}{@{}l}{\textit{Optimization program}}\\[2pt]
+$z=(X,U)$ & decision variables      & $\lambda,\mu$ & KKT multipliers (eq., ineq.) \\
+$J$ & objective, Eq.~\eqref{eq:cost} & $\mu_b$ & interior-point barrier parameter \\
+$Q,R,\Rjerk$ & tracking, effort, rate weights & $\rho_T$ & terminal weight multiplier \\
+$\Wobs,\aobs,\robs$ & obstacle penalty height, steepness, radius & $\rho_s$ & slack penalty weight \\
+$\dsafe$ & imposed clearance [m]    & $s_{jk}$ & constraint slack [m] \\
+$\gamma(k)$ & robust back-off [m], Sec.~\ref{sec:robust} & $\kappa_j$ & scalarisation weights, Eq.~\eqref{eq:scalar} \\
+$\varepsilon_d$ & distance regulariser & $\varepsilon_M$ & machine epsilon \\[4pt]
+
+\multicolumn{4}{@{}l}{\textit{Locomotion layer (Sec.~\ref{sec:lowlevel})}}\\[2pt]
+$q,\dot q$ & joint positions, velocities & $\beta$ & gait duty factor \\
+$\mathcal{T}$ & joint torques        & $\zeta_i$ & stride phase of leg $i$ \\
+$K_P,K_D$ & joint PD gains          & $\Tstr,\Tst,\Tsw$ & stride, stance, swing durations [s] \\
+$\pf_i$ & foot position of leg $i$ [m] & $L_i$ & step length of leg $i$ [m] \\
+\end{tabularx}
+
+\vspace{6pt}
+
+%=============================================================================
+\section{Introduction}
+\label{sec:intro}
+
+A mobile robot that must reach a goal in an environment it has never seen has no global map to plan on: at
+every instant it knows only what its sensors reported in the last few metres. The classical answer is to
+decouple the problem into a geometric planner and a low-level tracker, but if the two layers ignore each
+other the planner produces paths the actuators cannot execute, and the tracker produces commands the geometry
+does not allow. Model Predictive Control (MPC) resolves the conflict by construction: it optimizes a finite
+sequence of future inputs subject to the actual dynamics and the actual constraints, and re-optimizes at
+every cycle \cite{rawlings2017mpc,mayne2000constrained}. The price is computational, from the motion-planning
+point of view: a nonlinear program must be solved to sufficient accuracy inside the sampling period, every
+period, on the robot.
+
+The compensation is architectural. Because the horizon is re-planned continuously from the current scan, the
+stack never has to simultaneously localize and map the environment: a localisation module --- an extended
+Kalman filter fusing odometry and inertial measurements --- is enough, and no simultaneous localisation and
+mapping (SLAM) back-end is required. The result is a navigation stack that is markedly less expensive to run
+than a map-building one, and that is deployable on a computationally modest onboard machine. Establishing
+what that architecture costs in optimization terms, and what it buys, is one of the contributions of this
+report.
+
+\paragraph{The platform.}
+The stack analysed here is deployed on a Unitree~G1, a bipedal humanoid with twenty-nine actuated joints, of
+which the locomotion layer drives fifteen --- the twelve leg joints and the three waist joints --- while the
+arms are held at a fixed posture. None of those joints is ever addressed by the controller of this report.
+The robot is commanded through a single channel, a body-frame twist
+$u=(v_x^{\mathrm{cmd}},v_y^{\mathrm{cmd}},\omega^{\mathrm{cmd}})$, and its only exteroceptive input is a
+Livox MID-360 3-D LiDAR mounted on the torso. Everything else about the machine is, by construction,
+invisible to the optimization program.
+
+What produces that twist interface on a humanoid is not a gait generator but a neural network. The deployed
+locomotion layer is AMO (Adaptive Motion Optimization) \cite{li2025amo}, a reinforcement-learning policy
+trained in simulation for the G1 and obtained by proximal policy optimization \cite{schulman2017ppo}, with
+masses, friction, gains and latencies randomised during training so that the fixed policy transfers to
+hardware \cite{rudin2022walk}. AMO is deliberately not a walking controller: it is a loco-manipulation
+policy, trained to track torso height, torso orientation and upper-body targets while walking. The
+navigation stack exercises only its locomotion subset, which is what leaves the same platform usable for
+manipulation later without changing the layer the MPC talks to. At each tick of its $50$~Hz loop the network
+maps an observation --- body angular velocity, gravity direction in the body frame, joint positions and
+velocities, previous action and the commanded twist --- to an offset on the default posture, which a
+joint-level proportional--derivative law converts into torque. Section~\ref{sec:g1rl} develops this layer;
+Section~\ref{sec:cascade} isolates the seam at which the MPC stops seeing it, because that abstraction is the
+hypothesis on which the entire prediction model rests: to the optimization program, twenty-nine degrees of
+freedom and a learned policy reduce to a first-order velocity lag.
+
+\paragraph{Why a bipedal humanoid sharpens the problem.}
+The choice of platform is not incidental to the optimization problem: it changes what the admissible input
+set contains, and that turns out to matter more than any weight in the cost. A wheeled base is holonomic or
+nearly so; a statically stable legged machine can be commanded to translate sideways and to reverse almost as
+freely as it advances \cite{raibert1986legged}. A biped can do neither cheaply. Its policy accepts a
+body-frame velocity command, but lateral velocity is small and backward walking is excluded outright, both
+because the policy is trained forward-facing and because the perception payload --- a forward-looking LiDAR
+--- makes reversing blind. The result, formalised in Section~\ref{sec:model}, is an input set that is
+\emph{asymmetric}: the robot may rotate and advance, essentially nothing else. Section~\ref{sec:kkt} shows
+that this asymmetry, and not the obstacle term the cost was tuned around, is what binds in the situations
+where the mission is at risk.
+
+A second consequence is that the prediction model and the plant are further apart than they would be on a
+wheeled robot. The MPC predicts with a planar model of a body that in reality balances dynamically on two
+feet, shifting its centre of mass at every step. Section~\ref{sec:prederr} measures that gap on recorded
+missions instead of assuming it, and the measurement reorders the priorities of the whole design.
+
+\paragraph{The two programs solved at every cycle.}
+This report analyses the navigation stack as a set of optimization problems. Two are solved at every
+planning cycle and are the object of the analysis:
+
+\begin{itemize}
+  \item a \emph{discrete} shortest-path program --- an \astar{} search \cite{hart1968astar} over a Gaussian
+        occupancy grid rebuilt from the current LiDAR scan, whose solution is a geometric reference and whose
+        rolling-horizon target is the intersection of the ray to the global goal with the grid boundary;
+  \item a \emph{continuous} nonlinear program --- a six-state, three-input MPC with actuator-lag dynamics, a
+        smooth obstacle term and box-constrained inputs, formulated once symbolically in CasADi
+        \cite{andersson2019casadi} and solved by the interior-point method IPOPT \cite{wachter2006ipopt}.
+\end{itemize}
+
+The division of labour between them is deliberate and is defended in Section~\ref{sec:astar}: the discrete
+program handles the combinatorial decision --- which side of an obstacle to pass --- and the continuous one
+handles feasibility and smoothness, so that the nonlinear program never has to represent a choice that would
+make it mixed-integer. Section~\ref{sec:bif} shows what happens when that separation is pushed too far, and
+where the boundary actually lies.
+
+\paragraph{What this report does, and what distinguishes it from a system description.}
+The stack is deployed and works; describing it would be an engineering report. What is done here instead is
+to take every design decision the program embodies, state the alternative that the theory of numerical
+optimization offers, and \emph{measure} which one the problem actually rewards. Nine such decisions are
+examined: the integration scheme (Section~\ref{sec:discretization}), the parametrisation of the program
+(Section~\ref{sec:shoot}), the relaxation of the clearance constraint (Sections~\ref{sec:barrier}
+and~\ref{sec:l1}), the presence of terminal ingredients (Section~\ref{sec:terminal}), the parametrisation of
+the reference (Section~\ref{sec:pathfollow}), the tightening of the constraints against prediction error
+(Section~\ref{sec:robust}), the computation of derivatives and of the Hessian (Section~\ref{sec:deriv}), the
+class of solver (Section~\ref{sec:solvercmp}), and the two horizons (Sections~\ref{sec:horizon}
+and~\ref{sec:nc}). The first- and second-order optimality conditions of the deployed program are verified on
+recorded missions rather than assumed (Section~\ref{sec:kkt}).
+
+Several of the answers contradict the design, and those are the ones worth the space. The mid-point rule is
+$\resIntegratorGain\times$ more accurate than the Euler step it replaces and buys nothing measurable in
+closed loop, because the prediction error is dominated by a term the integrator cannot touch
+(Section~\ref{sec:prederr}). The deployed horizon is dominated on every objective by a configuration a
+quarter of its size (Section~\ref{sec:horizon}). And the constraint that decides whether the mission succeeds
+is not the one the cost was tuned around: the admissible input set removes a degree of freedom that no
+weight can give back (Sections~\ref{sec:kkt} and~\ref{sec:robust}).
+
+\paragraph{Structure.}
+Section~\ref{sec:problem} describes the system, the platform and the environment representation, and states
+the navigation task as a finite-horizon optimal control problem. Section~\ref{sec:formulation} derives the
+two programs, from the discretisation of the model to the constraints and the cost actually assembled.
+Section~\ref{sec:optproc} concerns the numerical machinery: dimensions and sparsity, derivatives, choice of
+solver, and the optimality conditions on the deployed instance. Section~\ref{sec:performance} reports the
+measurements, one per design decision. Sections~\ref{sec:discussion} and~\ref{sec:conclusions} discuss the
+limitations and conclude.
+
+\paragraph{Reproducibility as a property of the document.}
+\begin{sloppypar}
+Every number in this report --- in the text, in the tables and in the figures --- is produced by a single
+command run against the deployed code, and enters the document through generated macros rather than by being
+typed. The measurements in this version were taken on commit \texttt{\resCommit} of branch
+\texttt{\resBranch} (\resDate), with the profile \resProfile{} and the recorded run \resBag, using
+CasADi~\resCasadi{} and NumPy~\resNumpy. Re-running the campaign and recompiling updates the report;
+a parameter changed in the code and not in the text cannot go unnoticed, because there is no text to change.
+\end{sloppypar}
+
+%=============================================================================
+\section{Problem analysis}
+\label{sec:problem}
+
+\subsection{System overview}
+\label{sec:overview}
+
+The stack is a chain of Robot Operating System (ROS)~2 nodes closing the loop between a 3-D LiDAR and the body-frame velocity
+interface of the locomotion controller:
+
+\begin{enumerate}[label=\arabic*.]
+  \item a \textbf{pose source}, which converts the state estimate into a single pose topic and differentiates
+        it, with an exponential filter, into a body-frame velocity estimate --- the platform does not publish
+        a usable body-frame twist;
+  \item a \textbf{mapping module}, which rebuilds a local Gaussian occupancy grid from the newest scan at
+        $1$~Hz and maintains an obstacle memory in the world frame, whose purpose is precisely to repair the
+        failure mode analysed in Section~\ref{sec:localmin};
+  \item the \textbf{\astar{} local planner}, which solves the discrete program of Section~\ref{sec:astar} on
+        that grid;
+  \item the \textbf{nonlinear MPC tracker}, which solves the nonlinear program (NLP) of Section~\ref{sec:nlp} and publishes a
+        setpoint;
+  \item a \textbf{setpoint-to-twist stage}, a proportional law on a look-ahead point of the predicted
+        trajectory, which produces the \texttt{/cmd\_vel} actually sent to the locomotion layer.
+\end{enumerate}
+
+Two design decisions shape everything that follows. First, the locomotion layer is treated as an ideal
+velocity-tracking device with a time constant: the optimization never models legs, contacts or gait, and the
+robot is abstracted as a planar holonomic agent. Sections~\ref{sec:platforms} and~\ref{sec:lowlevel} describe
+what that layer actually does on each of the two platforms and why the same abstraction survives the
+difference between them. Second, the map is \emph{local and volatile}: the occupancy grid covers a fixed
+window centred on the robot and is rebuilt from scratch at every planning cycle, so the planning problem is
+genuinely map-free and the geometric reference the MPC tracks is only valid for one grid width ahead.
+
+Point~5 deserves emphasis, because it is a deviation from the textbook receding-horizon implementation and it
+is not innocuous. The optimizer is used as a \emph{reference generator} rather than as a direct controller:
+$u^\star_0$ is not applied to the plant. The consequence is measured in Section~\ref{sec:robust}, where an
+improvement obtained in the plan turns out not to be observable in the executed trajectory, and is the
+strongest argument for closing the loop as the theory prescribes.
+
+\subsection{The controlled platforms}
+\label{sec:platforms}
+
+The same stack drives two machines whose mechanics could hardly be more different: a Unitree~G1 humanoid,
+which is the platform of this report, and a Unitree~Go2 quadruped, on which the stack was originally
+developed. The Go2 has twelve actuated joints, three per leg; the G1 has twenty-nine, of which the locomotion
+layer of Section~\ref{sec:g1rl} drives fifteen --- the twelve leg joints and the three waist joints --- while
+the arms are held at a fixed posture. Neither joint set is ever addressed by the controller of this report.
+Both platforms are commanded through the same channel, a body-frame twist
+$u=(v_x^{\mathrm{cmd}},v_y^{\mathrm{cmd}},\omega^{\mathrm{cmd}})$, and both carry a 3-D LiDAR whose returns
+are the only exteroceptive input of the stack.
+
+Table~\ref{tab:platforms} collects what distinguishes them from the controller's point of view. The last two
+rows are the only ones that enter the optimization program, and they are where the two profiles genuinely
+differ: the admissible input set and the actuator time constant.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{The two platforms as the controller sees them. The rows above the rule are properties of the
+  machine, those below are properties of the profile that the optimization program actually reads. The
+  deployed G1 values are quoted from the generated macros, so they cannot drift from the parameter file.}
+  \label{tab:platforms}
+  \begin{tabular}{lll}
+    \toprule
+                                & Unitree Go2                      & Unitree G1 \\
+    \midrule
+    Morphology                  & quadruped                        & humanoid \\
+    Actuated joints             & $12$ ($3$ per leg)               & $29$ ($15$ driven by the policy) \\
+    Exteroception               & Unitree L1 LiDAR                 & Livox MID-360 LiDAR \\
+    \midrule
+    Locomotion layer            & CHAMP gait controller            & AMO policy, Sec.~\ref{sec:g1rl} \\
+    Layer update rate           & $200$~Hz                         & $50$~Hz \\
+    Simulator                   & Gazebo, dynamic                  & MuJoCo, kinematic \\
+    \midrule
+    Input envelope $(v_x,v_y,\omega)$
+                                & $1.0$, $0.5$, $1.5$              & $\resVxMax$, $\resVyMax$, $\resOmegaMax$ \\
+    Actuator lag $\tau$         & $0.12$~s / $0.10$~s              & $\resTauV$~s (degenerate, see
+                                                                     Section~\ref{sec:model}) \\
+    Horizon $N$, $\Delta t$     & $50$, $0.1$~s                    & $\resN$, $\resDt$~s \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The lateral bound is the entry to keep in mind for the rest of the report. A quadruped strafes; a biped does
+not, and the G1 profile sets $v_{y,\max}=\resVyMax$~m/s --- not exactly zero, only for the conditioning of
+the solver. Section~\ref{sec:kkt} shows that this does not \emph{limit} a degree of freedom so much as
+\emph{remove} it, and Section~\ref{sec:robust} shows the consequence: a state constraint that asks the robot
+to move away from a wall it is already close to cannot be satisfied, because there is no admissible input
+that translates the body sideways.
+
+\subsection{Low-level locomotion layers}
+\label{sec:lowlevel}
+
+The controller analysed in this report never commands a joint. Its decision variable is a body-frame twist,
+and between that twist and the ground sits a platform-specific layer that turns it into joint commands at
+$200$~Hz on the Go2 and $50$~Hz on the G1. Only two properties of that layer reach the optimization problem:
+the twist is tracked with a first-order lag rather than instantaneously, and the tracking is fast enough,
+relative to the MPC cycle, for the two layers to be designed separately. This section describes the two
+locomotion controllers to the depth needed to justify those two properties, and no further. Throughout,
+$q\in\R^{n_j}$ denotes the vector of joint positions ($n_j=12$ on the Go2, $n_j=29$ on the G1),
+$\mathcal{T}\in\R^{n_j}$ the vector of joint torques, and $K_P,K_D\succ0$ the diagonal gain matrices of the
+joint-level loop; the symbol $\tau$ is reserved for the actuator time constants of Section~\ref{sec:model}.
+
+\subsubsection{Model-based gait generation: CHAMP on the Go2}
+\label{sec:champ}
+
+CHAMP \cite{champ} is an open-source implementation of the hierarchical trot controller developed for the MIT
+Cheetah \cite{lee2013hierarchical}. It is a purely feedforward pipeline: a pattern modulator imposes the
+footfall sequence, a trajectory planner turns each leg's phase into a foot position, inverse kinematics turns
+that position into joint angles, and a joint-level impedance loop tracks them.
+
+\paragraph{Pattern modulation.} Each leg $i\in\{\mathrm{LF},\mathrm{RF},\mathrm{LH},\mathrm{RH}\}$ carries a
+normalised stride clock
+\begin{equation}
+  \zeta_i(t)=\left(\frac{t}{\Tstr}-\zeta_i^{0}\right)\bmod 1\in[0,1),
+  \qquad \Tstr=\Tst+\Tsw ,
+  \label{eq:gaitphase}
+\end{equation}
+where $\Tst$ and $\Tsw$ are the stance and swing durations and $\zeta_i^{0}$ the phase offset of leg $i$. Leg
+$i$ is in stance while $\zeta_i<\beta$ and in swing otherwise, with duty factor $\beta=\Tst/\Tstr$. The
+deployed configuration uses $\Tst=\Tsw=0.25$~s, hence $\Tstr=0.5$~s and $\beta=0.5$, with
+$\zeta^{0}=(0,\tfrac12,\tfrac12,0)$: the diagonal pairs move together, which is the trot.
+
+\paragraph{Where the command enters.} The commanded twist does not act on the legs directly; it acts on the
+\emph{step geometry}, through the Raibert foot-placement heuristic \cite{raibert1986legged}. A foot is placed
+half a step ahead of its nominal position, so that sweeping backwards during the stance interval $\Tst$
+displaces the trunk by exactly the commanded amount. With $\bar\pf_i\in\R^3$ the nominal position of foot $i$
+in the body frame,
+\begin{equation}
+  \Delta\pf_i \;=\; R_z(\chi_g)\Big(\bar\pf_i+\tfrac{1}{2}\Tst\,
+                  \big(v_x^{\mathrm{cmd}},v_y^{\mathrm{cmd}},0\big)^{\!\top}\Big)-\bar\pf_i ,
+  \qquad
+  \chi_g \approx \tfrac{1}{2}\Tst\,\omega^{\mathrm{cmd}} ,
+  \label{eq:raibert}
+\end{equation}
+with $R_z(\cdot)$ the elementary rotation about the vertical axis and $\chi_g$ the yaw swept in half a stance
+interval. The step length and the heading of the foot trajectory follow as
+\begin{equation}
+  L_i = 2\big\|\Delta\pf_i\big\|_2 ,
+  \qquad
+  \chi_i=\operatorname{atan2}\big(\Delta\pf_{i,y},\,\Delta\pf_{i,x}\big).
+  \label{eq:steplen}
+\end{equation}
+Equations~\eqref{eq:raibert}--\eqref{eq:steplen} are the whole of the command path: the three numbers the MPC
+publishes are compressed into one length and one angle per leg, and nothing else of the command reaches the
+robot.
+
+\paragraph{Foot trajectories and impedance.} With phase and step length fixed, each foot follows a planar
+curve in its own trajectory frame, rotated by $\chi_i$ and added to the nominal stance. In stance,
+parametrised by $\zeta_i^{\mathrm{st}}=\zeta_i/\beta$, the foot sweeps backwards along a shallow arc that
+presses into the ground by $h_{\mathrm{st}}$; in swing it follows a B\'ezier curve of degree $11$ whose
+vertical spread is the swing height $h_{\mathrm{sw}}$. A closed-form inverse kinematics (IK) map takes each foot
+position to the three joint angles of its leg, $q_i^{\mathrm{ref}}=\mathrm{IK}_i(\pf_i)$, and a
+proportional--derivative law closes the loop at the joints,
+\begin{equation}
+  \mathcal{T}_i = K_P\big(q_i^{\mathrm{ref}}-q_i\big)+K_D\big(\dot q_i^{\mathrm{ref}}-\dot q_i\big)
+  \;=\;\bm{J}_i(q_i)^{\!\top}F_i ,
+  \label{eq:impedance}
+\end{equation}
+where $\bm{J}_i$ is the foot Jacobian of leg $i$ and $F_i$ the equivalent force at the foot. Read from right
+to left, \eqref{eq:impedance} is the point of the architecture: a joint-space proportional--derivative (PD) loop realises a virtual
+spring--damper at the foot, of Cartesian stiffness $\bm{J}_i^{-\top}K_P\bm{J}_i^{-1}$, so the leg absorbs
+terrain irregularity and impact by programmable compliance rather than by contact sensing or force control.
+This is what lets an open-loop gait generator survive on a real robot.
+
+\paragraph{Why this layer looks like a lag.} Three consequences propagate upstream, and they are the reason
+the model of Section~\ref{sec:model} has the form it has. First, the twist enters only through the step
+geometry: no measured trunk velocity is fed back, so the layer is a feedforward map and the trunk velocity
+approaches the commanded one over roughly one stride rather than immediately. Second, that step geometry is
+re-evaluated once per stride, so a command changing faster than $1/\Tstr=2$~Hz is averaged, not tracked; a
+first-order lag with $\tau_v=0.12$~s reaches $98\%$ of its final value in $4\tau_v\approx\Tstr$, which is why
+a one-parameter fit describes the layer as well as it does. Third, the gait applies its own saturation, which
+is where the Go2 input envelope of Table~\ref{tab:platforms} comes from.
+
+\subsubsection{Learned whole-body control: the AMO policy on the G1}
+\label{sec:g1rl}
+
+On the humanoid the same interface is produced by a neural network instead of a gait generator. The reference
+controller is AMO (Adaptive Motion Optimization) \cite{li2025amo}, a reinforcement-learning policy trained in
+simulation for the G1 and its twenty-nine degrees of freedom. AMO is deliberately \emph{not} a walking
+controller: it is a loco-manipulation policy, trained to track torso height, torso orientation and upper-body
+targets while walking, on a hybrid dataset in which an offline trajectory-optimization module supplies
+whole-body references kinematically consistent with the commanded end-effector motion. The navigation stack
+exercises only its locomotion subset --- the arms are held at the default posture and only the base command
+is driven --- but the policy is the one trained for the larger task, which is what would make the same
+platform usable for manipulation later without changing the layer the MPC talks to.
+
+\paragraph{Structure.} At each tick $k$ of the $50$~Hz policy loop, the network maps an observation to an
+action,
+\begin{equation}
+  a_k=\pi(o_k)\in\R^{15},
+  \qquad
+  o_k=\big(\,\omega^{\mathrm{b}}_k,\ \hat g_k,\ \tilde u_k,\ q_k-\qdef,\ \dot q_k,\ a_{k-1}\,\big),
+  \label{eq:rlpolicy}
+\end{equation}
+where $\omega^{\mathrm{b}}_k\in\R^3$ is the body angular velocity, $\hat g_k\in\R^3$ the gravity direction in
+the body frame (the tilt an inertial measurement unit, IMU, provides without a global heading), $q_k,\dot q_k$ the
+measured joint positions and velocities, $\qdef$ the default posture, $a_{k-1}$ the previous action, and
+$\tilde u_k$ the command. The action is not a torque: it is an offset on the default posture, which the same
+joint-level PD law as~\eqref{eq:impedance} converts into torque,
+\begin{equation}
+  q_k^{\mathrm{ref}}=\qdef+s_a\,a_k,
+  \qquad
+  \mathcal{T}_k=K_P\big(q_k^{\mathrm{ref}}-q_k\big)+K_D\big(0-\dot q_k\big),
+  \label{eq:rlpd}
+\end{equation}
+with $s_a$ a fixed action scale. The learned part of the controller is therefore exactly the map from
+observation to PD setpoint; the stabilising loop underneath it is the same fixed impedance as on the
+quadruped. The policy is obtained by proximal policy optimization (PPO) \cite{schulman2017ppo}, maximising a
+discounted return whose stage reward pays for tracking the commanded twist and penalises posture deviation,
+joint effort and action rate, with masses, friction, gains and latencies randomised during training so that
+the fixed policy transfers to hardware.
+
+\paragraph{The command mapping, and one unmodelled nonlinearity.} The command handed to the network is not
+the MPC twist but its image under a calibrated map, $\tilde u_k=\mathcal{M}(u_k)$, and that map is not a
+change of units: the policy's yaw channel is a heading \emph{offset} rather than a yaw rate, its lateral
+channel uses the opposite sign convention, and the policy plants its feet whenever all three channels fall
+below a stand gate. That gate is the one visible unmodelled nonlinearity of the cascade --- a near-pure
+rotation in place, which the MPC produces when the reference turns sharply at low speed, falls below it and
+returns no motion at all. It is a discontinuity in the map from the optimizer's output to the robot's motion,
+and it is not represented anywhere in the program.
+
+\subsubsection{The cascade, its abstraction seam, and what it costs}
+\label{sec:cascade}
+
+The stack is a cascade of four loops whose rates are separated by roughly a decade each: the \astar{}
+reference is recomputed at $1$~Hz, the MPC at $1/\resDt$~Hz, the locomotion layer at $50$--$200$~Hz, and the
+joint PD loop at the motor-driver rate. That separation is the standard justification for designing each
+layer against a static abstraction of the one below it, and the abstraction used here is deliberately
+minimal: three decoupled first-order lags, Eq.~\eqref{eq:lagcont}. Both locomotion layers, the hand-designed
+one and the learned one, are approximated by the same two numbers.
+
+It is worth stating what that abstraction discards, because the report returns to it twice. It discards leg
+dynamics, contact, footstep timing, the gait saturation of Section~\ref{sec:champ} and the stand gate of
+Section~\ref{sec:g1rl}. What survives is a question of degree, and Section~\ref{sec:prederr} answers it
+quantitatively: measured against a recorded mission, the prediction diverges from the executed trajectory by
+$\resPredDivergence$~m over one horizon --- $\resPredVsEuler$ times the truncation error of the integration
+scheme it replaced, and $\resPredVsMidpoint$ times that of the scheme now deployed. The abstraction, not the
+arithmetic, is the dominant error term of the whole prediction.
+
+\subsection{Environment representation}
+\label{sec:grid}
+
+Let $\mathcal{P}_k=\{p_i\in\R^3\}_{i=1}^{N_k}$ be the LiDAR point cloud available at cycle $k$, projected on
+the plane. The grid is a square of side $2h_w$ centred on the robot position and discretised with resolution
+$\Delta$. The occupancy probability of cell $c$ is a Gaussian tail of the distance to the nearest return,
+\begin{equation}
+  P(c) \;=\; 1-\Phi\!\left(\frac{d_{\min}(c,\mathcal{P}_k)}{\sigma}\right),
+  \qquad d_{\min}(c,\mathcal{P}_k)=\min_{p\in\mathcal{P}_k}\|c-p\|_2 ,
+  \label{eq:grid}
+\end{equation}
+with $\Phi$ the standard normal cumulative distribution function. Equation~\eqref{eq:grid} is an
+\emph{inflation} model: it is not a Bayesian occupancy update --- there is no recursive filtering, no ray
+casting and no free-space carving at this stage --- but a smooth, monotone map from clearance to cost, whose
+one parameter $\sigma$ sets the width of the obstacle halo.
+
+Cells with $P(c)\ge P_{\mathrm{thr}}$ are removed from the search graph. The pair $(\sigma,P_{\mathrm{thr}})$
+is not tuned by hand: inverting~\eqref{eq:grid} gives the hard-blocking radius implied by a threshold,
+\begin{equation}
+  d_{\mathrm{block}} \;=\; \sigma\,\Phi^{-1}\!\left(1-P_{\mathrm{thr}}\right),
+  \label{eq:dblock}
+\end{equation}
+and the G1 profile chooses $\sigma$ and $P_{\mathrm{thr}}$ so that $d_{\mathrm{block}}\approx0.40$~m against
+a body radius of about $0.35$~m. This is a small point but a representative one: the parameter that matters
+is a physical clearance, and the two grid parameters are derived from it rather than chosen and justified
+afterwards.
+
+Because the grid is rebuilt from scratch, its construction cost is the dominant cost of the planning layer,
+$O(n_c^2\,|\mathcal{P}_k|)$; vectorised, it is negligible against the MPC at the $1$~Hz replanning rate.
+
+\subsection{Plant model and state-space formulation}
+\label{sec:model}
+
+The MPC model must predict where the robot will be, not where it was told to go. Commanding a legged platform
+a body-frame velocity does not, in general, produce that velocity instantaneously: the locomotion controller
+responds with a time constant, which over a horizon accumulates into a prediction error if neglected. The
+model therefore augments the planar kinematic state with the three velocity states,
+\begin{equation}
+  x \;=\; \begin{bmatrix} p_x & p_y & \psi & v_x & v_y & \omega\end{bmatrix}^{\!\top}\in\R^{6},
+  \qquad
+  u \;=\; \begin{bmatrix} v_x^{\mathrm{cmd}} & v_y^{\mathrm{cmd}} & \omega^{\mathrm{cmd}}\end{bmatrix}^{\!\top}\in\R^{3},
+  \label{eq:state}
+\end{equation}
+where $(p_x,p_y)$ and $\psi$ are the world-frame pose and $(v_x,v_y,\omega)$ the body-frame twist actually
+realised. In continuous time the actuator behaves as three decoupled first-order lags driven by the commands,
+\begin{equation}
+  \dot v_x = \frac{u_1-v_x}{\tau_v},\qquad
+  \dot v_y = \frac{u_2-v_y}{\tau_w},\qquad
+  \dot \omega = \frac{u_3-\omega}{\tau_w},
+  \label{eq:lagcont}
+\end{equation}
+while the pose obeys the holonomic body-to-world rotation
+\begin{equation}
+  \dot p_x = v_x\cos\psi - v_y\sin\psi,\qquad
+  \dot p_y = v_x\sin\psi + v_y\cos\psi,\qquad
+  \dot\psi = \omega .
+  \label{eq:kincont}
+\end{equation}
+
+Model~\eqref{eq:lagcont}--\eqref{eq:kincont} is holonomic: unlike a differential-drive vehicle, the platform
+can in principle command a lateral velocity, so no nonholonomic constraint appears and the input set is a
+box. This is what makes the resulting NLP comparatively benign --- the nonlinearity is confined to the
+rotation $R(\psi)$ and to the obstacle distances.
+
+\paragraph{On the deployed time constant, and why it is degenerate.}
+The G1 profile sets $\tau_v=\tau_w=\resTauV$~s. This is not an identified value and is not meant to be one:
+the MuJoCo plant used throughout this report integrates the commanded twist \emph{kinematically}, with no
+actuation dynamics at all, so the discrete lag coefficient of Section~\ref{sec:discretization} evaluates to
+$1-e^{-\Delta t/\tau}=\resLagDiscrete$ and the velocity update collapses to $v_{k+1}=u_k$. The choice is
+deliberate and its purpose is methodological: with the prediction model equal to the simulation model by
+construction, the experiments of Sections~\ref{sec:optproc} and~\ref{sec:performance} measure the behaviour
+of the \emph{optimizer} rather than the noise of a gait. The cost of the choice is that any conclusion which
+depends on the actuator pole --- the selection of the sampling time from the plant bandwidth being the
+obvious one --- cannot be drawn from these data, and is deferred until $\tau$ is identified under physics.
+Section~\ref{sec:terminal} shows one place where the degeneracy visibly flatters a result, and says so.
+
+\subsection{The navigation task as a finite-horizon optimal control problem}
+\label{sec:fhocp}
+
+Let $x_g\in\R^2$ be the goal. Written in the standard form, the task is the finite-horizon optimal control
+problem
+\begin{subequations}
+\label{eq:ocp}
+\begin{align}
+  \min_{u_0,\dots,u_{N-1}}\;\; & J\!\left(x_{0:N},u_{0:N-1},\mathcal{P}_k,\theta\right) \label{eq:ocp-cost}\\
+  \text{s.t.}\quad & x_{t+1}=f(x_t,u_t), && t=0,\dots,N-1, \label{eq:ocp-dyn}\\
+                   & x_0 = \hat x(t_k), \label{eq:ocp-init}\\
+                   & u_t\in\mathcal{U}, && t=0,\dots,N-1, \label{eq:ocp-input}\\
+                   & d\!\left(x_t,\mathcal{P}_k\right)\ge r_{\min}, && t=1,\dots,N, \label{eq:ocp-obs}\\
+                   & x_N\in\mathcal{X}_f, \label{eq:ocp-term}
+\end{align}
+\end{subequations}
+solved at every sampling instant $t_k$, of which only $u_0$ is retained. Three features of~\eqref{eq:ocp}
+determine the whole design, and each is taken up in turn.
+
+\begin{itemize}
+  \item \textbf{The goal is not reachable within the horizon.} With $N\Delta t=\resHorizonSeconds$~s and a
+        cruise speed of $\resVref$~m/s the horizon spans well under a metre of travel, while the goal may be
+        tens of metres away and outside the sensed region altogether. The cost~\eqref{eq:ocp-cost} therefore
+        cannot be a distance to $x_g$; it must be a distance to a \emph{reference trajectory} produced by a
+        separate, cheaper program that looks further ahead. That program is the \astar{} search of
+        Section~\ref{sec:astar}.
+  \item \textbf{The obstacle set is a point cloud, not a polytope.} Constraint~\eqref{eq:ocp-obs} is
+        non-convex and its description changes at every cycle. The deployed program relaxes it into a smooth
+        penalty (Section~\ref{sec:barrier}); Section~\ref{sec:l1} re-poses it as a genuine constraint with a
+        slack and shows at what penalty weight the relaxation becomes exact.
+  \item \textbf{The terminal constraint is optional and its cost is measurable.}
+        Constraint~\eqref{eq:ocp-term} is absent from the deployed configuration
+        ($\texttt{\resTerminalMode}$). Section~\ref{sec:terminal} switches it on, verifies that the terminal
+        set is reachable at every operating point tested, and prices it.
+\end{itemize}
+
+Note the index range of~\eqref{eq:ocp-obs}, which starts at $t=1$ and not at $t=0$. At the first node the
+state is fixed by the equality~\eqref{eq:ocp-init}, so a constraint imposed there does not depend on any
+decision variable: it cannot change the solution, and it renders the entire program infeasible whenever the
+measured state already violates it --- which is routine, since the robot is frequently closer to an obstacle
+than the safety radius nominally allows. This is not a detail of implementation but a property of the
+formulation, and getting it wrong is a documented way to make a well-posed problem unsolvable.
+
+%=============================================================================
+\section{Formulation of the optimization program}
+\label{sec:formulation}
+
+\subsection{Reference generation: \texorpdfstring{\astar{}}{A*} as a discrete program}
+\label{sec:astar}
+
+At every planning tick the geometric reference is the solution of a shortest-path problem on the
+$8$-connected grid of Section~\ref{sec:grid}. Cells above the occupancy threshold are removed from the graph;
+the remaining edges carry the cost
+\begin{equation}
+  g(n\rightarrow n') \;=\; c_{\mathrm{move}}\cdot\delta\cdot
+  \left[1+w_{\mathrm{obs}}\left(\frac{P(n')}{P_{\mathrm{thr}}}\right)^{\!2}\right],
+  \qquad c_{\mathrm{move}}\in\{1,\sqrt2\}.
+  \label{eq:astarcost}
+\end{equation}
+The normalised quadratic in~\eqref{eq:astarcost} is the mechanism that produces medial-axis-like paths: a
+cell just below the hard threshold costs $1+w_{\mathrm{obs}}$ times an open cell, so the search prefers the
+middle of a corridor over the short path that grazes a wall, yet a doorway is never closed outright. The
+Euclidean heuristic is admissible because the bracket in~\eqref{eq:astarcost} is bounded below by $1$, so no
+edge can be cheaper than its Euclidean length; the search is therefore an exact \astar{} and returns a
+cost-optimal path on the current grid.
+
+\paragraph{Why this matters for the continuous program.} The decision of \emph{which side} of an obstacle to
+pass on is combinatorial. Posed inside the NLP it would require binary variables --- a mixed-integer
+nonlinear program, whose solution time is not compatible with a control loop. Delegating it to a graph search
+on a discretised free space is what keeps the continuous program a smooth NLP with a box-shaped input set,
+and it is the single most consequential structural decision in the stack. The price is that the discrete
+layer commits to a homotopy class before the continuous layer is consulted, and the continuous layer has no
+way to revise that commitment: Section~\ref{sec:bif} measures what happens when the smooth program is left
+with two competing basins of its own, and Section~\ref{sec:localmin} shows the failure that follows when the
+discrete layer commits on the basis of a memory it does not have.
+
+\subsection{Model discretization}
+\label{sec:discretization}
+
+With sampling time $\Delta t$, the lag subsystem~\eqref{eq:lagcont} is linear and time-invariant, so it is
+discretised \emph{exactly} under a zero-order-hold input. Defining
+$\nu_v = 1-e^{-\Delta t/\tau_v}$ and $\nu_w = 1-e^{-\Delta t/\tau_w}$, the velocity update is the
+exact solution of~\eqref{eq:lagcont} over one step,
+\begin{equation}
+  v_{x,k+1}=(1-\nu_v)v_{x,k}+\nu_v u_{1,k},\qquad
+  \omega_{k+1}=(1-\nu_w)\omega_{k}+\nu_w u_{3,k},
+  \label{eq:veldisc}
+\end{equation}
+and analogously for $v_y$. No approximation is involved here and none should be claimed: this is the Lagrange
+formula for a linear time-invariant (LTI) system under a piecewise-constant input, and it is exact at the sampling instants. On the
+deployed G1 profile it is also \emph{vacuous}, since $\nu=\resLagDiscrete$ reduces~\eqref{eq:veldisc} to
+$v_{k+1}=u_k$; the statement is retained because it is the part of the model that would carry the weight on
+hardware, where $\tau$ is real.
+
+The pose, by contrast, is genuinely nonlinear and must be integrated numerically. Two schemes are available
+in the deployed code, selected by a parameter:
+\begin{align}
+  \text{explicit Euler:}\quad & p_{k+1} = p_k + R(\psi_k)\,v_{k+1}\,\Delta t,
+  \label{eq:euler}\\
+  \text{mid-point (RK2):}\quad & p_{k+1} = p_k + R\!\left(\psi_k+\tfrac{1}{2}\omega_{k+1}\Delta t\right)v_{k+1}\,\Delta t.
+  \label{eq:midpoint}
+\end{align}
+Both evaluate the rotation on the \emph{post-lag} velocity $v_{k+1}$, a semi-implicit choice that costs
+nothing and removes the one-step delay an explicit scheme would introduce between a command and the predicted
+displacement. The mid-point rule differs from Euler by one addition inside the argument of the rotation.
+
+\paragraph{The measured order.} The global error of each scheme was fitted against the step size on three
+motion regimes, with the exact solution available in closed form (for $\omega\neq0$ the displacement is a
+circular arc). The measured orders are $\resOrderEuler$ and $\resOrderMidpoint$, i.e.\ exactly the first and
+second order the truncation analysis predicts, and the result is identical across regimes.
+
+\restab{order}
+\restab{ordergrid}
+
+At the deployed $\Delta t=\resDt$~s and over a three-second window, Euler is wrong by
+$\resErrEulerDep$~m and the mid-point rule by $\resErrMidpointDep$~m, a factor $\resIntegratorGain$ for the
+price of one addition. The test also verifies that the dynamics assembled \emph{inside} the NLP coincides
+with the reference scheme to machine precision: it is not enough for the theory to check out, the tracker
+must integrate that way.
+
+Section~\ref{sec:prederr} returns to this and reaches an uncomfortable conclusion, which is why the two
+sections should be read together: a factor $\resIntegratorGain$ in the accuracy of the integrator changes the
+closed loop by essentially nothing, because the integrator was never the dominant error term.
+
+\subsection{The nonlinear MPC program}
+\label{sec:nlp}
+
+\subsubsection{Decision variables, cost, and the parametrisation of the program}
+\label{sec:shoot}
+
+The NLP is written in the \emph{simultaneous} form, also called direct multiple shooting: both the state and
+the input sequences are decision variables and the dynamics enter as equality constraints,
+\begin{equation}
+  z \;=\; \big(X,U\big),\qquad X=[x_0,\dots,x_N]\in\R^{6\times(N+1)},\quad U=[u_0,\dots,u_{N-1}]\in\R^{3\times N}.
+\end{equation}
+With $e_k=x_k-x_{\mathrm{ref},k}$ the cost is
+\begin{equation}
+  J(z;\theta) \;=\;
+  \sum_{k=0}^{N-1}\Big[e_k^{\!\top} Q\, e_k
+  \;+\; u_k^{\!\top} R\, u_k
+  \;+\; \Rjerk\|u_k-u_{k-1}\|_2^2
+  \;+\; \Jobs(x_k)\Big]
+  \;+\;e_N^{\!\top} Q_T\, e_N + \Jobs(x_N),
+  \label{eq:cost}
+\end{equation}
+with $Q=\mathrm{diag}(Q_x,Q_y,Q_\psi,0,0,0)$, $Q_T=\rho_T\,Q$ and $R=\mathrm{diag}(R_{v_x},R_{v_y},R_\omega)$.
+Two properties deserve comment. The stage weight is only \emph{semi}-definite: no velocity state is
+penalised, $Q$ has rank $3$ out of $6$, and the velocities are shaped indirectly through the lag dynamics and
+the input penalty. And the rate penalty $\Rjerk\|u_k-u_{k-1}\|^2$ is the only term coupling adjacent input
+stages, which is what puts off-diagonal blocks in the Hessian; its purpose is physical, since a legged
+platform tracks a smooth velocity profile far better than a chattering one.
+
+\paragraph{The alternative, and what it actually costs.} The standard argument for multiple shooting is that
+it keeps the Jacobian sparse and banded, where a condensed single-shooting formulation --- states eliminated
+by recursive substitution, inputs as the only variables --- would produce a small but dense problem. The
+deployed code implements both, with the transition map written once and shared, so what is compared is the
+parametrisation and not two different models.
+
+\restab{shoot}
+
+The structural half of the claim holds exactly, and the Hessian is where it shows: at $N=\resShootN$ the
+program shrinks from $\resShootVarMulti$ variables and $\resShootConMulti$ constraints to
+$\resShootVarSingle$ and $\resShootConSingle$, while the Hessian density goes from
+$\resShootHessDensMulti\%$ to $\resShootHessDensSingle\%$ --- a full matrix. Condensing does trade a large
+banded problem for a small dense one.
+
+The performance half does not follow from that, and it would be dishonest to claim it does on these data.
+Each timing in Table~\ref{res:tab:shoot} is a single cold solve, so it carries the variance of one sample
+while the dimensions beside it are exact; and on the horizons tested the condensed form is not uniformly
+slower. What can be asserted without a stopwatch is the conditioning argument: single shooting integrates the
+model in \emph{open loop} over the whole horizon, so the error compounds step by step and the problem
+degrades with $N$ and with any instability of the plant. On a kinematic, stable model that defect does not
+surface --- which is precisely why this comparison cannot be used to argue the general case, and why the
+right claim to make is about structure rather than speed.
+
+\subsubsection{Obstacle avoidance as a smooth penalty}
+\label{sec:barrier}
+
+The clearance constraint~\eqref{eq:ocp-obs} is replaced, in the deployed configuration, by a penalty
+evaluated on the $M$ nearest LiDAR returns $\{p_j\}$ inside a search radius:
+\begin{equation}
+  \Jobs(x_k) \;=\; \Wobs\sum_{j=1}^{M}
+  \left[\underbrace{\tfrac12\Big(1-\tanh\big(\tfrac{\aobs}{2}(d_{k,j}-\robs)\big)\Big)}_{\text{sigmoid zone}}
+  \;+\;\underbrace{2\max\!\big(0,\;\robs-d_{k,j}\big)^2}_{\text{penetration penalty}}\right],
+  \label{eq:barrier}
+\end{equation}
+with $d_{k,j}=\sqrt{(p_{x,k}-p_{j,x})^2+(p_{y,k}-p_{j,y})^2+\varepsilon_d}$ and $\varepsilon_d=10^{-6}$ making
+the distance differentiable at zero, where the Euclidean norm is not.
+
+The hybrid structure is deliberate. The sigmoid saturates at $\Wobs$ as $d\to0$: on its own it is a
+\emph{bounded} penalty, so a sufficiently strong tracking term can buy its way through an obstacle, and ---
+worse for the solver --- its gradient vanishes both far away and deep inside the obstacle, leaving a
+stationary point exactly where the robot must be pushed out. The quadratic term repairs both defects inside
+the safety radius: it is unbounded and its gradient grows linearly with penetration. The price is that the
+curvature of~\eqref{eq:barrier} scales as $\aobs^2\Wobs$, so a steep, heavy penalty injects large and rapidly
+varying eigenvalues into the Hessian precisely where the solution lives.
+
+Relaxing a hard constraint into a penalty has three consequences worth stating explicitly.
+\emph{(i)}~The NLP is always feasible: no state constraint can render the problem unsolvable when the robot
+is already too close to an obstacle, which for a real-time loop with no fallback trajectory is a genuine
+robustness property. \emph{(ii)}~Safety is no longer guaranteed --- \eqref{eq:barrier} is not an exact
+penalty, so a finite $\Wobs$ admits a finite violation, and Section~\ref{sec:l1} makes that statement
+quantitative. \emph{(iii)}~The penalty is evaluated only at the $N+1$ discrete nodes, so nothing forbids the
+continuous inter-sample trajectory from clipping a thin obstacle.
+
+Point~\emph{(iii)} is usually left as a caveat. It is worth checking instead, because it is a one-line
+computation: the distance covered between two consecutive nodes is $v_{x,\max}\Delta t$, against a keep-out
+radius $\robs$. On the deployed G1 profile that ratio is $0.15$ --- one step covers $6$~cm and $3.4$ degrees
+against a radius of $\resObsRDep$~m, so the penalty cannot be stepped over. On the Go2 profile the same ratio
+is $1.02$: between two nodes the robot covers slightly more than the entire safety radius, and the penalty is
+doing nothing at all in between. The Go2 configuration is on the wrong side of its own caveat, and the reason
+it survives is that the tuning had already demoted the penalty to a last-metre guard, delegating geometric
+avoidance to the \astar{} layer on the inflated grid.
+
+\paragraph{Sentinel padding.} $M$ is fixed. When fewer than $M$ returns lie inside the search radius, the
+missing rows of the obstacle parameter are filled with a sentinel at $10^3$~m, whose contribution
+to~\eqref{eq:barrier} is numerically zero. This apparently cosmetic detail is what allows the NLP to be built
+\emph{once}: the number of terms, and therefore the sparsity pattern of the Jacobian and Hessian, never
+changes between cycles, so the symbolic factorisation and the warm start remain valid regardless of how
+cluttered the scene is.
+
+\subsubsection{The obstacle as a true constraint: exact \texorpdfstring{$\ell^1$}{l1} penalty}
+\label{sec:l1}
+
+The alternative to a penalty in the cost is a constraint with a slack. The deployed code implements both,
+selectable by a parameter: the obstacle becomes
+\begin{equation}
+  d(x_k,p_j)\;\ge\;\dsafe-s_{jk},\qquad s_{jk}\ge0,\qquad k=1,\dots,N,
+  \label{eq:slack}
+\end{equation}
+with the slack penalised in the cost either linearly ($\rho_s\sum s$) or quadratically ($\rho_s\sum s^2$). The
+question this settles is the one Section~\ref{sec:barrier} could only raise: at what weight, if any, does the
+relaxation stop being a relaxation.
+
+The exact-penalty theorem answers it. For a non-smooth $\ell^1$ penalty there exists a finite threshold ---
+the largest multiplier of the corresponding hard constraint --- above which the residual violation is exactly
+zero, whereas an $\ell^2$ penalty decays like $1/\rho_s$ and never vanishes at any finite weight. Both
+predictions are testable here, because the multiplier is available from the problem itself.
+
+Solved as a hard constraint on a narrow-gap scenario with $\dsafe=\resDsafe$~m --- chosen so that the
+constraint genuinely bites --- the instance is feasible and the largest multiplier of an active distance
+constraint is $\mu^\star=\resMuMax$.
+
+\restab{penalty}
+
+The measurement matches the theorem on both branches. The $\ell^1$ slack is a threshold phenomenon: nonzero
+below, and zero to solver tolerance from $\rho_s=\resRhoLoneZero$ onwards --- which is the first sampled weight
+above $\mu^\star$. The $\ell^2$ slack decays with a fitted log--log slope of $\resSlopeLtwo$ against a
+predicted $-1$, and is still nonzero five decades later. The practical consequence is that $\rho_s$ stops being
+a hyperparameter: it is read off the multipliers of the problem rather than tuned.
+
+\paragraph{Two defects of formulation found by implementing it.} Both have theoretical content and both are
+worth reporting, because each is a way to make a well-posed problem unsolvable.
+
+First, \textbf{the constraint must not be imposed at $k=0$}, for the reason already given in
+Section~\ref{sec:fhocp}: there the state is fixed by an equality, the constraint depends on no decision
+variable, and imposing it makes the program infeasible exactly when the robot is already inside $\dsafe$ ---
+that is, exactly when one would want it. Measured on a recorded cycle, the slack saturated at precisely the
+violation present at $k=0$ and the solver could do nothing about it.
+
+Second, \textbf{the residual infeasibility is a property of $\mathcal{U}$, not of the data}. Even starting
+from $k=1$, a demanding $\dsafe$ remains infeasible on real cycles: with $v_x\ge0$ and
+$v_{y,\max}=\resVyMax$~m/s the robot can only advance along its own heading, and cannot back away laterally
+from a wall of LiDAR points. This is the interaction between the asymmetry of the admissible input set and a
+state constraint, and it reappears in Sections~\ref{sec:kkt} and~\ref{sec:robust} from two other directions.
+
+\paragraph{What it would cost to deploy.} Switching the obstacle from the cost to the constraints takes the
+inequalities from $\resSolverIneqLow$ to $\resSolverIneqHigh$ and the iteration count up by a factor of
+several. The deployed iteration cap would not suffice. This is also what makes the solver comparison of
+Section~\ref{sec:solvercmp} possible at all: the same system can be placed in two regimes that differ by a
+factor five in the number of inequalities, which is exactly the axis along which the standard advice on
+solver choice is stated.
+
+\subsubsection{Constraints}
+\label{sec:constraints}
+
+The deployed program carries only equality constraints and input bounds:
+\begin{subequations}
+\label{eq:cons}
+\begin{align}
+  & x_{k+1}-f(x_k,u_k)=0, && k=0,\dots,N-1, \label{eq:cons-dyn}\\
+  & x_0-\hat x=0, \label{eq:cons-init}\\
+  & 0\;\le\;u_{1,k}\;\le\;v_{x,\max}, && k=0,\dots,N-1, \label{eq:cons-vx}\\
+  & |u_{2,k}|\le v_{y,\max},\qquad |u_{3,k}|\le\omega_{\max}, && k=0,\dots,N-1. \label{eq:cons-vyw}
+\end{align}
+\end{subequations}
+Three remarks.
+
+\textbf{No state constraints.} Neither the obstacle clearance nor the velocity states are constrained; the
+former is penalised, the latter are bounded implicitly because~\eqref{eq:veldisc} is a convex combination of
+a bounded command and the previous velocity. The feasible set is therefore a box intersected with an
+affine-in-$X$ manifold, and a feasible point is always trivially available.
+
+\textbf{Forward velocity is non-negative.} Constraint~\eqref{eq:cons-vx} forbids reversing. On the Go2 this
+was a deployment preference; on the G1 it is a necessity, because the MID-360 covers $-7^\circ$ to
+$+52^\circ$ in elevation and leaves a blind cone behind the robot, so reversing means moving blind. It is
+also, as Sections~\ref{sec:l1} and~\ref{sec:kkt} show, the constraint that most restricts what any state
+requirement can ask of the robot.
+
+\textbf{Bounds are parameters, not constants.} The three velocity limits enter the NLP as CasADi parameters,
+so a supervisor can shrink them at runtime without rebuilding the problem.
+
+\subsubsection{Terminal ingredients and recursive feasibility}
+\label{sec:terminal}
+
+The deployed formulation carries no terminal set and no terminal constraint, so none of the standard
+guarantees of nominal stability and recursive feasibility \cite{mayne2000constrained} applies. Recursive
+feasibility is nevertheless \emph{structurally} present, for the reason given in
+Section~\ref{sec:constraints}: with no state constraints, every input sequence in the box is admissible, so
+the NLP always has a solution and the closed loop can never be aborted by infeasibility. What is lost is the
+guarantee that the closed loop converges.
+
+That is the situation to improve on, and the deployed code implements the improvement: a terminal equilibrium
+constraint $v(N)=0$ --- there must exist a braking trajectory inside the horizon --- relaxed by a slack and
+penalised in $\ell^1$ norm, so that by the result of Section~\ref{sec:l1} the constraint is effectively hard
+whenever it is satisfiable and yields gracefully when it is not.
+
+Across the cycles replayed from a recorded mission the terminal slack never leaves zero (maximum
+$\resTermSlackMax$, always admissible: \resTermFeasible), and the cost of imposing it, measured as the
+relative increase of the optimal objective, ranges from $\resTermCostMin\%$ to $\resTermCostMax\%$. The upper
+end is paid exactly where the objective was small, that is where the robot was travelling well and now has to
+predict its own braking --- which is the expected trade: a terminal constraint buys the stability argument by
+spending part of the horizon on stopping.
+
+\paragraph{Why this result must be reported with its cause attached.} That the slack is always zero is not,
+by itself, evidence that the constraint works: an unimplemented constraint would report the same thing. The
+reason it is zero here is the degeneracy of Section~\ref{sec:model}. With $\nu=\resLagDiscrete$ the model
+reduces to $v_{k+1}=u_k$ and the robot reaches zero velocity in a \emph{single step}, so the terminal set is
+trivially reachable from anywhere and the constraint costs nothing in admissibility. A counter-test with
+realistic time constants confirms the mechanism: as $\tau$ grows the slack becomes strictly positive and
+grows with it, because the horizon is no longer long enough to stop. On hardware, with an identified $\tau$,
+this constraint is the one that would decide the maximum speed from which the robot can still be brought to a
+halt inside the horizon --- which is the physical reading of the terminal feasible set, and the form in which
+it would actually bind.
+
+\subsubsection{Reference trajectory: time-parametrised against path-parametrised}
+\label{sec:pathfollow}
+
+The deployed reference advances along the smoothed \astar{} path at a constant cruise speed,
+\begin{equation}
+  s_k=\min\!\left(s_0+v_{\mathrm{ref}}\,k\,\Delta t,\; L_{\mathrm{path}}\right),
+  \label{eq:ref}
+\end{equation}
+interpolating the position inside the containing segment and taking the heading as the segment tangent. The
+cruise speed is set below $v_{x,\max}$ deliberately: with $v_{\mathrm{ref}}=v_{x,\max}$ the tracker saturates
+permanently and never settles onto the path. The price is structural: $\resVrefUnused\%$ of the available
+forward speed is unreachable \emph{by construction}, and no cost weight
+can recover it, because the reference never asks for it.
+
+The alternative the theory offers is to make the path abscissa a decision variable: the tracker chooses how
+far to advance rather than being told. The deployed code implements this too, with $\theta(0)=0$,
+$\Delta\theta\ge0$, $\theta(N)\le1$ and a progress term $\alpha_3(1-\theta)^2$ in the cost. The reference
+$\bar z(\theta)$ is represented by a polynomial whose coefficients are parameters, refitted at every solve on
+the \astar{} path --- necessary because $\theta$ is now a decision variable and IPOPT is a Newton-type
+method, so a piecewise-linear reference through waypoints would have a discontinuous second derivative at
+every node.
+
+\restab{pf}
+
+Over $\resPFcycles$ moving cycles replayed from the recorded run, the mean commanded forward speed rises from
+$\resVxTime$ to $\resVxTheta$~m/s and the distance covered within one horizon from $\resAdvanceTime$ to
+$\resAdvanceTheta$~m: the robot advances $\resAdvanceGain\%$ further at the same horizon, and the solver
+saturates $v_{x,\max}$ on nearly every step. The cruise-speed parameter does not reappear in another guise
+--- $\theta$ is a variable, not a hyperparameter.
+
+The cost is $\resIterTime\to\resIterTheta$ IPOPT iterations, an increase of about $70\%$: the program has
+$N+1$ more variables and $N$ more inequalities, and it is less well conditioned. Reported as a trade rather
+than as an improvement, this is the cleanest reformulation available to the stack.
+
+\paragraph{A trap worth documenting.} On cycles where the robot is stationary the comparison is meaningless:
+$\theta$ advances without the robot being able to follow, and with a strong progress weight one observes
+$\theta\to1$ while the robot stands still --- the reference detaches from the dynamics. The comparison is
+therefore restricted to cycles with genuine motion. This is not a numerical artefact but a modelling
+statement: a path-parametrised reference is only a reference if the dynamics can realise the progress it
+encodes.
+
+\subsubsection{Robust constraints: tightening from the measured prediction error}
+\label{sec:robust}
+
+Every constraint in~\eqref{eq:ocp} is imposed on the \emph{predicted} trajectory, and
+Section~\ref{sec:prederr} measures how far the prediction drifts from what the robot actually does. A
+clearance guaranteed in the plan is therefore not a clearance guaranteed on the floor. The standard remedy is
+constraint tightening: replace $\dsafe$ with a margin $\gamma(k)$ that grows along the horizon,
+\begin{equation}
+  \big\|p_k-o_j\big\| \;\ge\; \dsafe+\gamma(k)-s_{jk}.
+  \label{eq:tighten}
+\end{equation}
+
+The particularity of this project is that $\gamma(k)$ need not be postulated. It is read off the
+$\resBetaQuantile$th percentile of the prediction error recorded in the bags, so the tube is derived from
+data rather than from an assumption about the disturbance.
+
+\restab{beta}
+
+Three properties hold by construction and were checked rather than assumed. $\gamma(0)=\resBetaZero$ exactly,
+because at the first node the state is fixed by an equality and there is nothing to hedge against --- the
+constraint is not tightened where tightening could only remove admissible motion. The margin is monotone
+(\resBetaMonotone), as uncertainty is. And it reaches $\resBetaEnd$~m at the end of the horizon, the same
+order as the safety radius itself. The offset at $k=0$ is subtracted before fitting, since
+Section~\ref{sec:prederr} shows it to be time misalignment rather than model error, and including it would
+inflate the whole tube by a constant.
+
+\restab{robust}
+
+Measured on the predicted trajectory, the outcomes separate cleanly. Where $\dsafe+\gamma$ stays below the
+clearance the trajectory already keeps, the constraint is inactive and correctly does nothing. Where it
+bites, the predicted clearance increases by up to $\resRobustBestDelta$~m with the slack still exactly zero:
+the margin is \emph{respected}, not violated and paid for --- which is the whole point of pairing the tube
+with the $\ell^1$ relaxation of Section~\ref{sec:l1}, since a tube that asks more than $\mathcal{U}$ can
+deliver makes the penalty yield instead of making the program infeasible.
+
+\paragraph{The limit of this measurement, and what it says about the architecture.} The effect is
+\emph{not} observable in the closed loop of this harness: the executed clearance comes out identical with and
+without tightening. The reason is the architecture described in Section~\ref{sec:overview} --- the loop is
+closed by tracking a look-ahead setpoint on the predicted trajectory with a proportional law, which washes
+out fine differences between MPC solutions. The tightening guarantees the margin \emph{in the plan}, and that
+is where it has been verified. This is not a limitation of the technique but of the test bench, and it is the
+strongest argument in the report for applying $u^\star_0$ directly, as the receding-horizon principle
+prescribes.
+
+On the recorded industrial run the tightening is inert for a different and more instructive reason: at the
+tightest cycles the robot sits about $0.6$~m from the obstacles and cannot move away. Raising $\dsafe$ grows
+the slack but does not move the trajectory. The binding constraint is not the threshold, it is
+$\mathcal{U}$ --- the same asymmetry found in Section~\ref{sec:l1} and quantified in Section~\ref{sec:kkt}.
+Three independent measurements arrive at the same conclusion, which is the strongest form the report has for
+saying that the input set, not the cost, is where this system is limited.
+
+%=============================================================================
+\section{Optimization procedure}
+\label{sec:optproc}
+
+\subsection{Problem dimensions and structure}
+\label{sec:dims}
+
+Table~\ref{res:tab:nlp} reports the size of the NLP against the horizon, measured on the deployed profile
+rather than counted by hand.
+
+\restab{nlp}
+
+At the deployed $N=\resN$ the program carries $\resNvar$ decision variables and $\resNcon$ constraints, of
+which $\resNeq$ are equalities --- the dynamics plus the initial condition --- and $\resNineq$ are simple
+bounds on the inputs. A further $\resNpar$ quantities enter as CasADi parameters: the measured state, the
+reference, the sentinel-padded obstacle positions and the three velocity bounds. The problem is therefore
+medium-scale, sparse, smooth and non-convex.
+
+The constraint Jacobian is $\resJacDensity\%$ dense and the Hessian of the Lagrangian $\resHessDensity\%$.
+Both densities fall as $N$ grows while the nonzero counts grow linearly, which is the signature of the
+simultaneous parametrisation: the Jacobian of~\eqref{eq:cons-dyn} is block bi-diagonal, the Hessian block
+tri-diagonal with the off-diagonal input blocks coming from the rate penalty, and nothing couples distant
+stages. The linear-algebra cost of one interior-point iteration is consequently linear in $N$.
+
+It is worth being explicit about what is \emph{not} in this table, because it shapes everything in
+Section~\ref{sec:solvercmp}. There are no obstacle constraints: the $2M(N+1)$ obstacle terms all live in the
+objective. There is therefore no obstacle multiplier, no non-trivial active set to identify, and the entire
+inequality budget of the deployed program is $\resNineq$ box bounds on the inputs.
+
+\subsection{Derivative computation}
+\label{sec:deriv}
+
+Every quantity the solver needs --- the gradient of the objective, the Jacobian of the constraints, the
+Hessian of the Lagrangian --- is generated symbolically by CasADi and evaluated by generated code. The
+alternative is finite differences, and the comparison is not a formality: it decides whether the second-order
+method of Section~\ref{sec:solver} is affordable at all.
+
+\restab{fd}
+
+At a representative solve the objective has $\resDerivNvar$ variables. One evaluation costs
+$\resTimeF~\mu$s and one full gradient by reverse-mode algorithmic differentiation (AD) $\resTimeGrad~\mu$s,
+i.e.\ $\resADratio$ objective evaluations --- a small constant, and crucially one that does not grow with the
+number of variables. The same gradient by finite differences costs $\resFDforwardEvals$ evaluations one-sided
+and $\resFDcentralEvals$ central, both growing linearly with $n$, and is less accurate at every step size:
+the best relative error attainable is $\resFDforwardErr$ one-sided and $\resFDcentralErr$ central, against
+machine precision for AD. The measured optimal steps coincide with the theoretical $\sqrt{\varepsilon_M}$ and
+$\varepsilon_M^{1/3}$, $\varepsilon_M$ being the machine epsilon.
+
+For a real-time loop the cost settles the question: central differences alone would consume
+$\resFDcentralBudget\%$ of the $\resCycleBudget$~ms cycle budget, for a gradient that is worse, and the
+fraction grows linearly with the horizon. The ratio itself is a micro-benchmark on
+$\sim\!100~\mu$s timings and its second digit is not meaningful; what is stable, and is the point, is that it
+remains a small constant.
+
+\paragraph{The exact Hessian, and what it buys.} Because AD supplies exact second derivatives at a cost
+comparable to the first, the full Newton system can be used rather than a quasi-Newton approximation.
+
+\restab{hess}
+
+On the same instance the exact Hessian converges in $\resIterExactHess$ iterations against $\resIterLBFGS$
+for the limited-memory quasi-Newton approximation --- a $\resHessIterSaving\%$ reduction --- and both reach
+the same objective value. The total time is closer than the iteration counts suggest, because each
+quasi-Newton iteration is cheaper: this is the Newton / quasi-Newton trade-off in its textbook form,
+measured without writing a solver. Section~\ref{sec:solvercmp} shows the other side of the same coin, where
+the exact Hessian of a non-convex program produces an indefinite quadratic
+program (QP) subproblem.
+
+\subsection{Solver methodology}
+\label{sec:solver}
+
+The NLP is solved with IPOPT \cite{wachter2006ipopt}, a primal--dual interior-point method with a filter
+line search. Writing the problem as $\min_z \phi(z)$ subject to $c(z)=0$ and $z^L\le z\le z^U$, the bounds
+are replaced by a logarithmic barrier
+\begin{equation}
+  \varphi_{\mu_b}(z) \;=\; \phi(z) \;-\; \mu_b\sum_i\Big[\ln\!\big(z_i-z_i^L\big)+\ln\!\big(z_i^U-z_i\big)\Big],
+  \label{eq:ipopt}
+\end{equation}
+the resulting equality-constrained problem is solved approximately by a Newton step on the perturbed Karush--Kuhn--Tucker (KKT)
+system
+\begin{equation}
+  \begin{bmatrix}
+    \nabla^2_{zz}\mathcal{L} + \Sigma & \nabla c(z)^{\!\top}\\
+    \nabla c(z) & 0
+  \end{bmatrix}
+  \begin{bmatrix}\Delta z\\ \Delta\lambda\end{bmatrix}
+  = -\begin{bmatrix}\nabla\varphi_{\mu_b}\\ c(z)\end{bmatrix},
+  \label{eq:kkt}
+\end{equation}
+and $\mu_b$ is driven to zero. Each iteration requires one factorisation of the sparse symmetric indefinite
+matrix in~\eqref{eq:kkt}, performed by MUMPS on the pattern of Section~\ref{sec:dims}.
+
+There is a pleasing coincidence between~\eqref{eq:ipopt} and~\eqref{eq:barrier} that is worth naming: the
+obstacle term of the deployed program is itself a barrier, and $\aobs$ plays the role of an inverse barrier
+parameter. Steeper means better avoidance and worse conditioning, which is exactly the trade-off $\mu_b$
+governs inside the solver. The difference is that IPOPT drives its own barrier parameter to zero along a
+central path, whereas $\aobs$ is fixed by the tuning --- so the program is solved with a barrier that never
+relaxes.
+
+\subsection{Interior point against active set}
+\label{sec:solvercmp}
+
+The standard advice is that active-set methods win when the inequalities are few and interior-point methods
+win when they are many. This stack can be moved between the two regimes without changing anything else,
+because the obstacle formulation is switchable: with the obstacles in the cost the program carries
+$\resSolverIneqLow$ inequalities, and with the obstacles as genuine constraints (Section~\ref{sec:l1}) it
+carries $\resSolverIneqHigh$. That makes the advice testable rather than quotable.
+
+\restab{solvercmp}
+
+The rule does not reproduce: the active-set solver does not win even in the small regime, where the
+interior-point method is already $\resSolverRatioLow\times$ faster. The \emph{direction} is confirmed --- the
+margin widens to $\resSolverRatioHigh\times$ when the inequalities multiply --- so the break-even point, if
+it exists, lies below the smallest regime into which this problem can be put.
+
+Two cautions, without which the numbers would be misleading. First, the real advantage of an active set in
+MPC is warm starting \emph{between consecutive solves}: the active set changes by a few rows per cycle and
+the factorisation is reused, which is the online active-set strategy the method was designed for. Both
+solvers are started cold here, deliberately, so as to favour neither --- which removes from the active-set
+method precisely what makes it competitive in a receding-horizon loop. Second, the advice is stated for
+convex programs, and this one is not.
+
+\paragraph{A by-product that the theory predicts.} With the exact Hessian of the Lagrangian, the QP subproblem of the sequential quadratic
+programming (SQP) method is repeatedly flagged indefinite. This is expected and instructive: a non-convex
+program can produce a non-convex QP, and a non-convex QP has no unique solution. It is exactly the reason a
+Gauss--Newton Hessian --- positive semi-definite by construction --- is the standard recommendation for SQP,
+and it is the counterpart of the result in Section~\ref{sec:deriv}, where the same exact Hessian was the
+better choice inside an interior-point method. The two are not in contradiction: an interior-point method
+regularises the indefinite system in~\eqref{eq:kkt}, an SQP must solve the QP.
+
+\paragraph{A methodological note.} On a first run the SQP appeared to converge in a single iteration to a
+worse objective than IPOPT. Comparing the time of two solves that terminate at \emph{different} minima means
+nothing, and the tool now verifies that the two objectives agree before declaring a winner. Table
+\ref{res:tab:solvercmp} reports that check in its last column.
+
+\subsection{Optimality conditions on the deployed problem}
+\label{sec:kkt}
+
+Everything above assumes that what the solver returns is a solution. That is a verifiable statement, and this
+section verifies it on cycles extracted from a recorded mission rather than on a synthetic instance.
+
+\restab{kkt}
+
+At $\resKKTcycles$ sampled cycles, the linear independence constraint qualification (LICQ) holds at every one (\resLICQalways) --- the rank of the Jacobian of
+the active constraints equals their number --- so the KKT multipliers exist and are \emph{unique}. Strict
+complementarity holds at every one (\resStrictAlways), which means the critical cone coincides with the null
+space of the active Jacobian and the second-order condition can be checked exactly rather than
+conservatively. And the reduced Hessian is positive definite on that cone at every cycle
+(\resSOCalways), the smallest projected eigenvalue over the profile being $\resLambdaMinWorst$. Taken
+together these are a certificate of strict local optimality, which is the most that can be claimed for a
+non-convex program.
+
+\paragraph{The result worth reporting is the shape of the active set.} The critical cone contracts from
+$\resConeFirst$ dimensions at the first sampled cycle to $\resConeLast$ at the last: with $\resNvar$
+variables and $\resActiveLast$ active constraints, almost no freedom remains. The controller moves from
+\emph{cost-driven} to \emph{constraint-driven} over the course of the mission, and towards the end it does
+not so much choose the trajectory as undergo it. The breakdown of the active bounds explains it: the lateral
+and yaw limits are saturated on essentially every step of the horizon, and the non-negativity of $v_x$ on
+nearly all of them.
+
+This is the quantitative form of the statement made three times elsewhere in this report. A lateral bound of
+$v_{y,\max}=\resVyMax$~m/s does not \emph{limit} a degree of freedom, it \emph{removes} it. Section
+\ref{sec:l1} found the residual infeasibility of the tightened obstacle constraint to be a property of
+$\mathcal{U}$; Section~\ref{sec:robust} found the tube inert on the real run for the same reason; and here
+the same fact appears as a critical cone of dimension $\resConeLast$. No choice of cost weights can return
+what the input set has taken away.
+
+\paragraph{Two traps in reading multipliers out of a modelling layer.} Both were met here and both would have
+produced quietly wrong numbers. CasADi's \texttt{Opti} canonicalises every constraint as
+$\mathrm{lbg}\le g(z)\le\mathrm{ubg}$ and \emph{absorbs into the bounds} any parametric right-hand side, so
+$X_{:,0}=\hat x$ becomes $g=X_{:,0}$ with $\mathrm{lbg}=\mathrm{ubg}=\hat x$: evaluating $|g|$ on those rows
+returns the state, not the residual, which is always $g-\mathrm{lbg}$. And two distinct rows can share the
+same expression with different bounds --- $u_{1,k}\ge0$ and $u_{1,k}\le v_{x,\max}$ are both the row
+$u_{1,k}$ --- so activity must be decided on the distance from the bound, not on $|g|\approx0$, or both sides
+of every box are counted active.
+
+\subsection{Implementation and configuration}
+\label{sec:impl}
+
+The program is built once, symbolically, and every quantity that changes between cycles is a parameter rather
+than a constant: the measured state, the reference, the sentinel-padded obstacle positions and the three
+velocity bounds. Consequently the expression graph, the derivative code and the sparsity patterns are
+generated exactly once at start-up, and a cycle only writes numbers into parameter slots and calls the
+solver. The graph is flattened so that the interpreter overhead of a problem with thousands of elementary
+nonlinear operations does not dominate. The first solve after start-up therefore pays a one-off construction
+cost, which is the single deadline violation of an entire run and is absorbed by holding the robot still
+during initialisation.
+
+The solver options are deliberately austere, with a low iteration cap: a non-converged iterate is still
+usable as a reference by the downstream setpoint stage, which is a property of the architecture of
+Section~\ref{sec:overview} and would not hold if $u^\star_0$ were applied directly. The real-time protection
+lives in the supervisor rather than inside IPOPT --- a solver whose behaviour depends on a wall-clock limit
+is not deterministic and cannot be characterised. The supervisor clears the warm-start cache on solver
+failure, falls back to a zero command after repeated failures, and can shrink the velocity bounds through the
+parameter interface when the failure rate rises.
+
+%=============================================================================
+\section{Performance analysis}
+\label{sec:performance}
+
+\subsection{Experimental setup}
+\label{sec:setup}
+
+All results in this section are produced by an offline harness that imports the \emph{production} modules ---
+the grid, the \astar{} planner and the MPC tracker --- so every number is generated by the deployed
+formulation and the deployed solver, not by a re-implementation. Two kinds of experiment are used and they
+answer different questions.
+
+\emph{Replay from recorded missions.} The bag \resBag{} contains a full run of the G1 in the industrial world:
+the poses, the LiDAR scans, the \astar{} paths and the MPC predictions as they were published. Replaying it
+gives real operating points, with the geometry and the clutter the robot actually met, and is what
+Sections~\ref{sec:prederr} and~\ref{sec:kkt} use. It cannot answer counterfactual questions.
+
+\emph{Closed-loop synthetic scenarios.} For counterfactuals --- what if the horizon were shorter, what if the
+weights were different --- the harness runs full missions in scripted worlds, with a ray-marched planar
+LiDAR and the discrete model of Section~\ref{sec:discretization} as the plant. This is what
+Sections~\ref{sec:horizon}, \ref{sec:nc} and~\ref{sec:pareto} use. Two of these worlds recur: a narrow gap
+and a U-shaped trap.
+
+A caution about the second family, which the report would be weaker for omitting: in the U-trap the minimum
+clearance comes out at zero in essentially every configuration tested. The robot grazes an obstacle
+regardless of the horizon, the control horizon or the weights. That world therefore discriminates on time and
+on computation but says nothing about safety, and any comparison of clearances drawn from it would be
+comparing two configurations that both touch.
+
+\subsection{The cost landscape, and why this is not a potential field}
+\label{sec:landscape}
+
+Before the campaigns, it is worth looking at the object all of them are about. Fig.~\ref{fig:landscape}
+draws, over the world plane of the recorded industrial run, the cost of \emph{being} at a point,
+\begin{equation}
+  c(p) \;=\; \underbrace{\text{tracking cost of the reference}}_{\text{the }Q\text{ block of Eq.~\eqref{eq:cost}}}
+        \;+\; \underbrace{\Jobs(p)}_{\text{Eq.~\eqref{eq:barrier}}},
+  \label{eq:landscape}
+\end{equation}
+with the executed trajectory, the \astar{} reference and one MPC horizon drawn on the surface, and the
+per-cycle optimal cost $J^\star$ underneath.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{cost_landscape}
+  \caption{The navigation cost landscape of the recorded run \resBag. \textbf{(a)} the surface
+  $c(p)$ of Eq.~\eqref{eq:landscape} over the world plane, with the executed trajectory (red) and one MPC
+  horizon (dashed) drawn \emph{on} the surface: the obstacle term raises a ridge along every wall of the
+  plant, the tracking term forms the valley along the \astar{} reference. \textbf{(b)} the same field as
+  level sets, with the local minima marked and the shaded region showing the set reachable within one
+  horizon under $\mathcal{U}$ --- the constraint, not the cost, is what excludes most of the plane.
+  \textbf{(c)} the optimal cost $J^\star$ of each control cycle, and the solve time beside it. The point
+  worth noticing is in panel~(a): \emph{the trajectory does not follow steepest descent}, and climbs the
+  surface wherever doing so lowers the sum over the horizon.}
+  \label{fig:landscape}
+\end{figure}
+
+The distinction that figure makes visible is the one between $c$ and $J$, and it is the reason the stack
+uses an optimizer rather than a reactive law. The quantity plotted is $c$, the cost of occupying a point;
+what the program minimises is
+\begin{equation}
+  J(U) \;=\; \sum_{k=0}^{N} c(p_k) \;+\; \text{input terms},
+  \label{eq:candJ}
+\end{equation}
+the cost of a whole \emph{trajectory}. A controller that descended $c$ pointwise would be an artificial
+potential field, and it would stop at the first local minimum of the surface. The MPC minimises the sum
+along a horizon instead, so it can --- and in panel~(a) visibly does --- move \emph{uphill} on $c$ when that
+buys a lower total. This is what lets the same cost function carry the robot out of a concave pocket, and it
+is the sense in which the obstacle term of Eq.~\eqref{eq:barrier} is a penalty inside an optimization
+problem rather than a repulsive force.
+
+One further reading, which anticipates Section~\ref{sec:kkt}. The shaded region in panel~(b) is not a level
+set of the cost: it is the set of points the robot can reach within one horizon given $\mathcal{U}$. Most of
+the plane is excluded from the decision by the \emph{constraints}, not by the objective --- and on this
+platform, with reversing forbidden and $v_{y,\max}=\resVyMax$~m/s, that region is markedly asymmetric about
+the heading. The cost is what chooses inside it; the input set is what draws it.
+
+\subsection{Prediction error: the model against the plant}
+\label{sec:prederr}
+
+The most consequential measurement in this report requires no new experiment: the bags already contain, at
+each cycle, the trajectory the MPC predicted, and the poses the robot subsequently reached. Comparing the
+prediction published at time $t$ with the pose measured at $t+k\Delta t$, over $\resPredCycles$ usable
+cycles, gives the growth of the prediction error along the horizon.
+
+\restab{pred}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.92\textwidth]{prediction_error}
+  \caption{Prediction error against the position along the horizon, over $\resPredCycles$ cycles of the
+  recorded run \resBag: median and $95$th percentile. The residual at $k=0$ is time misalignment between the
+  instant the prediction is published and the instant the pose is sampled, not model error, and is subtracted
+  before quoting the divergence.}
+  \label{fig:prederr}
+\end{figure}
+
+The residual at $k=0$ is $\resPredOffset$~m and is \emph{not} model error: at the first node the predicted
+state \emph{is} $\hat x$, imposed as an equality constraint. It measures the delay between the instant the
+prediction is published and the instant the pose is sampled, and it is subtracted to isolate the genuine
+divergence, which is $\resPredDivergence$~m at the end of the horizon.
+
+Put beside Section~\ref{sec:discretization}, that number closes a circle and is uncomfortable. The divergence
+is $\resPredVsEuler$ times the truncation error of forward Euler over the same window, and
+$\resPredVsMidpoint$ times that of the mid-point rule now deployed. The integrator was never the dominant
+term. Upgrading it improved the arithmetic of the prediction by a factor $\resIntegratorGain$ and left the
+closed loop essentially unchanged, and this is why: what limits the prediction is not how the model is
+integrated but that the model is a planar holonomic agent and the plant is a twenty-nine-degree-of-freedom
+humanoid walking. The correct response is not a better integrator but either a better model or, more
+cheaply, an explicit account of the residual --- which is what the constraint tightening of
+Section~\ref{sec:robust} does with this very curve.
+
+\subsection{Regularity of the solution and the left--right bifurcation}
+\label{sec:bif}
+
+The program is non-convex, so its solution need not depend continuously on the data. The place where this is
+visible is an obstacle centred on the reference: the problem then admits two symmetric local minima --- pass
+left, pass right --- and the MPC law is a well-defined function of the state only as long as one of them
+dominates.
+
+The experiment solves the \emph{same} instance twice, from a left-biased and a right-biased initial guess,
+and measures the distance between the two returned trajectories as the obstacle weight is swept.
+
+\restab{bif}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.92\textwidth]{bifurcation}
+  \caption{Separation between the trajectories returned from a left-biased and a right-biased initial guess,
+  against the obstacle weight $\Wobs$. Below the transition the two guesses collapse onto the same minimum
+  and the control law is a regular function of the state; above it they do not.}
+  \label{fig:bif}
+\end{figure}
+
+The transition sits between $\Wobs=\resBifLow$ and $\resBifHigh$, and the deployed weight
+($\resWobsDep$) is below it: at the tuning in use the minimiser is unique and regular in $x_0$. Two further
+readings follow. Past the transition the two minima are \emph{not} equivalent --- their objective values
+differ by up to $\resBifCostGap\%$ --- so the initial guess decides not only which side the robot passes but
+how much the manoeuvre costs. And on the hardest cycle of the recorded run, cycle $\resBifBagCycle$, the
+sweep never bifurcates (\resBifBagEver) even far above the threshold, which Section~\ref{sec:kkt} explains:
+that cycle has a critical cone of dimension one, and with a single remaining degree of freedom there is no
+room for two distinct basins. Constraint saturation kills the bifurcation before the weight can create it.
+
+A practical consequence for the deployed code: the guard that clears the warm-start cache when the objective
+jumps between cycles is protecting against a phenomenon that does not occur at these weights.
+
+\paragraph{Seeing it in the decision space.} The sweep above measures the bifurcation; Fig.~\ref{fig:decplane}
+shows it. Plotting a function of $\resNvar$ variables requires choosing a two-dimensional section, and a
+random one would almost surely contain nothing: the plane here is built to contain the structure. The program
+is solved twice, warm-started to the left and to the right, giving the two minima $z^\star_L$ and $z^\star_R$;
+the initial iterate supplies a third anchor; and the affine plane through those three points contains both
+minima \emph{by construction}. The IPOPT iterates then project onto it exactly, since orthogonal projection
+onto an affine subspace is exact --- which is why this figure can show the path from $z^0$ to $z^\star$ and
+Fig.~\ref{fig:landscape} cannot.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{decision_plane}
+  \caption{The objective in the decision space $\R^{\resNvar}$, on a plane constructed to contain both local
+  minima of the recorded cycle. \textbf{(a)} the surface; \textbf{(b)} its level sets with the two minima
+  ($\star$), the initial iterate ($\blacksquare$) and the IPOPT iterates joining them. What is plotted is not
+  the objective $f$ but the $\ell^1$ merit function $T_1(z)=f(z)+\sigma\|c(z)\|_1$: in the simultaneous
+  parametrisation $X$ and $U$ are independent variables tied by the dynamic equalities, so a generic point of
+  the plane is \emph{not} dynamically feasible and a plot of $f$ alone would show a landscape the solver never
+  traverses. The merit function is what the line search actually decreases.}
+  \label{fig:decplane}
+\end{figure}
+
+The choice of what to plot is itself a point about the formulation. Under multiple shooting the states are
+decision variables, so almost every point of the plane violates Eq.~\eqref{eq:cons-dyn}; the objective is
+defined there but meaningless, because no trajectory of the plant corresponds to it. The $\ell^1$ merit
+function --- objective plus weighted constraint violation --- is defined everywhere, agrees with the objective
+on the feasible manifold, and is the function whose decrease the line search enforces. Plotting it is the
+honest choice, and it also makes the figure legible: the funnel visible in panel~(b) is the constraint
+violation being driven to zero, and the iterates run down it before moving along the bottom towards the
+minimum. That two-phase shape is the geometry of a filter line-search method, and it is the same mechanism
+that Section~\ref{sec:l1} exploits when it makes the obstacle constraint exact.
+
+\subsection{Prediction horizon and sampling time}
+\label{sec:horizon}
+
+The two horizon parameters are not interchangeable. The product $N\Delta t$ sets how far the controller sees,
+$N$ alone sets how much the solve costs, and $\Delta t$ alone sets how faithfully the prediction is
+integrated. They were therefore swept jointly, in closed loop, over $\resHorizonConfigs$ configurations.
+
+\restab{horizon_narrowgap}
+\restab{horizon_utrap}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{horizon_sweep}
+  \caption{Joint sweep of the prediction horizon $N$ and the sampling time $\Delta t$ in closed loop. The
+  deployed configuration is marked. Cost is governed by $N$; closed-loop quality is governed by the product
+  $N\Delta t$, and not monotonically.}
+  \label{fig:horizon}
+\end{figure}
+
+The headline is counter-intuitive: beyond roughly $\resHorizonSplit$~s of look-ahead, \emph{lengthening the
+horizon makes the closed loop worse}. Grouped at that threshold, the short-horizon configurations reach the
+goal in $\resHorizonLowT$~s against $\resHorizonHighT$~s for the long-horizon ones. The clearance axis does
+not discriminate here, for the reason given in Section~\ref{sec:setup} --- both groups graze --- so only the
+time is informative, and on time the verdict is unambiguous.
+
+The mechanism is the same one that produces the failure of Section~\ref{sec:localmin}. The reference extends
+over a path that the discrete layer will replan anyway, so a longer horizon commits the controller to
+tracking a target already due to change. Section~\ref{sec:nc} separates this explanation from its
+competitor --- simply too many decision variables --- and reports which one the data supports.
+
+Ranking the configurations on the three objectives that matter (time to goal, worst-case clearance, tail
+solve time) leaves $\resHorizonNondom$ non-dominated points, and the deployed $N=\resN$,
+$\Delta t=\resDt$~s is \emph{dominated}: $N=\resHorizonCheapN$, $\Delta t=\resHorizonCheapDt$~s matches it on
+task performance at $\resHorizonCheapPtail$~ms of tail solve time against $\resHorizonDepTail$~ms.
+
+This is the most actionable result in the report, and also the one to act on most carefully. These are
+synthetic scenarios with static obstacles and frequent replanning; a very short horizon holds up only because
+the discrete layer is doing the avoidance, and with dynamic obstacles or a slower planner that margin would
+disappear. The result is a reason to run the comparison on real missions, not a reason to retune from a
+table.
+
+\subsection{Control horizon, and why not move blocking}
+\label{sec:nc}
+
+Section~\ref{sec:horizon} leaves a diagnostic question open, because there $N$ governs two things at once:
+how far the controller looks, and how many free inputs it has. Freeing only the first $\Ninput$ inputs and
+holding the rest at the last free value separates them --- the prediction still runs to $N$, but the program
+carries fewer variables.
+
+\restab{nc}
+
+The result splits in two. Where the prediction horizon is already the right length, cutting the degrees of
+freedom is \emph{free}: in $\resNcFreeCases$ of the paired cases the time to goal and the minimum clearance
+are unchanged while the tail solve time falls, by up to $\resNcBestRatio\times$ at $N=\resNcBestN$. This is
+the input-parametrisation argument in its cheapest form --- the degrees of freedom past the first few were
+not what the closed loop was using.
+
+The complementary half is the answer to the diagnostic question, and on the present sweep it must be reported
+as unanswered: none of the horizons tested here degrades the closed loop, so there is no degradation to
+attribute to either cause. Re-running this comparison over the horizons that \emph{do} degrade is the
+cheapest missing measurement in this report.
+
+\paragraph{On move blocking.} Holding the input constant over blocks of increasing length is the standard way
+to recover computation without shortening the horizon, and it is deliberately not used here. Wherever
+Section~\ref{sec:horizon} finds the useful horizon to be short, compressing a handful of variables into
+blocks changes nothing measurable; the control horizon above is the degenerate case of move blocking --- one
+free block followed by one long one --- and already delivers the saving; and computation is not the binding
+resource, since the deployed configuration sits well inside its cycle budget while the prediction error of
+Section~\ref{sec:prederr} does not. It is a considered choice, not an omission, and it would become the right
+technique if a rigorous terminal ingredient forced a long horizon.
+
+\paragraph{One implementation detail that carries theory.} Imposing the input bounds on all $N$ steps when
+the inputs past $\Ninput$ are the same repeated expression generates duplicate rows with identical gradients.
+If active, they violate LICQ and make the multipliers non-unique --- breaking exactly the analysis of
+Section~\ref{sec:kkt}. The bounds must be imposed on the free columns only, and with that correction LICQ and
+strict complementarity hold for every $\Ninput$.
+
+\subsection{Multi-objective scalarisation}
+\label{sec:pareto}
+
+The cost~\eqref{eq:cost} is a scalarisation: several competing objectives combined into one stage cost by a
+convex combination of weights,
+\begin{equation}
+  \min_{U,X}\ \sum_{j} \kappa_j f_j(X,U),
+  \qquad 0\le\kappa_j\le1,\qquad \sum_j \kappa_j = 1 .
+  \label{eq:scalar}
+\end{equation}
+The three objectives that~\eqref{eq:cost} introduces are tracking accuracy (the $Q$ block), control effort
+(the $R$ block) and progress along the path (the term in $(1-\theta)^2$ of Section~\ref{sec:pathfollow}). The
+weights are scaled so that the barycentre of the simplex reproduces the tuning in use.
+
+\restab{pareto}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{pareto_front}
+  \caption{Sampling of the weight simplex: the achieved objectives for each scalarisation, the non-dominated
+  set, and the utopia point. The metrics used to \emph{evaluate} the solutions use fixed weights, not the
+  sampled ones --- otherwise each point of the simplex would be judged by a different yardstick.}
+  \label{fig:pareto}
+\end{figure}
+
+Over $\resParetoPoints$ points of the simplex, $\resParetoNondom$ are non-dominated and the front is convex
+(\resParetoConvex), so the weighted-sum scalarisation can in principle reach all of it --- a caution worth
+verifying rather than assuming, since a non-convex front would leave part of itself unreachable by
+\eqref{eq:scalar}.
+
+The relative excursions say which objectives actually respond: accuracy moves by $\resParetoRelAcc\%$ across
+the simplex, against $\resParetoRelEffort\%$ for effort and $\resParetoRelTime\%$ for time. Only accuracy is
+genuinely under the control of the weights. Time and effort are nearly fixed, and Section~\ref{sec:pathfollow}
+explains why: in path-parametrised mode the solver saturates $v_{x,\max}$ almost everywhere, so the duration
+of the mission is decided by the kinematics and the input bounds rather than by the tuning. The trade-off is
+real but mild, and the practical conclusion is that weight tuning is not where this system is limited ---
+unlike the horizon, which Section~\ref{sec:horizon} shows to be chosen badly.
+
+\subsection{The rolling-horizon local minimum, and its repair}
+\label{sec:localmin}
+
+The clearest illustration in this study of the difference between solving an optimization problem well and
+posing the right one does not involve the NLP at all. With a purely local grid and a memoryless target rule
+--- the local goal taken as the intersection of the ray to the global goal with the grid boundary --- the
+stack livelocks in a two-room world. The local target follows the ray into a partition wall; \astar{}
+correctly routes around the obstacle \emph{inside the window}; the MPC tracks that path faithfully; and one
+grid width later the same rule sends the robot back, the memory of the wall having been erased with the grid.
+The result is a limit cycle: locally optimal at every cycle, globally useless. Every NLP in that run is
+solved to optimality.
+
+Three structural facts conspire, and all three are properties of the \emph{formulation}: the target rule is
+memoryless, the occupancy grid is volatile, and constraint~\eqref{eq:cons-vx} forbids reversing, so the only
+escape from a concave pocket is a wide forward arc. Adding memory is therefore not a refinement but a
+requirement, and the repair must live in the target rule, which is where the failure lives.
+
+\paragraph{Memory that survives noise.} Every return is quantised to its cell in the \emph{world} frame and
+stored with the time it was last seen and the number of \emph{distinct scans} in which it has appeared; a
+cell is \emph{confirmed} once that count reaches two. A wall is re-hit by every scan that ranges it, while a
+spurious return lands in its cell exactly once and never becomes an obstacle. Contradicting evidence is
+allowed to win as well: every beam passing \emph{through} a remembered cell on its way to a farther return
+deletes it, stopping short of the endpoint so that a ray never carves the surface it terminates on. A real
+wall cannot be carved, because beams end on it; a phantom cell standing in an open passage is crossed, and
+erased, by every scan that ranges through it.
+
+\paragraph{The re-posed target rule.} With $\mathcal{G}_k$ a global grid built over the confirmed cells and
+$\pi_k$ the \astar{} path from $\hat x$ to $x_g$ on it, the local target becomes the point where the globally
+consistent route exits the local window,
+\begin{equation}
+  x_{\mathrm{local}} \;=\; \pi_k(s^\star),
+  \qquad
+  s^\star \;=\; \max\{\,s \;:\; \pi_k(s)\in\mathcal{W}(\hat x)\,\}.
+  \label{eq:memgoal}
+\end{equation}
+The greedy rule is the empty-memory special case of~\eqref{eq:memgoal}: with no confirmed cells the global
+grid is free space, $\pi_k$ is the straight segment to the goal, and its window exit \emph{is} the
+ray--boundary intersection. The repair generalises the rule rather than replacing it.
+
+\paragraph{Three hardening rules, each found by watching its absence fail.} Confirmed cells are
+\emph{removed from the search graph}, not merely inflated: under the soft cost~\eqref{eq:astarcost} a
+remembered wall is only a finite obstacle, and an early version dutifully tunnelled through the partition the
+moment the detour became more expensive than the wall. Inflation prices \emph{proximity}, memory records
+\emph{evidence}, and only the latter may veto an edge. One-cell pinholes among confirmed cells are sealed in
+the routing graph, because at sensor range the beam spacing exceeds the cell size and a remembered wall
+carries single-cell gaps that open and close as scans accumulate --- each a phantom shortcut that flips the
+global route. And the local execution graph dilates confirmed cells by the robot radius, so that no executed
+path passes within a body radius of known structure. The two graphs are deliberately not treated alike:
+dilating the routing graph makes the committed route invalidate itself as the observed wall grows under the
+robot's own approach, while sealing the execution graph after dilation counts the body twice and closes every
+doorway the robot actually fits through. Stability lives in the routing graph, clearance in the execution
+graph.
+
+\subsection{Summary of design guidelines}
+\label{sec:guidelines}
+
+Table~\ref{tab:guidelines} collects the actionable outcome of the campaigns above. Each row names the
+deployed choice, the choice the measurement supports, and where the evidence is.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Design guidelines extracted from the numerical study. Bold in the second column marks a
+  recommendation that differs from what is deployed.}
+  \label{tab:guidelines}
+  \begin{tabular}{p{0.21\textwidth}p{0.19\textwidth}p{0.52\textwidth}}
+    \toprule
+    Decision & Deployed / supported & Evidence \\
+    \midrule
+    Integration scheme & mid-point / keep & Order $\resOrderMidpoint$ against $\resOrderEuler$,
+      $\resIntegratorGain\times$ more accurate for one addition (\S\ref{sec:discretization}) --- but see the
+      next row before spending anything more here. \\
+    Prediction model & lag model / \textbf{revisit} & Divergence $\resPredDivergence$~m per horizon,
+      $\resPredVsMidpoint\times$ the integrator error: the model, not the arithmetic, is the dominant term
+      (\S\ref{sec:prederr}). \\
+    Parametrisation & multiple shooting / keep & Hessian $\resShootHessDensMulti\%$ dense against
+      $\resShootHessDensSingle\%$ condensed; claim the structure, not the speed (\S\ref{sec:shoot}). \\
+    Obstacle relaxation & smooth penalty / keep, with $\ell^1$ available & $\ell^1$ slack exactly zero from
+      $\rho_s=\resRhoLoneZero>\mu^\star$; $\ell^2$ never vanishes (\S\ref{sec:l1}). \\
+    Obstacle at $k=0$ & excluded / keep & Including it cannot change the solution and makes the program
+      infeasible exactly when it matters (\S\ref{sec:fhocp}, \S\ref{sec:l1}). \\
+    Terminal ingredient & none / \textbf{add} & Slack identically zero, cost $\resTermCostMin\%$ to
+      $\resTermCostMax\%$; but the result is flattered by the degenerate lag and must be re-measured under
+      physics (\S\ref{sec:terminal}). \\
+    Reference & time-parametrised / \textbf{path-parametrised} & $+\resAdvanceGain\%$ advance per horizon and
+      one parameter eliminated, at $+70\%$ iterations (\S\ref{sec:pathfollow}). \\
+    Derivatives & AD / keep & $\resADratio$ objective evaluations against $\resFDcentralEvals$, and more
+      accurate; finite differences would cost $\resFDcentralBudget\%$ of the cycle budget
+      (\S\ref{sec:deriv}). \\
+    Hessian & exact / keep & $\resIterExactHess$ against $\resIterLBFGS$ iterations
+      ($-\resHessIterSaving\%$) at the same optimum (\S\ref{sec:deriv}). \\
+    Solver class & interior point / keep & $\resSolverRatioLow\times$ faster at $\resSolverIneqLow$
+      inequalities, $\resSolverRatioHigh\times$ at $\resSolverIneqHigh$ (\S\ref{sec:solvercmp}). \\
+    Barrier weight $\Wobs$ & $\resWobsDep$ / keep & Below the bifurcation threshold
+      $[\resBifLow,\resBifHigh]$: the control law is regular in $x_0$ (\S\ref{sec:bif}). \\
+    Horizon $N,\Delta t$ & $\resN$, $\resDt$~s / \textbf{dominated} & $N=\resHorizonCheapN$,
+      $\Delta t=\resHorizonCheapDt$~s matches it at $\resHorizonCheapPtail$~ms against
+      $\resHorizonDepTail$~ms; validate on real missions first (\S\ref{sec:horizon}). \\
+    Control horizon $\Ninput$ & $=N$ / \textbf{reduce} & Up to $\resNcBestRatio\times$ cheaper at identical
+      task performance (\S\ref{sec:nc}). \\
+    Move blocking & absent / keep absent & Measured reasons, not omission (\S\ref{sec:nc}). \\
+    Weight tuning & scalarisation / not critical & Only accuracy responds ($\resParetoRelAcc\%$ against
+      $\resParetoRelTime\%$ on time): not where the system is limited (\S\ref{sec:pareto}). \\
+    Input envelope & $v_{y,\max}=\resVyMax$ / \textbf{the real limit} & Critical cone contracts to
+      $\resConeLast$; the tightened constraint and the $\ell^1$ constraint both fail on $\mathcal{U}$, not on
+      the data (\S\ref{sec:kkt}, \S\ref{sec:l1}, \S\ref{sec:robust}). \\
+    Planner memory & on / required & Without it the rolling-horizon rule livelocks with every NLP solved
+      correctly (\S\ref{sec:localmin}). \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+%=============================================================================
+\section{Discussion and limitations}
+\label{sec:discussion}
+
+\paragraph{What the formulation guarantees, and what it does not.} In its deployed configuration the NLP is
+always feasible, because the only constraints are the dynamics and the input box; for a real-time loop with
+no fallback trajectory this is a genuine robustness property, and it is why the penalty formulation was
+preferred to a constrained one. But there is no terminal set in that configuration and no Lyapunov argument,
+so nominal asymptotic stability and recursive feasibility in the standard sense
+\cite{mayne2000constrained} are not established. Section~\ref{sec:terminal} supplies the missing ingredient
+and prices it, and Section~\ref{sec:l1} supplies the exact relaxation that makes a constrained formulation
+survivable; assembling the two into a configuration that is simultaneously deployable and certified is the
+natural next step, and it is not free --- Section~\ref{sec:nc} shows that the long prediction horizon a
+rigorous terminal ingredient would want costs closed-loop performance, not merely computation.
+
+\paragraph{The weakest link is not the optimizer.} Every campaign in Section~\ref{sec:performance} solved its
+NLP successfully, and Section~\ref{sec:kkt} certifies those solutions as strict local minima with unique
+multipliers. The systematic failures of the system are elsewhere. One is a \emph{modelling} failure: the
+prediction diverges from the plant by $\resPredDivergence$~m over a single horizon, and no amount of
+numerical care inside the program can repair a model that is a planar holonomic agent standing in for a
+walking humanoid. The other is a \emph{formulation} failure: the greedy rolling-horizon target rule of
+Section~\ref{sec:localmin} discards the topology of the free space, and the repair had to be posed in the
+target rule rather than in the NLP.
+
+\paragraph{The input set is the binding constraint, and it is not in the cost.} Three independent
+measurements converge on this. The critical cone contracts to $\resConeLast$ dimensions
+(\S\ref{sec:kkt}); the $\ell^1$-relaxed obstacle constraint remains infeasible at demanding clearances
+because no admissible input translates the body sideways (\S\ref{sec:l1}); and the constraint tightening is
+inert on the recorded run for the same reason (\S\ref{sec:robust}). A controller whose admissible set has
+been reduced to essentially one degree of freedom is not being limited by its objective, and effort spent on
+weights is effort spent on the wrong object.
+
+\paragraph{Scope of the numbers, stated plainly.} The plant used throughout is kinematic, and deliberately
+so: with the prediction model equal to the simulation model, the experiments measure the optimizer rather
+than the gait. The price is that every conclusion depending on the actuator pole is out of reach here ---
+which is why the selection of the sampling time from the plant bandwidth, a standard piece of this analysis,
+is absent from this report and deferred until $\tau$ is identified under physics. Two further limits belong
+in the same paragraph. The closed-loop counterfactuals use synthetic worlds, one of which (the U-trap) grazes
+obstacles in every configuration and therefore cannot support any comparison of clearances. And the loop is
+closed through a look-ahead setpoint rather than by applying $u^\star_0$, which washes out fine differences
+between MPC solutions and is why the constraint tightening of Section~\ref{sec:robust} could be verified in
+the plan but not in the executed trajectory.
+
+%=============================================================================
+\section{Conclusions}
+\label{sec:conclusions}
+
+This report analysed a deployed map-free navigation stack as what it is numerically: an exact \astar{} search
+on a Gaussian occupancy grid, a $\resNvar$-variable nonlinear program with a $\resJacDensity\%$ dense
+constraint Jacobian, and a set of design decisions each of which has a defensible alternative in the theory.
+
+The decisions that survived measurement are worth stating as such. Algorithmic differentiation costs
+$\resADratio$ objective evaluations against $\resFDcentralEvals$ for central differences and is exact, which
+is what makes the exact Hessian affordable and buys $\resHessIterSaving\%$ of the iterations. The
+interior-point method is faster than the active-set alternative in both regimes into which this problem can
+be put, and its margin widens with the number of inequalities exactly as expected. The deployed obstacle
+weight sits below the bifurcation threshold, so the control law is a regular function of the state. And the
+first- and second-order optimality conditions hold at every cycle examined, with unique multipliers.
+
+Four results contradicted the design, and they are the ones that taught the most. The mid-point rule is
+$\resIntegratorGain\times$ more accurate than the scheme it replaced and changes the closed loop by
+essentially nothing, because the prediction is limited by the model and not by its integration. The deployed
+horizon is dominated: a configuration a quarter of the size matches it on task performance at a third of the
+tail solve time. Making the path abscissa a decision variable buys $\resAdvanceGain\%$ more progress per
+horizon and removes a hand-set parameter rather than replacing it with another. And the constraint that
+decides what the controller can do is not in the cost at all: with the lateral bound at $\resVyMax$~m/s and
+reversing forbidden, the critical cone contracts to $\resConeLast$ dimensions and the controller ends the
+mission executing the only motion still admissible.
+
+The natural continuations follow directly. Identify the actuator time constant under physics, which unblocks
+both the sampling-time analysis and an honest re-measurement of the terminal constraint. Apply $u^\star_0$
+directly instead of through a look-ahead setpoint, so that improvements provable in the plan become
+observable in the trajectory. Adopt the path-parametrised reference, whose cost is known and whose benefit is
+measured. And revisit the input envelope before the cost weights, because that is where the evidence points.
+
+%=============================================================================
+\section*{Reproducibility}
+\addcontentsline{toc}{section}{Reproducibility}
+
+Every number, table and figure in this report is generated from the deployed code by a single command and
+enters the document through macros and included files, not by transcription. The measurements were taken on
+commit \texttt{\resCommit} of branch \texttt{\resBranch} (\resDate), with the profile \resProfile{}, the
+recorded run \resBag, CasADi~\resCasadi{} and NumPy~\resNumpy. The generator verifies the LaTeX it produces
+before writing it --- balanced environments, table rows matching their column specification, mathematical
+tokens inside math mode, macros used in the text but never defined, and cross-references without a target ---
+and it refuses to emit a document that fails any of those checks. Assertions in the text are conditioned on
+the data: where a fitted exponent does not reach its predicted value, where a Pareto front is not
+informative, or where a sweep contains no case that exhibits the effect under discussion, the generated text
+says so instead of reporting the expected conclusion. Re-running the campaign and recompiling updates the
+report; a parameter changed in the code and not in the text cannot go unnoticed, because there is no text to
+change.
+
+%=============================================================================
+\bibliography{bibliography}
+
+\end{document}

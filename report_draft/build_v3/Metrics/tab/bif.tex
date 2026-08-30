@@ -1,0 +1,21 @@
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Left-biased against right-biased solve of the same instance, against the barrier weight. The separation is the distance between the two returned trajectories: a value at solver tolerance means the two guesses converged to the same minimum.}
+  \label{res:tab:bif}
+  \begin{tabular}{rrrrrr}
+    \toprule
+    $\Wobs$ & separation [m] & $J^\star$ left & $J^\star$ right & iter.\ left & iter.\ right \\
+    \midrule
+    $60.0$ & $1.16\times 10^{-6}$ & $4953$ & $4953$ & 21 & 21 \\
+    $120$ & $6.34\times 10^{-9}$ & $9244$ & $9244$ & 19 & 19 \\
+    $200$ & $7.11\times 10^{-10}$ & $14252$ & $14252$ & 24 & 23 \\
+    $300$ & $3.69\times 10^{0}$ & $20013$ & $20122$ & 25 & 29 \\
+    $450$ & $3.89\times 10^{0}$ & $28152$ & $28297$ & 25 & 23 \\
+    $600$ & $3.98\times 10^{0}$ & $36019$ & $36187$ & 27 & 28 \\
+    $900$ & $4.22\times 10^{0}$ & $51333$ & $51596$ & 29 & 25 \\
+    $1400$ & $4.49\times 10^{0}$ & $76236$ & $76606$ & 24 & 26 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+

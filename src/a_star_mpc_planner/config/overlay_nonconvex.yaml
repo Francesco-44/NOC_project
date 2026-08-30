@@ -1,0 +1,101 @@
+# Overlay per i mondi con ostacoli NON CONVESSI (long_wall, horseshoe,
+# dead_end di g1_sim/mujoco_world.py). Si usa cosi':
+#
+#   ros2 launch g1_sim g1_a_star_mpc.launch.py world:=horseshoe \
+#        planner_overlay:=$(ros2 pkg prefix a_star_mpc_planner)/share/a_star_mpc_planner/config/overlay_nonconvex.yaml
+#
+# PERCHE' SERVE. A* pianifica su una finestra mobile larga 2*grid_half_width
+# centrata sul robot. Se il goal cade fuori da quella finestra viene proiettato
+# sul bordo, e con un ostacolo concavo la proiezione punta dritta dentro la
+# trappola: il pianificatore non puo' aggirare cio' che non vede. Misurato su
+# viz/common.world_scenario, un solo piano dallo spawn:
+#
+# Misurato in ANELLO CHIUSO (viz/common.closed_loop, un run per cella):
+#
+#   grid_half_width   long_wall          horseshoe    dead_end
+#   6.0 (default)     bloccato           bloccato     bloccato
+#   8.0               ATTRAVERSA il muro goal ok      bloccato
+#   10.0              goal ok            goal ok      goal ok
+#   14.0              goal ok            goal ok      goal ok
+#
+# 10.0 risolveva quei tre, ma NON basta con il piede lungo di l_corridor:
+# arrivato in cima al piede (6.5, 11) il robot ha l'imbocco del corridoio a
+# (-2, 0), cioe' 8.5 m in x e 11 m in y — fuori da una finestra di mezza
+# larghezza 10. A* non trova percorso, a_star_node logga "No path found" e non
+# pubblica nulla, l'MPC prosegue sull'ultimo piano e il robot RESTA FERMO in
+# fondo al piede. Misurato:
+#
+#   grid_half_width   A* dalla cima del piede
+#   10.0              nessun percorso  -> bloccato
+#   12.0              249 wp, esce      (minimo, nessun margine)
+#   14.0              249 wp, esce      <- scelto
+#
+# COSTO, e perche' grid_reso sale con la finestra. A reso 0.20 la griglia a
+# hw=14 e' 140x140 e un piano costa 1.4-3.1 s: PIU' del periodo di
+# ripianificazione (replan_rate_hz 1.0). Non e' l'A* in se', e' l'aggiornamento
+# della griglia gaussiana su ~2000 punti di ostacolo. Misurato sul caso peggiore
+# (l_corridor dalla cima del piede):
+#
+#   hw   reso   celle     ms
+#   14   0.20   140x140   1838
+#   14   0.25   112x112   1031
+#   14   0.30    93x93     645   <- scelto: 65% del periodo, e reso ancora fine
+#   14   0.35    80x80     504        abbastanza da rappresentare le strettoie
+#
+# reso 0.30 e' il compromesso: 0.35 sarebbe piu' veloce ma un canale libero di
+# 0.9 m (la strettoia di long_wall_false_north) scenderebbe a ~2.6 celle, troppo
+# poche perche' A* lo tratti in modo affidabile.
+#
+# Allargare la finestra NON indebolisce le trappole: da quando c'e' la
+# percezione limitata, la trappola dipende dalla PORTATA DEL LIDAR (8 m) e non
+# dalla finestra di pianificazione — lo spazio mai visto resta ottimisticamente
+# libero in entrambi i casi. La finestra decide solo fin dove A* puo' tracciare
+# una via d'uscita su cio' che gia' conosce. La
+# cella "ATTRAVERSA il muro" e' un FALSO successo: l'impianto dell'harness non
+# ha collisioni, il ripiego proporzionale ha puntato l'ultimo waypoint di A*
+# oltre il muro e ci e' passato dentro (clearance 0.033 m). Vedi
+# viz/common.check_collisions — un goal raggiunto va sempre letto insieme alla
+# clearance.
+#
+# La soglia non e' universale: dipende da quanto e' grande l'ostacolo concavo
+# rispetto alla finestra. La regola pratica e' che la finestra deve contenere
+# l'ostacolo INTERO piu' la via d'uscita, non solo la faccia che il robot vede.
+#
+# COSTO. Il piano passa da ~50 ms a ~140 ms (griglia 100x100 invece di 60x60);
+# a 14.0 sarebbero ~300 ms. Con replan_rate_hz = 1.0 c'e' margine, ma non e'
+# gratis, ed e' la ragione per cui questo non e' il default.
+#
+# ALTERNATIVA DA PROVARE PRIMA: nav_graph:=true. La memoria topologica globale
+# esiste proprio per ricordare la struttura oltre la finestra, e questi tre
+# mondi sono il test che non ha mai avuto. Se basta quella, la finestra puo'
+# restare a 6.0 e si risparmiano i 250 ms.
+# ─────────────────────────────────────────────────────────────────────────
+# map_decay_sec: 0 — LA MEMORIA NON DEVE SCADERE
+#
+# PersistentOccupancyMap sfratta ogni cella non riconfermata entro map_decay_sec
+# (20 s nel profilo G1). Su un ostacolo concavo questo e' fatale: il fondo del
+# ferro di cavallo si vede solo da DENTRO, quindi appena il robot esce e
+# costeggia un braccio smette di riconfermarlo. Dopo 20 s la cella viene
+# sfrattata, la U torna "aperta" nella mappa, la geodetica ricalcolata ci manda
+# dritto attraverso, e il robot RIENTRA. Ping-pong con periodo ~20 s.
+#
+# Si misura sull'orologio: uscire dalla U (4 m) e arrivare a meta' braccio (6 m)
+# fa ~10 m a ~0.28 m/s = 36 s, e il rientro si osserva proprio a meta' braccio.
+#
+# Nessun tabu puo' rimediare: il tabu penalizza le zone gia' visitate, ma qui il
+# problema non e' la scelta, e' che la MAPPA E' SBAGLIATA — il muro non c'e'
+# piu'. Prima si ripara cio' che il robot sa, poi semmai come decide.
+#
+# Il decadimento a tempo serve agli ostacoli DINAMICI (persone), ma il criterio
+# e' sbagliato in partenza: sfratta le celle che non si sono GUARDATE, non
+# quelle che si sono viste VUOTE. Un muro alle spalle non e' meno reale perche'
+# non lo si sta osservando. La forma corretta e' lo sgombero per raggio (si
+# cancella una cella quando un raggio le passa attraverso). Finche' non c'e',
+# qui si tiene tutto: questi mondi sono statici.
+#
+# ATTENZIONE: con `people:=` NON usare 0 — le persone lascerebbero scie
+# permanenti. In quel caso alzare a 120-300 s invece di azzerare.
+/**:
+  ros__parameters:
+    grid_half_width: 10.0
+    map_decay_sec: 0.0

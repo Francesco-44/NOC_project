@@ -1,0 +1,374 @@
+# =============================================================================
+# planner_params_g1.yaml — profilo Unitree G1 (umanoide bipede)
+# =============================================================================
+# Unico profilo distribuito. Il modello dell'MPC e' SE(2) olonomico con lag del
+# primo ordine; quello che il profilo fissa e' l'insieme ammissibile degli
+# ingressi U_Sigma, i pesi e i tempi.
+#
+# PROVENIENZA DEI NUMERI — dichiarata voce per voce:
+#   [HW]  ripresi dal progetto Unitree-G1 (sim/config/mpc.yaml), tarati e
+#         verificati sul robot reale;
+#   [DER] derivati qui da una formula o da una grandezza fisica dichiarata;
+#   [INH] ereditati dal profilo originale dello stack perche' indipendenti
+#         dalla piattaforma: nessuno li ha ritarati per il G1.
+#
+# VINCOLO DA NON VIOLARE MAI: i limiti di velocita' dell'MPC non devono superare
+# l'inviluppo su cui e' addestrata la policy di camminata AMO (0.5 m/s, 0.4
+# rad/s). Superarlo non e' una taratura aggressiva, e' un errore di modellazione:
+# l'MPC ottimizzerebbe un orizzonte in cui puo' manovrare piu' in fretta di
+# quanto il robot potra' mai fare, quindi ogni evasione pianificata sarebbe
+# ottimistica e il robot passerebbe piu' vicino agli ostacoli di quanto obs_r
+# prometta. La saturazione a valle non salva: il solutore ha gia' speso il
+# budget della barriera su una manovra che non avverra'.
+# =============================================================================
+/**:
+  ros__parameters:
+
+    # ─────────────────────────────────────────────────────────────
+    # Piattaforma
+    # ─────────────────────────────────────────────────────────────
+    pose_topic: /robot_pose        # [DER] convenzione G1
+    planning_frame: odom           # [DER] nessuna SLAM: il frame e' odom
+
+    # ─────────────────────────────────────────────────────────────
+    # Goal
+    # ─────────────────────────────────────────────────────────────
+    wait_for_goal: true
+    goal_x: 0.0
+    goal_y: 0.0
+    goal_z: 0.0
+
+    # ─────────────────────────────────────────────────────────────
+    # Griglia gaussiana e A*
+    # ─────────────────────────────────────────────────────────────
+    # [DER] La probabilita' e' P = 1 - Phi(d/sigma), quindi il raggio di blocco
+    # duro implicato da una soglia tau vale  d_block = sigma * Phi^-1(1 - tau).
+    # Il G1 ha raggio di ingombro ~0.35 m: si vuole d_block ~ 0.40 m.
+    #   sigma = 0.31, tau = 0.10  ->  0.31 * 1.2816 = 0.397 m.
+    # Da rivalidare in simulazione: e' il primo parametro da guardare se A*
+    # non trova soluzione nei corridoi stretti del magazzino.
+    grid_reso: 0.20                # [DER] risoluzione fine: ostacoli piu' piccoli
+    grid_half_width: 6.0           # [DER] finestra 12x12 m
+    grid_std: 0.31                 # [DER] vedi formula sopra
+    obstacle_threshold: 0.10       # [DER] vedi formula sopra
+    obstacle_cost_weight: 35.0     # [INH]
+    replan_rate_hz: 1.0            # [INH]
+
+    # ─────────────────────────────────────────────────────────────
+    # Scelta del bersaglio locale (ostacoli NON CONVESSI)
+    # ─────────────────────────────────────────────────────────────
+    # [SIM] Di serie A* sceglie il bersaglio proiettando il goal globale sul
+    # bordo della finestra lungo il raggio robot->goal. E' memoryless e
+    # direzionale: davanti a una concavita' il raggio punta DENTRO, quindi il
+    # robot entra, scopre che e' chiusa, esce, e appena fuori il raggio ripunta
+    # dentro. Il ciclo limite e' deterministico, non sfortuna.
+    #
+    # use_geodesic_target sostituisce ||c - goal|| con la distanza geodetica
+    # sulla mappa gia' accumulata. Misurato su viz/escape_test.py con il robot
+    # 4 m dentro un vicolo cieco di 12 m:
+    #     candidata dentro il vicolo   euclidea 3.65 m   geodetica 28.79 m
+    #     candidata fuori, di lato     euclidea 3.76 m   geodetica  4.06 m
+    # L'euclidea le dichiara equivalenti e una scelta su tre rimanda il robot
+    # nella trappola.
+    #
+    # Esito in anello chiuso con percezione limitata (mondo dead_end, hw 8):
+    #     senza   goal NON raggiunto, 118 inversioni di marcia, 58.7 m in 300 s
+    #     con     goal raggiunto in 109 s,  2 inversioni,        31.9 m
+    # Su horseshoe e long_wall, che gia' riuscivano, non peggiora nulla:
+    # long_wall passa da 6 inversioni a 0.
+    #
+    # COSTO: ~85 ms per ripianificazione (fronte d'onda su tutta la mappa nota,
+    # non sulla sola finestra). Con replan_rate_hz 1.0 e' il ~9% del periodo.
+    use_geodesic_target: true      # [SIM]
+    geodesic_margin: 6.0           # [SIM] margine del riquadro del fronte d'onda
+
+    # [SIM] Isteresi sulla scelta: due rotte OMOTOPICAMENTE diverse ma di costo
+    # quasi uguale — i due lati di un corridoio simmetrico — facevano alternare
+    # il bersaglio a ogni ciclo, col robot che dondolava sul posto senza mai
+    # impegnarsi. Questo e' il margine di cui l'alternativa deve essere migliore
+    # per giustificare il cambio. 0 disattiva.
+    target_switch_margin: 2.0      # [SIM]
+    # [SIM] Impegno di lato: scelto un fianco dell'ostacolo NON si cambia finche'
+    # non e' dimostrato chiuso (nessuna candidata con geodetica finita da quella
+    # parte). Senza, il robot sceglie un lato, costeggia, vede crescere la stima
+    # di quel lato mentre l'altro resta ottimistico perche' inesplorato, e
+    # inverte prima di aver verificato alcunche'. target_switch_margin non basta:
+    # e' una soglia fissa, mentre lo scarto fra i due lati cresce senza limite
+    # man mano che si esplora.
+    # [DISATTIVATO] L'implementazione e' SBAGLIATA e va ripensata prima di
+    # riaccenderla: il "lato" e' calcolato rispetto all'asse robot->goal, che
+    # RUOTA man mano che il robot si sposta. Arrivato in fondo al fianco
+    # sinistro l'asse e' girato, il semipiano impegnato non corrisponde piu' al
+    # fianco dell'ostacolo, e poiche' da quella parte esistono ancora candidate
+    # raggiungibili l'impegno non si scioglie mai: il robot resta fermo invece
+    # di tornare indietro. Osservato su long_wall_south e l_corridor, dove senza
+    # questo il ritorno funzionava.
+    # Il lato va ancorato alla GEOMETRIA DELL'OSTACOLO (normale del muro), non a
+    # una direzione che cambia con la posa.
+    commit_to_side: false          # [SIM]
+    goal_reached_radius: 0.25      # [HW] goal_tolerance del profilo G1
+    duplicate_goal_xy_tolerance: 0.05
+    duplicate_goal_z_tolerance: 0.05
+    planning_height: 0.0
+
+    # ─────────────────────────────────────────────────────────────
+    # Orizzonte
+    # ─────────────────────────────────────────────────────────────
+    # dt, non N, e' la leva: il costo del solve scala con il numero di nodi,
+    # allungare dt e' quasi gratis. Il vincolo dichiarato e' che una CURVA A 90
+    # GRADI stia dentro l'orizzonte: pi/2 / omega_max. Con omega_max 0.3 erano
+    # 5.24 s e N*dt = 5.25 s lo soddisfaceva col margine minimo; portato
+    # omega_max a 0.4 il criterio scende a 3.93 s, quindi l'orizzonte attuale ha
+    # ora il 34% di margine. N e dt restano invariati: la clearance SATURA
+    # appena superato il criterio (tabella sotto), accorciare l'orizzonte non
+    # farebbe guadagnare nulla se non tempo di calcolo gia' abbondante.
+    #
+    # [FIX] Il commento precedente affermava che N*dt = 3.0 s valessero "1.75
+    # tempi-di-curva". Il rapporto e' invertito: 3.0 / 5.24 = 0.57, cioe'
+    # l'orizzonte conteneva il 57% di una curva a 90 gradi, ed era 1.75 volte
+    # PIU' CORTO del proprio criterio. Il numero 1.75 e' 5.24 / 3.0.
+    #
+    # [SIM] N*dt = 5.25 s soddisfa il criterio con il margine minimo, alzando
+    # dt e lasciando N: stesse 141 variabili, +1.7 ms sul p95. Misurato da
+    # viz/horizon_sweep_ext.py su narrow_gap/u_trap/corridor, media di 3
+    # scenari, clearance minima:
+    #     T = 3.0 s (era)   0.783 m   p95 19.7 ms
+    #     T = 5.25 s (ora)  0.853 m   p95 21.4 ms   <- massimo della tabella
+    #     T = 9.1 s         0.850 m   p95 29.8 ms
+    #     T = 14.0 s        0.850 m   p95 37.8 ms
+    # La clearance SATURA appena superato il criterio della curva: oltre 5.2 s
+    # si paga solo tempo di calcolo. Un passo copre ora 10.5 cm e 6.0 gradi,
+    # sempre ben sotto obs_r (0.40 m): la barriera non e' scavalcabile fra due
+    # nodi. Errore di troncamento del punto medio: O(dt^2), da 8.7e-5 a 2.7e-4 m
+    # sull'orizzonte, irrilevante (tests/test_integrators.py).
+    #
+    # ATTENZIONE alla fedelta': dt e' il passo di PREDIZIONE, non il periodo di
+    # controllo (mpc_rate_hz = 8 -> 0.125 s). Il rapporto passa da 1.6x a 2.8x.
+    # Qui pesa poco perche' mpc_node non applica u[0]: pubblica un setpoint
+    # geometrico preso sulla traiettoria predetta a mpc_lookahead_dist. Ma
+    # viz/common.closed_loop usa dt ANCHE come passo dell'impianto, quindi lo
+    # sweep non puo' vedere questa penalita'. Alternativa conservativa a parita'
+    # di risultato misurato: N = 26, dt = 0.20 (T = 5.2 s, clearance 0.846,
+    # p95 28.7 ms, 240 variabili).
+    mpc_N: 15                      # [HW]
+    mpc_dt: 0.35                   # [SIM] era 0.20
+    mpc_rate_hz: 8.0               # [HW]
+
+    # ─────────────────────────────────────────────────────────────
+    # Modello: lag dell'attuatore
+    # ─────────────────────────────────────────────────────────────
+    # [DER] In simulazione CINEMATICA l'impianto integra direttamente il comando,
+    # senza dinamica di attuazione: lag = 1 - exp(-dt/tau) -> 1 per tau -> 0, che
+    # e' la risposta istantanea. Questi valori rendono quindi il modello dell'MPC
+    # ESATTAMENTE uguale all'impianto, che e' il punto della scelta MuJoCo
+    # cinematico (disadattamento nullo).
+    # ATTENZIONE: con tau << dt il coefficiente ZOH vale 1-exp(-200) = 1.0 esatto
+    # in doppia precisione, cioe' v(k+1) = u(k). Il ritardo del primo ordine e'
+    # DEGENERE: le tre velocita' nello stato non sono stati dinamici ma copie
+    # ritardate dell'ingresso. Vedi guides/roadmap_teorica_noc.md §0 punto 2.
+    # Sotto fisica + policy AMO il lag e' reale e andrebbe identificato.
+    mpc_tau_v: 0.001
+    mpc_tau_w: 0.001
+
+    # Schema di integrazione del canale di posizione (dispense §2.1.3).
+    #   'euler'    : eq. (2.9),  R(yaw) valutato a inizio intervallo, errore O(dt)
+    #   'midpoint' : eq. (2.10), R(yaw) valutato a meta' intervallo,  errore O(dt^2)
+    # Misurato da tests/test_integrators.py a dt=0.2 su 3 s (vx=0.2, w=0.3):
+    # Euler sbaglia 1.74e-2 m, il punto medio 8.70e-5 m — 200x, al prezzo di una
+    # somma. In anello chiuso il guadagno e' pero' <=1.1% sul costo mediano,
+    # perche' si applica solo il primo ingresso e A* ripianifica: il vantaggio
+    # sta nella fedelta' della PREDIZIONE, non nella traiettoria percorsa.
+    mpc_integrator: 'midpoint'
+
+    # ─────────────────────────────────────────────────────────────
+    # U_Sigma — insieme ammissibile degli ingressi
+    # ─────────────────────────────────────────────────────────────
+    # [HW] Derating deliberato rispetto al tetto AMO (0.5 / 0.4, vedi
+    # mujoco_sim cmd_vx_max/cmd_wz_max: e' il fondo scala dello stick passato
+    # alla policy). NON e' uno scalamento proporzionale: cio' che va conservato
+    # e' il RAGGIO DI STERZATA MINIMO v/omega, perche' e' la grandezza con cui
+    # sono stati dimensionati i varchi dei mondi di prova.
+    #
+    # [SIM] omega portato al tetto AMO e vx all'80%: il raggio resta 1.0 m
+    # ESATTAMENTE come con 0.3/0.3, quindi la geometria di manovra non cambia e
+    # nessuna taratura dei mondi non convessi va rifatta, ma la marcia e' +33%.
+    # Al tetto pieno (0.5/0.4) il raggio salirebbe a 1.25 m: +25% d'ingombro in
+    # curva proprio nei corridoi stretti e nei varchi sfalsati, che e' il caso
+    # peggiore per questo stack. Il derating residuo su vx compra ancora tempo
+    # di reazione a parita' di distanza di rilevamento (1.25x invece di 1.67x).
+    mpc_vx_max: 0.4                # [SIM] avanti [m/s] — 80% del tetto AMO 0.5
+    mpc_omega_max: 0.4             # [SIM] [rad/s] — = tetto AMO 0.4
+
+    # [SIM] Il G1 e' un umanoide olonomo: cammina traslando lateralmente e
+    # ruotando mentre avanza, tutto insieme. Il profilo azzerava vy per due
+    # ragioni entrambe legate all'HARDWARE, non alla cinematica del robot:
+    # l'argano di sicurezza dietro al busto e il cono cieco posteriore del
+    # Mid-360 reale. In simulazione non esiste ne' l'uno ne' l'altro (il LiDAR
+    # MuJoCo campiona l'azimut pieno -pi..pi, vedi mujoco_sim._local_dirs),
+    # quindi si restituisce al modello tutti e 3 i gradi di liberta'.
+    #
+    # vy_max sta sotto vx_max perche' lo strafe di un umanoide E' realmente piu'
+    # lento dell'andatura frontale: non e' un derating di sicurezza, e' la
+    # cinematica del passo laterale.
+    mpc_vy_max: 0.20               # [SIM] strafe [m/s] — 0.5*vx_max, era 0.15
+
+    # Retromarcia ammessa ma asimmetrica: indietreggiare a passo pieno non e'
+    # un'andatura naturale per il G1, e tenerla piu' lenta della marcia avanti
+    # mantiene la manovra di sgancio come ripiego, non come scorciatoia che
+    # l'ottimizzatore sceglie a ogni sosta. 0.0 ripristina il vincolo
+    # U[0,k] >= 0 del profilo hardware.
+    mpc_vx_min: -0.20              # [SIM] indietro [m/s] — -0.5*vx_max, era -0.15
+
+    # [HW] La velocita' di crociera sta ~1/3 sotto vx_max DI PROPOSITO: il
+    # riferimento viene ri-ancorato al punto del path piu' vicino al robot a ogni
+    # solve, quindi con v_ref == vx_max il robot satura per sempre e non ci
+    # converge mai. Il margine e' cio' che gli permette di recuperare e assestarsi.
+    # v_ref deve SEMPRE seguire vx_max: alzarne uno senza l'altro reintroduce la
+    # patologia. (E' anche l'argomento a favore della riformulazione in theta:
+    # vedi guides/roadmap_teorica_noc.md §6.4, dove v_ref sparisce del tutto.)
+    mpc_v_ref: 0.27                # [SIM] = 2/3 * vx_max (era 0.2 con vx_max 0.3)
+
+    # ─────────────────────────────────────────────────────────────
+    # Pesi di inseguimento
+    # ─────────────────────────────────────────────────────────────
+    # [HW] Q_xy 200 e' deliberatamente alto: il profilo nasce per inseguire da
+    # vicino un percorso globale gia' libero da ostacoli, delegando meno
+    # deviazione all'MPC.
+    mpc_Q_x: 200.0                 # [HW]
+    mpc_Q_y: 200.0                 # [HW]
+    mpc_Q_yaw: 4.0                 # [HW] alto: allineare la prua al percorso
+                                   #      -> avanzare, non traslare di lato
+    mpc_Q_terminal: 100.0          # [HW]
+
+    # ─────────────────────────────────────────────────────────────
+    # Sforzo di controllo
+    # ─────────────────────────────────────────────────────────────
+    mpc_R_vx: 1.0                  # [HW] R_vel
+    # [SIM] R_vy > R_vx DISINCENTIVA lo strafe senza vietarlo: con vy libero e
+    # R_vy == R_vx l'ottimizzatore scopre che traslare di lato costa meno che
+    # ruotare (Q_yaw = 4 va pagato, il crab walk no) e il robot granchia verso
+    # il goal senza mai orientarsi. Il fattore 6 lascia vy come manovra di
+    # aggiustamento fine e di evasione laterale, tenendo "ruota e avanza" come
+    # modo di locomozione dominante.
+    mpc_R_vy: 6.0                  # [SIM] era 1.0
+    mpc_R_omega: 0.4               # [HW]
+    mpc_R_jerk: 0.4                # [HW]
+
+    # ─────────────────────────────────────────────────────────────
+    # Barriera ostacoli (sigmoide logistica + hinge quadratica)
+    # ─────────────────────────────────────────────────────────────
+    # [HW] Tarati perche' il robot tenga la crociera finche' non e' davvero
+    # vicino, e reagisca bruscamente solo allora, invece di rallentare da 1.5 m.
+    # NOTA TEORICA: alpha gioca il ruolo del parametro di barriera INVERSO di un
+    # metodo interior-point (dispense §6.2.2): piu' ripida = evasione migliore e
+    # condizionamento peggiore. Vedi guides/roadmap_teorica_noc.md §5.5 e §6.1.
+    mpc_W_obs_sigmoid: 120.0       # [HW]
+    mpc_obs_alpha: 6.0             # [HW] barriera ~spenta oltre ~0.8 m
+    mpc_obs_r: 0.40               # [HW] keep-out; ingombro del robot ~0.35 m
+    mpc_max_obs_constraints: 8     # [HW]
+    mpc_obs_check_radius: 2.0      # [HW] niente rallentamenti anticipati, solve piu' rapido
+
+    # ─────────────────────────────────────────────────────────────
+    # IPOPT
+    # ─────────────────────────────────────────────────────────────
+    mpc_max_iter: 40               # [HW] cap basso: l'iterato non convergente e'
+                                   #      comunque usabile come riferimento
+    mpc_warm_start: true           # [HW]
+
+    # ─────────────────────────────────────────────────────────────
+    # Nodo MPC
+    # ─────────────────────────────────────────────────────────────
+    # [DER] Deve stare DENTRO cio' che l'orizzonte copre, altrimenti il ramo di
+    # fallback della selezione del setpoint scatta a ogni ciclo. Misurato:
+    # l'orizzonte avanza al massimo v_ref*N*dt = 1.42 m (era 0.60 con v_ref
+    # 0.2). Vincolo inferiore: deve superare v_ref*dt = 0.095 m, perche' codifica
+    # la distanza di assestamento dell'anello interno.
+    # [SIM] Scalato con v_ref per conservare il lookahead in TEMPO, che e' la
+    # grandezza fisicamente sensata: 0.45/0.2 = 2.25 s, 0.60/0.27 = 2.22 s.
+    mpc_lookahead_dist: 0.60        # [SIM] era 0.45 con v_ref 0.2
+    max_lidar_range: 8.0           # [HW] max_scan_range
+    mpc_path_resample_ds: 0.20     # [HW] path_resample_ds
+    mpc_path_smooth_window: 7      # [INH]
+    mpc_setpoint_alpha: 0.20       # [INH]
+    mpc_setpoint_max_step: 0.20    # [INH]
+    mpc_setpoint_reset_dist: 1.25  # [INH]
+
+    # [DER] In cinematica la posa e' esatta e non serve filtrare: alpha alto.
+    # Sotto fisica va abbassato (o sostituito da una MHE, roadmap §2.2).
+    vel_filter_alpha: 0.90
+
+    # [HW] pose_timeout / scan_timeout del profilo G1: ogni ingresso porta la
+    # propria eta'. Un LiDAR congelato sembra sano fino in fondo alla catena.
+    lidar_max_age_sec: 0.50
+    setpoint_timeout_sec: 0.50
+
+    obs_predict_frac: 0.50         # [INH]
+    adaptive_vel_limits: true      # [INH] — da sostituire con ingredienti
+                                   #         terminali, roadmap §6.5
+
+    # ─────────────────────────────────────────────────────────────
+    # Protocollo di sicurezza MPC
+    # ─────────────────────────────────────────────────────────────
+    mpc_security_threshold: 0.08   # [DER] < obstacle_threshold (0.10)
+    mpc_security_escape_radius: 3.0
+
+    # ─────────────────────────────────────────────────────────────
+    # Mappa persistente
+    # ─────────────────────────────────────────────────────────────
+    map_decay_sec: 20.0            # [INH]
+    map_max_cells: 5000            # [INH]
+
+    # ─────────────────────────────────────────────────────────────
+    # Grafo di navigazione
+    # ─────────────────────────────────────────────────────────────
+    nav_graph_node_spacing: 1.5
+    nav_graph_edge_radius: 4.0
+    nav_graph_waypoint_reach: 1.0
+    nav_graph_obs_threshold: 0.20  # [DER] coerente con obstacle_threshold 0.10
+
+    # ─────────────────────────────────────────────────────────────
+    # setpoint -> cmd_vel
+    # ─────────────────────────────────────────────────────────────
+    # I clamp NON devono superare i limiti del modello dell'MPC (vedi sopra):
+    # altrimenti l'anello esterno chiede piu' di quanto il piano preveda.
+    cmd_rate_hz: 20.0
+    cmd_kp_xy: 1.0                 # [HW] inner_loop kp_pos del profilo G1
+    cmd_kp_yaw: 1.5                # [HW] inner_loop kp_yaw
+    cmd_max_vx: 0.4                # [SIM] = mpc_vx_max
+    cmd_min_vx: -0.20              # [SIM] = mpc_vx_min; il clamp era simmetrico
+                                   #        (-cmd_max_vx), quindi l'anello esterno
+                                   #        avrebbe potuto chiedere -0.3 mentre il
+                                   #        modello ne predice solo -0.20.
+    cmd_max_vy: 0.20               # [SIM] = mpc_vy_max
+    cmd_max_omega: 0.4             # [SIM] = mpc_omega_max
+    # [SIM] "Gira prima, poi vai". Sopra 50 gradi di disallineamento fra la prua
+    # e l'orientamento del setpoint, la componente longitudinale viene sfumata
+    # fino al 25% a prua invertita: il robot ruota quasi sul posto invece di
+    # percorrere metri all'indietro. La quota residua e' una FRAZIONE, quindi
+    # scala da sola con vx_max e non va ritarata. Bastano
+    # a sganciarsi da un muro ma non a fare 5 m di retromarcia. A 180 gradi
+    # restano ora 0.050 m/s (0.25 * 0.20), stesso ordine di prima.
+    #
+    # Perche' qui e non nel costo dell'MPC: un termine asimmetrico su vx e'
+    # inefficace finche' Q_xy = 200 domina (misurato: nessun effetto fino a
+    # R ~ 10^3, dove pero' equivale a vietare la retromarcia). E l'MPC gia'
+    # ruota al massimo, |wz| saturato a omega_max: 180 gradi a 0.4 rad/s
+    # richiedono 7.9 s, ancora 1.5x l'orizzonte di 5.25 s. Dentro l'orizzonte
+    # indietreggiare insegue il riferimento meglio che girarsi — scelta giusta
+    # per il problema troncato che l'MPC vede, sbagliata per la missione.
+    cmd_turn_first_deg: 50.0       # [SIM] 0 disattiva
+    cmd_turn_first_floor: 0.25     # [SIM] quota residua a prua invertita
+    cmd_stop_radius: 0.2
+    enable_yaw_control: true
+    cmd_smoothing_alpha: 0.35
+    # [HW] Rampa sul comando APPLICATO, espressa in accelerazione: R_jerk
+    # penalizza du solo DENTRO l'orizzonte (`if k > 0` in _build_nlp), quindi
+    # U[:,0] non e' legato al comando del ciclo precedente e fra due solve il
+    # twist puo' saltare a gradino. Alzare R_omega/R_jerk NON copre questo caso,
+    # e il gradino in imbardata e' il modo in cui un umanoide cade per primo.
+    # [SIM] Scalate con i nuovi tetti per conservare il TEMPO DI SALITA, che e'
+    # cio' che decide se l'umanoide sta in piedi: lasciarle a 0.6/0.8 avrebbe
+    # allungato la rampa del 33% e reso il robot molle in partenza e in curva.
+    cmd_max_ax: 0.8                # [SIM] cmd_accel_max: 0 -> 0.4 m/s in 0.5 s
+    cmd_max_ay: 0.8                # [SIM]
+    cmd_max_alpha: 1.05            # [SIM] cmd_yaw_accel_max: 0 -> 0.4 rad/s in 0.38 s

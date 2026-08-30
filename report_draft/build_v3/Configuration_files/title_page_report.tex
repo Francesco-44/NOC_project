@@ -1,0 +1,48 @@
+% Project-report variant of the PoliMi title page.
+% (The original Configuration_files/title_page.tex is left untouched.)
+
+% DO NOT REMOVE SPACES BETWEEN LINES!
+
+\AddToShipoutPicture*{\BackgroundPic}
+
+\hspace{-0.6cm}\includegraphics[width=0.6\textwidth]{logo_polimi_ing_indinf.eps}
+
+\vspace{-1mm}
+\Large{\textbf{\color{bluePoli}{\title}}}\\
+
+\vspace{-0.2cm}
+\fontsize{0.3cm}{0.5cm}\selectfont \bfseries \textsc{\color{bluePoli} Project Report \\ \course}\\
+
+\small \normalfont
+
+\vspace{11pt}
+
+\centerline{\rule{1.0\textwidth}{0.4pt}}
+
+\begin{center}
+\begin{minipage}[t]{.24\textwidth}
+\begin{minipage}{.90\textwidth}
+\noindent
+\scriptsize{\textbf{Professor:}} \\
+\advisor \\
+\\
+\textbf{Group Members:} \\
+\groupmembers
+\\
+\textbf{Academic year:} \\
+\YEAR \\
+\\
+\end{minipage}
+\end{minipage}% This must go next to `\end{minipage}`
+\begin{minipage}{.74\textwidth}
+\noindent \textbf{\color{bluePoli} Abstract:} {\abstract}
+\end{minipage}
+\end{center}
+
+\vspace{15pt}
+
+\begin{tcolorbox}[arc=0pt, boxrule=0pt, colback=bluePoli!60, width=\textwidth, colupper=white]
+    \textbf{Key-words:} \keywords
+\end{tcolorbox}
+
+\vspace{12pt}

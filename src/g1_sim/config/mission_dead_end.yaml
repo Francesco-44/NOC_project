@@ -1,0 +1,16 @@
+# GENERATO DA scripts/gen_missions.py — non modificare a mano.
+# Mondo: dead_end — corridoio 2.0x12 m chiuso in fondo, goal appena oltre
+#
+#   ros2 launch g1_sim g1_a_star_mpc.launch.py world:=dead_end \
+#        use_mission:=true \
+#        mission_file:=$(ros2 pkg prefix g1_sim)/share/g1_sim/config/mission_dead_end.yaml
+#
+# reach_radius > goal_reached_radius (0.25) del profilo G1: sotto quella soglia
+# a_star_node smette di ripianificare, quindi una soglia piu' stretta bloccherebbe
+# la missione a un passo dal traguardo.
+frame_id: odom
+reach_radius:     0.35
+leg_timeout_sec: 240.0
+
+waypoints:
+  - { x:  13.00, y:   0.00, yaw: 0.0, name: "goal" }

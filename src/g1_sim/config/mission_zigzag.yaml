@@ -1,0 +1,16 @@
+# GENERATO DA scripts/gen_missions.py — non modificare a mano.
+# Mondo: zigzag — CONTROLLO: corridoio largo con 3 setti sfalsati, si passa
+#
+#   ros2 launch g1_sim g1_a_star_mpc.launch.py world:=zigzag \
+#        use_mission:=true \
+#        mission_file:=$(ros2 pkg prefix g1_sim)/share/g1_sim/config/mission_zigzag.yaml
+#
+# reach_radius > goal_reached_radius (0.25) del profilo G1: sotto quella soglia
+# a_star_node smette di ripianificare, quindi una soglia piu' stretta bloccherebbe
+# la missione a un passo dal traguardo.
+frame_id: odom
+reach_radius:     0.35
+leg_timeout_sec: 260.0
+
+waypoints:
+  - { x:  15.00, y:   0.00, yaw: 0.0, name: "goal" }

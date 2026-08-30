@@ -1,0 +1,35 @@
+# Colcon artifacts
+/build/
+/install/
+/log/
+/bags_recordings/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+
+# Editor / OS
+.vscode/
+.DS_Store
+
+# Tuning artifacts
+tuning_results/**/rosbag/
+*.db3
+
+# Large source videos kept locally only (GIF preview is committed instead)
+assets/*.mp4
+
+# Figure e metriche generate dagli strumenti di visualizzazione: sono
+# versionate, cosi' i risultati sono consultabili direttamente dal repo.
+# Restano fuori solo le GIF, troppo pesanti (~7 MB l'una) e rigenerabili.
+viz/out/**/*.gif
+viz/bags/
+
+# Albero di compilazione del report: si versiona SOLO il sorgente. Gli asset
+# (Images/) vivono nel repo del report, Metrics/ e' rigenerato da make_results.
+/report_draft/build_integrated/*
+!/report_draft/build_integrated/Report_integrated.tex

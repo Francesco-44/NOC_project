@@ -1,0 +1,7 @@
+# Overlay vuoto: e' il default di `planner_overlay:=` nel launch del G1.
+# ROS 2 fonde i file di parametri nell'ordine in cui compaiono nella lista
+# `parameters=[...]`, e l'ultimo vince. Serve un file valido anche quando non
+# si vuole sovrascrivere nulla, perche' una stringa vuota non e' un percorso
+# accettabile.
+/**:
+  ros__parameters: {}

@@ -1,0 +1,18 @@
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Accuracy of the finite-difference gradient against the step size, measured against the AD gradient. The optimum sits at $h=1.49\times 10^{-8}$ one-sided (theory: $\sqrt{\varepsilon}=1.49\times 10^{-8}$) and $h=6.06\times 10^{-6}$ central (theory: $\varepsilon^{1/3}=6.06\times 10^{-6}$).}
+  \label{res:tab:fd}
+  \begin{tabular}{rrr}
+    \toprule
+    step $h$ & rel.\ error, one-sided & rel.\ error, central \\
+    \midrule
+    $1.00\times 10^{-4}$ & $2.48\times 10^{-4}$ & $2.80\times 10^{-8}$ \\
+    $6.06\times 10^{-6}$ & $1.50\times 10^{-5}$ & $1.29\times 10^{-10}$ \\
+    $1.00\times 10^{-6}$ & $2.48\times 10^{-6}$ & $5.43\times 10^{-10}$ \\
+    $1.49\times 10^{-8}$ & $5.50\times 10^{-8}$ & $3.45\times 10^{-8}$ \\
+    $1.00\times 10^{-10}$ & $8.03\times 10^{-6}$ & $4.31\times 10^{-6}$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+

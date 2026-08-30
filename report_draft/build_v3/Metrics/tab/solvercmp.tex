@@ -1,0 +1,19 @@
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{The same instance solved by a primal--dual interior-point method and by an SQP with an active-set QP solver, in both obstacle regimes. Both are started cold. Bold: the faster of the two.}
+  \label{res:tab:solvercmp}
+  \begin{tabular}{lrrrrc}
+    \toprule
+    regime & ineq. & IPOPT ms / iter & SQP ms / iter & speed-up & same min. \\
+    \midrule
+    penalty (obstacles in the cost) & 60 & \textbf{49} / 21 & 1656 / -1 & $33.5\times$ & no \\
+    penalty (obstacles in the cost) & 60 & \textbf{34} / 15 & 138 / 6 & $4.0\times$ & yes \\
+    penalty (obstacles in the cost) & 60 & \textbf{47} / 16 & 348 / 6 & $7.5\times$ & yes \\
+    $\ell^1$ (obstacles as constraints) & 300 & \textbf{76} / 21 & 5216 / 11 & $68.7\times$ & no \\
+    $\ell^1$ (obstacles as constraints) & 300 & \textbf{112} / 21 & 5000 / 7 & $44.7\times$ & yes \\
+    $\ell^1$ (obstacles as constraints) & 300 & \textbf{45} / 12 & 453 / 1 & $10.0\times$ & no \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+

@@ -1,0 +1,48 @@
+% ============================================================================
+% metrics_standalone.tex — GENERATO AUTOMATICAMENTE
+%
+% Wrapper minimo per compilare le metriche DA SOLE, senza toccare Report.tex:
+%
+%     pdflatex metrics_standalone.tex
+%
+% Quando le sezioni verranno spostate dentro il report, questo file si butta e
+% si tiene solo metrics_body.tex + metrics_macros.tex.
+% ============================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{caption}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=black, citecolor=black}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+
+\title{Measured quantities of the optimization problem\\[2pt]
+       \large A\textsuperscript{$\star$} + nonlinear MPC navigation stack, Unitree G1}
+\author{Auto-generated from \texttt{viz/out/results.json}}
+\date{\resDate}
+
+\input{metrics_macros}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\noindent\textbf{What this document is.} A staging file. Every number here is
+produced by \texttt{viz/make\_results.py} from the same modules the deployed
+planner imports, and is meant to be moved into the report section named beside
+it. Nothing in it is written by hand, and it is not itself a chapter.
+
+\tableofcontents
+
+\input{metrics_body}
+
+\end{document}

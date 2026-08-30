@@ -1,0 +1,53 @@
+# Parametri del simulatore MuJoCo del G1.
+/**:
+  ros__parameters:
+    # Modalita' cinematica: la base viene integrata da /cmd_vel, senza fisica ne'
+    # controllore bipede. E' l'impianto identico al modello dell'MPC.
+    physics:        false
+    viewer:         true
+
+    sim_rate_hz:    100.0
+    lidar_rate_hz:  10.0
+    js_rate_hz:     30.0
+
+    # Posa iniziale nel magazzino industriale.
+    spawn_x:       -12.0
+    spawn_y:         0.0
+    spawn_yaw:       0.0
+    base_height:     0.793   # altezza del bacino in stazionamento (dal MJCF)
+
+    # Mid-360 simulato. L'elevazione in simulazione (-34..+52 gradi) e' piu'
+    # generosa di quella reale (-7..+52): il cono cieco posteriore esiste in
+    # entrambi i casi, ed e' la ragione fisica del vincolo vx >= 0 nell'MPC.
+    lidar_h_samples: 360
+    lidar_v_samples:  24
+    lidar_v_min:     -0.60
+    lidar_v_max:      0.9076
+    lidar_range_min:  0.20
+    lidar_range_max: 40.0
+    lidar_noise_std:  0.01
+
+    odom_frame:   odom
+    base_frame:   base_link
+    # NON 'mid360_link': quel nome appartiene all'URDF, che lo appende a
+    # torso_link a z=0.41618. Il site MuJoCo da cui partono davvero i raggi sta
+    # a z=0.40618 — 1 cm piu' in basso. Se i due frame avessero lo stesso nome,
+    # 'mid360_link' avrebbe DUE genitori (odom da qui, torso_link da
+    # robot_state_publisher): TF non e' piu' un albero e RViz non riesce a
+    # collocare nulla. Con un nome proprio, la trasformazione pubblicata da
+    # questo nodo resta esatta per costruzione — viene dalla stessa posa che
+    # genera i raggi — e l'URDF conserva la sua.
+    lidar_frame:  mid360_sim
+
+    # Saturazioni dell'impianto. Coerenti con l'inviluppo AMO (0.5 / 0.4): il
+    # profilo G1 dell'MPC sta sotto (0.3 / 0.3), quindi qui non satura mai —
+    # ed e' giusto cosi', la saturazione dell'impianto non deve mascherare un
+    # piano inammissibile.
+    vx_limit:  0.5
+    vy_limit:  0.5
+    wz_limit:  0.4
+    cmd_timeout: 1.0
+
+    # Ostacoli dinamici. '' = nessuno; 'default' = 3 persone di prova.
+    # Utile per gli scenari con ostacoli mobili.
+    people: ''

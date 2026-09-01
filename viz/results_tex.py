@@ -273,25 +273,39 @@ def _tabname(label: str) -> str:
 
 def table(spec: str, header: list[str], rows: list[list[str]], caption: str,
           label: str, small: bool = True, note: str = "") -> list[str]:
-    L = [r"\begin{table}[htbp]", r"  \centering"]
-    if small:
-        L.append(r"  \small")
-    L.append(f"  \\caption{{{caption}}}")
-    L.append(f"  \\label{{{label}}}")
-    L.append(f"  \\begin{{tabular}}{{{spec}}}")
-    L.append(r"    \toprule")
-    L.append("    " + " & ".join(header) + r" \\")
-    L.append(r"    \midrule")
+    """Registra il corpo della tabella e restituisce il float che la include.
+
+    IL FILE GENERATO CONTIENE SOLO IL TABULAR — niente float, niente caption,
+    niente label. La didascalia sta nel documento che include la tabella, cosi'
+    puo' essere riscritta a mano dove si sta scrivendo, invece che in questo
+    generatore. Un file rigenerato non puo' quindi cancellare una didascalia
+    scritta nel report, che era il modo in cui si perdevano.
+
+    `metrics_body.tex` continua a essere autosufficiente perche' il float che
+    questa funzione restituisce porta con se' la didascalia predefinita.
+    """
+    T = [f"\\begin{{tabular}}{{{spec}}}"]
+    T.append(r"  \toprule")
+    T.append("  " + " & ".join(header) + r" \\")
+    T.append(r"  \midrule")
     for r in rows:
-        L.append("    " + " & ".join(r) + r" \\")
-    L.append(r"    \bottomrule")
-    L.append(r"  \end{tabular}")
+        T.append("  " + " & ".join(r) + r" \\")
+    T.append(r"  \bottomrule")
+    T.append(r"\end{tabular}")
     if note:
-        L.append(r"  \\[2pt] {\footnotesize " + note + "}")
-    L.append(r"\end{table}")
-    L.append("")
-    TABLES[_tabname(label)] = L
-    return ["\\restab{" + _tabname(label) + "}", ""]
+        T.append(r"\\[2pt] {\footnotesize " + note + "}")
+    nome = _tabname(label)
+    TABLES[nome] = T
+
+    F = [r"\begin{table}[htbp]", r"  \centering"]
+    if small:
+        F.append(r"  \small")
+    F.append(f"  \\caption{{{caption}}}")
+    F.append(f"  \\label{{{label}}}")
+    F.append("  \\restab{" + nome + "}")
+    F.append(r"\end{table}")
+    F.append("")
+    return F
 
 
 # ---------------------------------------------------------------------------
@@ -1451,11 +1465,15 @@ def sec_shooting(extra: dict, M: Macros) -> list[str]:
     for N in sorted(per_N):
         m_, s_ = per_N[N]["multiple"], per_N[N]["single"]
         win = "multiple" if m_["ms"] < s_["ms"] else "single"
+        # Lo Jacobiano esce: resta sparso in ENTRAMBE le parametrizzazioni, quindi
+        # non discrimina. Al suo posto le ITERAZIONI, che separano il lavoro del
+        # solutore dal costo della singola iterazione — ed e' il confronto fra le
+        # due a localizzare il costo nell'algebra lineare sull'Hessiana piena.
         rows.append([str(N),
                      f'{m_["n_var"]} / {s_["n_var"]}',
                      f'{m_["n_con"]} / {s_["n_con"]}',
-                     m(f'{fx(100*m_["jac_density"],2)} / {fx(100*s_["jac_density"],2)}'),
                      m(f'{fx(100*m_["hess_density"],2)} / {fx(100*s_["hess_density"],2)}'),
+                     f'{m_["iter"]} / {s_["iter"]}',
                      f'{fx(m_["ms"],0)} / {fx(s_["ms"],0)}', win])
 
     wins_multiple = [N for N in sorted(per_N)
@@ -1495,9 +1513,10 @@ def sec_shooting(extra: dict, M: Macros) -> list[str]:
         f"stated.",
         "",
         f"The performance half does not follow from that. {timing_txt} "
-        f"(Table~\\ref{{res:tab:shoot}}), and each entry is a single cold solve, so the "
-        f"timings carry the variance of one sample while the dimensions and the densities "
-        f"beside them are exact. What can be asserted without a stopwatch is the "
+        f"(Table~\\ref{{res:tab:shoot}}). Each timing is the fastest of three cold "
+        f"solves, so it is a best case rather than a typical one, and none of them uses "
+        f"the warm start the controller runs with; the dimensions, the densities and the "
+        f"iteration counts beside them are exact. What can be asserted without a stopwatch is the "
         f"conditioning argument: the condensed form integrates the model in open loop "
         f"over the whole horizon, so the error compounds step by step and the problem "
         f"degrades with $N$ and with any instability of the plant. On a kinematic, stable "
@@ -1516,12 +1535,13 @@ def sec_shooting(extra: dict, M: Macros) -> list[str]:
             f"solve the same thing.",
             "",
         ]
-    return L + table("rlllll", 
-                     ["$N$", "vars M / S", "cons M / S", "jac dens.\\ [\\%] M / S",
-                      "hess dens.\\ [\\%] M / S", "solve [ms] M / S"],
+    return L + table("rlllll",
+                     ["$N$", "vars M / S", "cons M / S",
+                      "hess dens.\\ [\\%] M / S", "iter M / S", "solve [ms] M / S"],
                      [r[:6] for r in rows],
                      "Multiple (M) against single (S) shooting on the same instance. "
-                     "Timings are single cold solves; dimensions and densities are exact.",
+                     "Dimensions, densities and iteration counts are exact; each timing is "
+                     "the fastest of three cold solves, with no warm start.",
                      "res:tab:shoot")
 
 

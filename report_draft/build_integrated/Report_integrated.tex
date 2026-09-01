@@ -113,7 +113,7 @@
 \newcommand{\course}{062047 -- Numerical Optimization for Control}
 \newcommand{\advisor}{Lorenzo Mario Fagiano}
 % NOTE: adjust the group list below to the actual NOC group composition.
-\newcommand{\groupmembers}{Lorenzo Ortolani \\ Francesco Pedrini}
+\newcommand{\groupmembers}{Lorenzo Ortolani - 10... \\ Francesco Pedrini - 10787879}
 \newcommand{\YEAR}{2025-2026}
 
 \renewcommand{\abstract}{Autonomous navigation in an unknown, cluttered environment can be posed as a
@@ -701,12 +701,10 @@ exact solution of~\eqref{eq:lagcont} over one step,
 \end{equation}
 and analogously for $v_y$. No approximation is involved here and none should be claimed: this is the Lagrange
 formula for a linear time-invariant (LTI) system under a piecewise-constant input, and it is exact at the sampling instants. On the
-deployed G1 profile it is also \emph{vacuous}, since $\nu=\resLagDiscrete$ reduces~\eqref{eq:veldisc} to
-$v_{k+1}=u_k$; the statement is retained because it is the part of the model that would carry the weight on
-hardware, where $\tau$ is real.
+deployed G1 profile it is straightforward, since $\nu=1$ reduces~\eqref{eq:veldisc} to
+$v_{k+1}=u_k$; the statement is retained because it is the part of the model that would carry the weight on hardware, where $\tau$ is real.
 
-The pose, by contrast, is genuinely nonlinear and must be integrated numerically. Two schemes are available
-in the deployed code, selected by a parameter:
+The pose, by contrast, is genuinely nonlinear and must be integrated numerically. Two possibilieties are implemented and compared:
 \begin{align}
   \text{explicit Euler:}\quad & p_{k+1} = p_k + R(\psi_k)\,v_{k+1}\,\Delta t,
   \label{eq:euler}\\
@@ -714,66 +712,78 @@ in the deployed code, selected by a parameter:
   \label{eq:midpoint}
 \end{align}
 Both evaluate the rotation on the \emph{post-lag} velocity $v_{k+1}$, a semi-implicit choice that costs
-nothing and removes the one-step delay an explicit scheme would introduce between a command and the predicted
+nothing and removes the one-step delay that an explicit scheme would introduce between a command and the predicted
 displacement. The mid-point rule differs from Euler by one addition inside the argument of the rotation.
 
-\paragraph{The scheme that is measured is the scheme that runs.} Everything below compares two integrators
+The results shown in the following compare two integrators
 outside the optimizer, which is only meaningful if the map assembled inside the NLP is the same one. That is
 checked rather than assumed: a single transition is extracted from the CasADi program built by the tracker,
 by reconstructing $f(x_0,u_0)$ from the first six equality constraints, and compared with the reference
 implementation of~\eqref{eq:euler} and~\eqref{eq:midpoint}. The residual is zero to machine precision for both schemes.
-Without that check the numbers that follow would describe a model that merely resembles the deployed one.
 
-\paragraph{The order of the schemes.} The global error of each scheme was first fitted against the step size
+\paragraph{Errors quantification according to the discretization method.} The global error of each scheme was first fitted against the step size
 on three motion regimes, over a $\resOrderWindow$~s window, with the exact solution available in closed form:
 at constant body velocity the pose traces a circular arc. The measured orders are $\resOrderEuler$ and
 $\resOrderMidpoint$, exactly the first and second order the truncation analysis predicts, and the result is
 identical across regimes. The step grid is built by halving from the deployed $\Delta t$, so the fit begins
 at the step the controller actually uses rather than near it.
 
-\restab{order}
+It is worth noting that a constant-velocity
+arc is not the regime in which the MPC works. The optimizer applies a \emph{different} input at every node, and over a real horizon the commanded yaw rate changes sign.
 
-This verifies the schemes; it does not measure what choosing between them costs, because a constant-velocity
-arc is not the regime the MPC works in. The optimizer applies a \emph{different} input at every node, and
-over a real horizon the commanded yaw rate changes sign.
-
-\paragraph{The error on horizons the MPC actually solved.} The comparison was therefore repeated on
-$\resIntegBagCycles$ horizons taken from the bag \texttt{\resIntegBagName} and re-solved with the deployed
+The comparison is repeated on
+$\resIntegBagCycles$ horizons taken from a bag of data recorded while G1 is navigating in a mapless MuJoCo world and re-solved with the deployed
 profile, each integrated with its own optimal input sequence. The step is varied by subdividing the
 prediction interval while the input stays constant over each $\Delta t$, which keeps an order measurable on a
 real trajectory; the reference is the exact arc on the same post-lag velocity sequence, so the only
 difference between the three trajectories is how $R(\psi)$ is evaluated.
 
-\restab{integbag}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Median position error at the end of the horizon, over 12 horizons re-solved from a bag of data recorded during the navigation, against the exact arc on the same velocity sequence. The first row is the
+  deployed step; the others subdivide the prediction interval without changing the input.}
+  \label{res:tab:integbag}
+  \restab{integbag}
+\end{table}
 
 The orders survive the change of regime --- $\resIntegBagOrderEuler$ and $\resIntegBagOrderMidpoint$ --- but
 the error does not. At the deployed step the median is $\resIntegBagEuler$~m for Euler against
 $\resIntegBagMidpoint$~m for the mid-point rule, a factor $\resIntegBagGain$ where the synthetic arc reports
 $\resIntegratorGain$; the tails are $\resIntegBagEulerTail$~m and $\resIntegBagMidpointTail$~m. The gap is
 the regime and not an inconsistency: over these horizons the commanded yaw rate spans
-$\resIntegBagOmega$~rad/s, so the per-step errors partly cancel, while the arc accumulates them along a
-single turn. Measuring on the synthetic regime alone would have overstated the benefit by a factor of two.
+$\resIntegBagOmega$~rad/s, so the per-step errors partially cancel each other out, while the arc accumulates them along a
+single turn. Measuring on the synthetic regime alone would have overestimated the benefit by a factor of two.
 
 \paragraph{Where the floor is.} One number bounds the discussion. Holding the velocity at its post-lag value
 across the interval --- the semi-implicit choice made in~\eqref{eq:euler} and~\eqref{eq:midpoint} --- neglects
 a displacement of $\resLagFloor$~m per horizon, because the model's velocity rises towards the command
 instead of arriving at it. That is larger than the mid-point truncation error itself. Below that level
-refining the pose scheme cannot buy anything: a different modelling choice already dominates, and the second
+refining the pose scheme doesn't improve the results: a different modelling choice already dominates and the second
 order is not the binding approximation.
 
-\paragraph{And in closed loop, nothing.} Prediction fidelity and executed cost are different quantities.
+\paragraph{Closed loop analysis.} Prediction fidelity and executed cost are different quantities.
 Running the two schemes on the same worlds with everything else fixed moves the median closed-loop cost by at
 most $\resIntegLoopSpread\%$, and the sign changes from world to world --- the signature of run-to-run
 variation rather than of an improvement.
 
-\restab{integloop}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Closed-loop cost with the two integrators, same profile otherwise. A positive $\Delta$ means the
+  mid-point rule is cheaper.}
+  \label{res:tab:integloop}
+  \restab{integloop}
+\end{table}
 
 The reason is structural and was stated in Section~\ref{sec:statement}: only the first input is ever applied,
 and \astar{} replans at $1$~Hz, so the accuracy of the far end of the prediction reaches the executed
 trajectory only indirectly. The mid-point rule is deployed because it is a strictly better prediction for the
 price of one addition, not because it was measured to steer better.
 
-Section~\ref{sec:prederr} closes the argument, and the two sections should be read together: measured against
+Section~\ref{sec:prederr} confirms the thesis: measured against
 the plant, the prediction diverges by $\resPredVsEuler$ times the Euler error over the same horizon and
 $\resPredVsMidpoint$ times the mid-point error. The integrator was never the dominant term.
 
@@ -793,47 +803,71 @@ With $e_k=x_k-x_{\mathrm{ref},k}$ the cost is
   J(z;\theta) \;=\;
   \sum_{k=0}^{N-1}\Big[e_k^{\!\top} Q\, e_k
   \;+\; u_k^{\!\top} R\, u_k
-  \;+\; \Rjerk\|u_k-u_{k-1}\|_2^2
   \;+\; \Jobs(x_k)\Big]
+  \;+\;\sum_{k=1}^{N-1}\Rjerk\|u_k-u_{k-1}\|_2^2
   \;+\;e_N^{\!\top} Q_T\, e_N + \Jobs(x_N),
   \label{eq:cost}
 \end{equation}
 with $Q=\mathrm{diag}(Q_x,Q_y,Q_\psi,0,0,0)$, $Q_T=\rho_T\,Q$ and $R=\mathrm{diag}(R_{v_x},R_{v_y},R_\omega)$.
-Three properties deserve comment. The stage weight is only \emph{semi}-definite: no velocity state is
-penalised, $Q$ has rank $3$ out of $6$, and the velocities are shaped indirectly through the lag dynamics and
-the input penalty. And the rate penalty $\Rjerk\|u_k-u_{k-1}\|^2$ is the only term coupling adjacent input
-stages, which is what puts off-diagonal blocks in the Hessian; its purpose is physical, since a legged
-platform tracks a smooth velocity profile far better than a chattering one. And the terminal weight is a
-scaled copy of the stage weight, $Q_T=\rho_T Q$: it is a heuristic, neither the solution of a Riccati
-equation nor an exact cost-to-go, and like $Q$ it acts only on the three position and heading components.
-$\rho_T$ is therefore a tuning parameter and is treated as one, appearing among the eleven weights of
-$\theta$ in Section~\ref{sec:bo}. (The gap between this heuristic and the true infinite-horizon cost-to-go
-of the linearised dynamics is not quantified in this report; doing so would require the Riccati comparison,
-which the semi-definite $Q$ would first oblige us to regularise.) The stability argument is not carried by
-$Q_T$ at all but by the terminal equilibrium constraint of Section~\ref{sec:terminal}.
+Three properties of~\eqref{eq:cost} deserve comment.
 
-\paragraph{The alternative, and what it actually costs.} The standard argument for multiple shooting is that
-it keeps the Jacobian sparse and banded, where a condensed single-shooting formulation --- states eliminated
-by recursive substitution, inputs as the only variables --- would produce a small but dense problem. The
-deployed code implements both, with the transition map written once and shared, so what is compared is the
-parametrisation and not two different models.
+\smallskip\noindent \emph{The stage weight is only semi-definite.} No velocity state is penalised: $Q$ has rank $3$ out of $6$.
+The velocities are shaped indirectly, through the lag dynamics and through the input penalty $R$. This is
+what keeps the reference generator simple, since an \astar{} path carries no velocity information, and the
+price is that the cost contains no direct damping of the velocity states.
 
-\restab{shoot}
+\smallskip\noindent \emph{The rate penalty couples consecutive inputs.} The term $\Rjerk\|u_k-u_{k-1}\|_2^2$ is the discrete
+analogue of an input-rate penalty, and it is the only term that puts off-diagonal blocks between adjacent
+input stages in the Hessian. Its purpose is physical: a legged platform tracks a smooth velocity profile far
+better than a chattering one. Note that the sum starts at $k=1$: the transition from the command applied on
+the previous cycle to $u_0$ is not penalised, so the first predicted move is free to jump. That is a
+deliberate omission --- the program is re-solved at $8$~Hz and would otherwise inherit a memory of its own
+past output --- but it means the smoothness the term buys is smoothness \emph{within} a horizon, not across
+consecutive ones.
+
+\smallskip\noindent \emph{The terminal cost is a scaled copy of the stage cost.} $Q_T=\rho_T Q$ is a heuristic, neither the
+solution of a Riccati equation nor an exact cost-to-go, and like $Q$ it acts only on the three position and
+heading components. $\rho_T$ is therefore a tuning parameter and is treated as one, appearing among the
+eleven weights of $\theta$ in Section~\ref{sec:bo}. (The gap between this heuristic and the true
+infinite-horizon cost-to-go of the linearised dynamics is not quantified in this report; doing so would
+require the Riccati comparison, which the semi-definite $Q$ would first oblige us to regularise.) The
+stability argument is not carried by $Q_T$ at all, but by the terminal equilibrium constraint of
+Section~\ref{sec:terminal}.
+
+\paragraph{Comparison between multiple and single shooting.} The standard argument for multiple shooting is that
+it keeps the Jacobian sparse and banded, where a condensed single-shooting formulation, in which states are eliminated
+by recursive substitution and so the inputs are the only variables, would produce a small but dense problem. A direct comparison between the two approaches can be performed, with the aim to show why a multiple-shooting approach was chosen. 
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Multiple (M) against single (S) shooting on the same instance, at the deployed profile. Dimensions,
+  densities and iteration counts are exact; each timing is the fastest of three cold solves, with no warm
+  start. The table shows the comparison for the number of variables, number of constraints, the Hessian density, the number of iterations and the solve time needed by each method for different lenghts of the prediction horizon N.}
+  \label{res:tab:shoot}
+  \restab{shoot}
+\end{table}
 
 The structural half of the claim holds exactly, and the Hessian is where it shows: at $N=\resShootN$ the
 program shrinks from $\resShootVarMulti$ variables and $\resShootConMulti$ constraints to
 $\resShootVarSingle$ and $\resShootConSingle$, while the Hessian density goes from
-$\resShootHessDensMulti\%$ to $\resShootHessDensSingle\%$ --- a full matrix. Condensing does trade a large
+$\resShootHessDensMulti\%$ to $\resShootHessDensSingle\%$, a full matrix. Condensing does trade a large
 banded problem for a small dense one.
 
-The performance half does not follow from that, and it would be dishonest to claim it does on these data.
-Each timing in Table~\ref{res:tab:shoot} is a single cold solve, so it carries the variance of one sample
-while the dimensions beside it are exact; and on the horizons tested the condensed form is not uniformly
-slower. What can be asserted without a stopwatch is the conditioning argument: single shooting integrates the
-model in \emph{open loop} over the whole horizon, so the error compounds step by step and the problem
-degrades with $N$ and with any instability of the plant. On a kinematic, stable model that defect does not
-surface --- which is precisely why this comparison cannot be used to argue the general case, and why the
-right claim to make is about structure rather than speed.
+If the last two columns together are analyzed, the reason why employing a multiple-shooting approach is beneficial becomes clear. At $N=60$ the condensed form converges in \emph{fewer} iterations than
+the sparse one, $29$ against $39$, and still takes three and a half times as long. The cost is therefore not
+in the number of Newton steps but in what each one costs, which is a factorisation of the Hessian, that as shown in the middle column goes from a few per cent dense to a full dense matrix.
+
+Two caveats keep this from being a general result. First, at $N=15$ and $N=40$ the two parametrisations
+converge to \emph{different} minima, $6.7\%$ and $5.8\%$ apart in cost. That is not an implementation
+error --- the program is non-convex and two parametrisations follow different optimization paths, so they can
+land in different basins --- but it does mean that on those two rows, one of which is the deployed horizon,
+the timings compare solves that did not solve the same problem. Second, the conditioning argument usually
+made for multiple shooting does not show up here at all: single shooting integrates the model in
+\emph{open loop} over the whole horizon, so its error compounds step by step and the problem degrades with
+$N$ and with any instability of the plant, but on a kinematic and stable model that defect never surfaces.
+This comparison therefore supports the choice made here; it is not evidence for the general case.
 
 \subsubsection{Obstacle avoidance as a smooth penalty}
 \label{sec:barrier}
@@ -940,7 +974,17 @@ Solved as a hard constraint on a narrow-gap scenario with $\dsafe=\resDsafe$~m -
 constraint genuinely bites --- the instance is feasible and the largest multiplier of an active distance
 constraint is $\mu^\star=\resMuMax$.
 
-\restab{penalty}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Residual constraint violation against the penalty weight, for the non-smooth and the smooth relaxation
+  of the same distance constraint. Bold: the violations that are exactly zero, which is the result the
+  exact-penalty theorem predicts and the smooth relaxation never attains. Zero entries are below the
+  solver tolerance of $1\times 10^{-8}$~m.}
+  \label{res:tab:penalty}
+  \restab{penalty}
+\end{table}
 
 The measurement matches the theorem on both branches. The $\ell^1$ slack is a threshold phenomenon: nonzero
 below, and zero to solver tolerance from $\rho_s=\resRhoLoneZero$ onwards --- which is the first sampled weight
@@ -1093,7 +1137,15 @@ the \astar{} path --- necessary because $\theta$ is now a decision variable and 
 method, so a piecewise-linear reference through waypoints would have a discontinuous second derivative at
 every node.
 
-\restab{pf}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Time-parametrised against path-parametrised reference, averaged over $\resPFcycles$ cycles replayed from
+  the recorded run \resBag.}
+  \label{res:tab:pf}
+  \restab{pf}
+\end{table}
 
 Over $\resPFcycles$ moving cycles replayed from the recorded run, the mean commanded forward speed rises from
 $\resVxTime$ to $\resVxTheta$~m/s and the distance covered within one horizon from $\resAdvanceTime$ to
@@ -1144,7 +1196,16 @@ The particularity of this project is that $\gamma(k)$ need not be postulated. It
 $\resBetaQuantile$th percentile of the prediction error recorded in the bags, so the tube is derived from
 data rather than from an assumption about the disturbance.
 
-\restab{beta}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Constraint back-off derived from the $95$th percentile of the measured prediction error. The offset at
+  $k=0$ is subtracted: it is time misalignment, not model uncertainty, and including it would inflate the
+  tube by a constant.}
+  \label{res:tab:beta}
+  \restab{beta}
+\end{table}
 
 Three properties hold by construction and were checked rather than assumed. $\gamma(0)=\resBetaZero$ exactly,
 because at the first node the state is fixed by an equality and there is nothing to hedge against --- the
@@ -1154,7 +1215,14 @@ order as the safety radius itself. The offset at $k=0$ is subtracted before fitt
 Section~\ref{sec:prederr} shows it to be time misalignment rather than model error, and including it would
 inflate the whole tube by a constant.
 
-\restab{robust}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Effect of the tightening on the predicted trajectory.}
+  \label{res:tab:robust}
+  \restab{robust}
+\end{table}
 
 Measured on the predicted trajectory, the outcomes separate cleanly. Where $\dsafe+\gamma$ stays below the
 clearance the trajectory already keeps, the constraint is inactive and correctly does nothing. Where it
@@ -1202,7 +1270,15 @@ error as in the velocity-form MPC of \cite{rawlings2017mpc}.
 Table~\ref{res:tab:nlp} reports the size of the NLP against the horizon, measured on the deployed profile
 rather than counted by hand.
 
-\restab{nlp}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Size and sparsity of the NLP against the prediction horizon, from the deployed profile. Bold: the
+  deployed configuration.}
+  \label{res:tab:nlp}
+  \restab{nlp}
+\end{table}
 
 At the deployed $N=\resN$ the program carries $\resNvar$ decision variables and $\resNcon$ constraints, of
 which $\resNeq$ are equalities --- the dynamics plus the initial condition --- and $\resNineq$ are simple
@@ -1229,7 +1305,16 @@ Hessian of the Lagrangian --- is generated symbolically by CasADi and evaluated 
 alternative is finite differences, and the comparison is not a formality: it decides whether the second-order
 method of Section~\ref{sec:solver} is affordable at all.
 
-\restab{fd}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Accuracy of the finite-difference gradient against the step size, measured against the AD gradient. The
+  optimum sits at $h=1.49\times 10^{-8}$ one-sided (theory: $\sqrt{\varepsilon}=1.49\times 10^{-8}$) and
+  $h=6.06\times 10^{-6}$ central (theory: $\varepsilon^{1/3}=6.06\times 10^{-6}$).}
+  \label{res:tab:fd}
+  \restab{fd}
+\end{table}
 
 At a representative solve the objective has $\resDerivNvar$ variables. One evaluation costs
 $\resTimeF~\mu$s and one full gradient by reverse-mode algorithmic differentiation (AD) $\resTimeGrad~\mu$s,
@@ -1249,7 +1334,15 @@ remains a small constant.
 \paragraph{The exact Hessian, and what it buys.} Because AD supplies exact second derivatives at a cost
 comparable to the first, the full Newton system can be used rather than a quasi-Newton approximation.
 
-\restab{hess}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Interior-point iterations with the exact Hessian and with the limited-memory quasi-Newton approximation,
+  on the same instance. Bold: the lower iteration count.}
+  \label{res:tab:hess}
+  \restab{hess}
+\end{table}
 
 On the same instance the exact Hessian converges in $\resIterExactHess$ iterations against $\resIterLBFGS$
 for the limited-memory quasi-Newton approximation --- a $\resHessIterSaving\%$ reduction --- and both reach
@@ -1299,7 +1392,15 @@ because the obstacle formulation is switchable: with the obstacles in the cost t
 $\resSolverIneqLow$ inequalities, and with the obstacles as genuine constraints (Section~\ref{sec:l1}) it
 carries $\resSolverIneqHigh$. That makes the advice testable rather than quotable.
 
-\restab{solvercmp}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  The same instance solved by a primal--dual interior-point method and by an SQP with an active-set QP
+  solver, in both obstacle regimes. Both are started cold. Bold: the faster of the two.}
+  \label{res:tab:solvercmp}
+  \restab{solvercmp}
+\end{table}
 
 The rule does not reproduce: the active-set solver does not win even in the small regime, where the
 interior-point method is already $\resSolverRatioLow\times$ faster. The \emph{direction} is confirmed --- the
@@ -1332,7 +1433,16 @@ nothing, and the tool now verifies that the two objectives agree before declarin
 Everything above assumes that what the solver returns is a solution. That is a verifiable statement, and this
 section verifies it on cycles extracted from a recorded mission rather than on a synthetic instance.
 
-\restab{kkt}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Optimality diagnostics at sampled cycles of the recorded run \resBag. ``active'' counts equalities and
+  active bounds together; ``rank'' is the rank of the Jacobian of the active constraints, so LICQ holds
+  when the two coincide.}
+  \label{res:tab:kkt}
+  \restab{kkt}
+\end{table}
 
 At $\resKKTcycles$ sampled cycles, the linear independence constraint qualification (LICQ) holds at every one (\resLICQalways) --- the rank of the Jacobian of
 the active constraints equals their number --- so the KKT multipliers exist and are \emph{unique}. Strict
@@ -1490,7 +1600,14 @@ each cycle, the trajectory the MPC predicted, and the poses the robot subsequent
 prediction published at time $t$ with the pose measured at $t+k\Delta t$, over $\resPredCycles$ usable
 cycles, gives the growth of the prediction error along the horizon.
 
-\restab{pred}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Open-loop prediction error along the horizon, over $\resPredCycles$ cycles of the recorded run \resBag.}
+  \label{res:tab:pred}
+  \restab{pred}
+\end{table}
 
 \begin{figure}[htbp]
   \centering
@@ -1528,7 +1645,16 @@ dominates.
 The experiment solves the \emph{same} instance twice, from a left-biased and a right-biased initial guess,
 and measures the distance between the two returned trajectories as the obstacle weight is swept.
 
-\restab{bif}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Left-biased against right-biased solve of the same instance, against the barrier weight. The separation
+  is the distance between the two returned trajectories: a value at solver tolerance means the two guesses
+  converged to the same minimum.}
+  \label{res:tab:bif}
+  \restab{bif}
+\end{table}
 
 \begin{figure}[htbp]
   \centering
@@ -1590,8 +1716,23 @@ The two horizon parameters are not interchangeable. The product $N\Delta t$ sets
 $N$ alone sets how much the solve costs, and $\Delta t$ alone sets how faithfully the prediction is
 integrated. They were therefore swept jointly, in closed loop, over $\resHorizonConfigs$ configurations.
 
-\restab{horizon_narrowgap}
-\restab{horizon_utrap}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Horizon campaign, scenario \texttt{narrow\_gap}. Bold: the deployed configuration $N=15$, $\Delta
+  t=0.35$~s.}
+  \label{res:tab:horizon:narrowgap}
+  \restab{horizon_narrowgap}
+\end{table}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Horizon campaign, scenario \texttt{u\_trap}. Bold: the deployed configuration $N=15$, $\Delta t=0.35$~s.}
+  \label{res:tab:horizon:utrap}
+  \restab{horizon_utrap}
+\end{table}
 
 \begin{figure}[htbp]
   \centering
@@ -1648,7 +1789,14 @@ how far the controller looks, and how many free inputs it has. Freeing only the 
 holding the rest at the last free value separates them --- the prediction still runs to $N$, but the program
 carries fewer variables.
 
-\restab{nc}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Closed-loop outcome against the control horizon at fixed prediction horizon.}
+  \label{res:tab:nc}
+  \restab{nc}
+\end{table}
 
 The result splits in two, and the first half must be stated more carefully than the headline suggests.
 Cutting the degrees of freedom is \emph{strictly} free --- time to goal and minimum clearance both unchanged
@@ -1719,7 +1867,14 @@ The three objectives that~\eqref{eq:cost} introduces are tracking accuracy (the 
 (the $R$ block) and progress along the path (the term in $(1-\theta)^2$ of Section~\ref{sec:pathfollow}). The
 weights are scaled so that the barycentre of the simplex reproduces the tuning in use.
 
-\restab{pareto}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Closed-loop outcome of each scalarisation of the three objectives. Bold: non-dominated points.}
+  \label{res:tab:pareto}
+  \restab{pareto}
+\end{table}
 
 \begin{figure}[htbp]
   \centering

@@ -45,7 +45,13 @@ The configuration under test is $N=\resN$, $\Delta t=\resDt$~s (a $\resHorizonSe
 
 \resNote{This table is the point of the file: it is the integration plan. Delete it once the blocks have been moved.}
 
-\restab{map}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Destination of each block of measurements. The report sections are named by their label, not by their number, because the numbering is still going to change.}
+  \label{res:tab:map}
+  \restab{map}
+\end{table}
 
 \resSubsec{Model discretisation: truncation order}
 \label{res:disc}
@@ -54,19 +60,37 @@ The configuration under test is $N=\resN$, $\Delta t=\resDt$~s (a $\resHorizonSe
 
 The global integration error was fitted against the step size on three motion regimes, over a $\resOrderWindow$~s window, with the exact solution available in closed form. The measured orders are $\resOrderEuler$ for forward Euler and $\resOrderMidpoint$ for the mid-point rule (Table~\ref{res:tab:order}), i.e.\ exactly the first and second order predicted by the truncation analysis. At the deployed $\Delta t=\resDt$~s the two differ by $\resErrEulerDep$~m against $\resErrMidpointDep$~m, a factor $\resIntegratorGain$. The step grid is built by halving from the deployed step, so the first row of the fit is the step the controller actually uses.
 
-\restab{order}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Fitted global truncation order of the two integrators, by motion regime (log--log fit of the global error against the step size, on a constant-velocity arc whose exact solution is known).}
+  \label{res:tab:order}
+  \restab{order}
+\end{table}
 
 
 The same comparison was then run on $\resIntegBagCycles$ horizons taken from bag \texttt{\resIntegBagName} and re-solved with the deployed profile, using each horizon's own optimal input sequence instead of a constant-velocity arc. The step is varied by subdividing the prediction interval while the input stays constant over each $\Delta t$, so an order remains measurable on a real trajectory: it comes out $\resIntegBagOrderEuler$ and $\resIntegBagOrderMidpoint$, unchanged. The error, however, does not. At the deployed step the median is $\resIntegBagEuler$~m for Euler against $\resIntegBagMidpoint$~m for the mid-point rule, a factor $\resIntegBagGain$ rather than the $\resIntegratorGain$ of the synthetic arc, with 95th percentiles $\resIntegBagEulerTail$~m and $\resIntegBagMidpointTail$~m. The difference is the regime: over a real horizon the commanded yaw rate spans $\resIntegBagOmega$~rad/s and the per-step errors partly cancel, while the arc accumulates them along a single turn.
 
 One number bounds the whole discussion. Holding the velocity at its post-lag value across the interval neglects a displacement of $\resLagFloor$~m per horizon, which is larger than the mid-point truncation error itself: below that level refining the pose scheme cannot buy anything, because a different modelling choice dominates.
 
-\restab{integbag}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Median position error at the end of the horizon, over 12 horizons re-solved from bag \texttt{\resIntegBagName}, against the exact arc on the same velocity sequence. The first row is the deployed step; the others subdivide the prediction interval without changing the input.}
+  \label{res:tab:integbag}
+  \restab{integbag}
+\end{table}
 
 
 In closed loop the choice is not visible. Running the two schemes on the same worlds with everything else fixed moves the median cost by at most $\resIntegLoopSpread\%$, and the sign changes from world to world, which is the signature of run-to-run variation rather than of an improvement. Only the first input is applied and \astar{} replans, so prediction fidelity enters the executed trajectory only indirectly.
 
-\restab{integloop}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Closed-loop cost with the two integrators, same profile otherwise. A positive $\Delta$ means the mid-point rule is cheaper.}
+  \label{res:tab:integloop}
+  \restab{integloop}
+\end{table}
 
 \resSubsec{Open-loop prediction error along the horizon}
 \label{res:pred}
@@ -77,7 +101,13 @@ Each MPC prediction recorded in the run was compared with the pose the robot act
 
 That divergence is $\resPredVsEuler$ times the truncation error of forward Euler over the same window and $\resPredVsMidpoint$ times that of the mid-point rule (\S\,\ref{res:disc}). The discretisation is therefore \emph{not} the limiting term of the prediction: what the horizon loses comes from the plant, not from the integrator, and refining the scheme would buy nothing measurable in closed loop.
 
-\restab{pred}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Open-loop prediction error along the horizon, over $\resPredCycles$ cycles of the recorded run \resBag.}
+  \label{res:tab:pred}
+  \restab{pred}
+\end{table}
 
 \resSubsec{Size and sparsity of the nonlinear program}
 \label{res:nlp}
@@ -88,7 +118,13 @@ At the deployed $N=\resN$ the program carries $\resNvar$ decision variables and 
 
 The constraint Jacobian is $\resJacDensity\%$ dense and the Hessian of the Lagrangian $\resHessDensity\%$ (Table~\ref{res:tab:nlp}). Both densities fall as $N$ grows while the nonzero counts grow linearly, which is the signature of the multiple-shooting parametrisation: no constraint couples distant stages, so the cost of one interior-point iteration is linear in the horizon. \S\,\ref{res:shoot} builds the same program in the condensed parametrisation and measures what that trade actually is, rather than asserting it.
 
-\restab{nlp}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Size and sparsity of the NLP against the prediction horizon, from the deployed profile. Bold: the deployed configuration.}
+  \label{res:tab:nlp}
+  \restab{nlp}
+\end{table}
 
 \resSubsec{Condensed against sparse parametrisation of the same program}
 \label{res:shoot}
@@ -99,11 +135,17 @@ The same optimal control problem was built in both parametrisations, with the tr
 
 The structural half of the claim holds exactly, and the Hessian is where it shows: $\resShootHessDensMulti\%$ dense in the sparse parametrisation against $\resShootHessDensSingle\%$ in the condensed one, which is a full matrix. Condensing trades a large banded problem for a small dense one, exactly as stated.
 
-The performance half does not follow from that. On this run the sparse parametrisation is faster at $N=15$, $N=25$, $N=40$, $N=60$ and the condensed one elsewhere (Table~\ref{res:tab:shoot}), and each entry is a single cold solve, so the timings carry the variance of one sample while the dimensions and the densities beside them are exact. What can be asserted without a stopwatch is the conditioning argument: the condensed form integrates the model in open loop over the whole horizon, so the error compounds step by step and the problem degrades with $N$ and with any instability of the plant. On a kinematic, stable model that defect does not surface --- which is precisely why this comparison cannot be used to argue the general case, and why the report should claim the structure rather than the speed.
+The performance half does not follow from that. On this run the sparse parametrisation is faster at $N=15$, $N=25$, $N=40$, $N=60$ and the condensed one elsewhere (Table~\ref{res:tab:shoot}). Each timing is the fastest of three cold solves, so it is a best case rather than a typical one, and none of them uses the warm start the controller runs with; the dimensions, the densities and the iteration counts beside them are exact. What can be asserted without a stopwatch is the conditioning argument: the condensed form integrates the model in open loop over the whole horizon, so the error compounds step by step and the problem degrades with $N$ and with any instability of the plant. On a kinematic, stable model that defect does not surface --- which is precisely why this comparison cannot be used to argue the general case, and why the report should claim the structure rather than the speed.
 
 At $N\in\{15, 40\}$ the two parametrisations converge to \emph{different} minima. This is not an implementation error: the program is non-convex, and two parametrisations follow different optimization paths, so they can land in different basins. It does mean the corresponding timings compare two solves that did not solve the same thing.
 
-\restab{shoot}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Multiple (M) against single (S) shooting on the same instance. Dimensions, densities and iteration counts are exact; each timing is the fastest of three cold solves, with no warm start.}
+  \label{res:tab:shoot}
+  \restab{shoot}
+\end{table}
 
 \resSubsec{Derivatives: algorithmic differentiation against finite differences}
 \label{res:ad}
@@ -114,7 +156,13 @@ At a representative solve the objective has $\resDerivNvar$ variables. One evalu
 
 The cost is the argument that closes the question for a real-time loop: central differences alone would consume $\resFDcentralBudget\%$ of the $\resCycleBudget$~ms cycle budget, for a gradient that is worse. The ratio itself is a micro-benchmark on $\sim100~\mu$s timings and its second digit is not meaningful; what is stable, and is the point, is that it stays a small constant.
 
-\restab{fd}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Accuracy of the finite-difference gradient against the step size, measured against the AD gradient. The optimum sits at $h=1.49\times 10^{-8}$ one-sided (theory: $\sqrt{\varepsilon}=1.49\times 10^{-8}$) and $h=6.06\times 10^{-6}$ central (theory: $\varepsilon^{1/3}=6.06\times 10^{-6}$).}
+  \label{res:tab:fd}
+  \restab{fd}
+\end{table}
 
 \resSubsec{Exact Hessian against a quasi-Newton approximation}
 \label{res:hess}
@@ -123,7 +171,13 @@ The cost is the argument that closes the question for a real-time loop: central 
 
 Solving the same instance with the exact Hessian of the Lagrangian takes $\resIterExactHess$ iterations against $\resIterLBFGS$ with the limited-memory quasi-Newton approximation, a $\resHessIterSaving\%$ reduction, and both converge to the same objective value (Table~\ref{res:tab:hess}). Since CasADi supplies the exact second derivatives at a cost comparable to the first, the full Newton step is the cheaper option here, not the more expensive one.
 
-\restab{hess}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Interior-point iterations with the exact Hessian and with the limited-memory quasi-Newton approximation, on the same instance. Bold: the lower iteration count.}
+  \label{res:tab:hess}
+  \restab{hess}
+\end{table}
 
 \resSubsec{Interior point against active set}
 \label{res:solvercmp}
@@ -140,7 +194,13 @@ A by-product worth reporting: with the exact Hessian of the Lagrangian the QP su
 
 \resNote{At least one pair of solves converged to different objective values. Comparing the time of two solves that ended in different minima means nothing; that row is not evidence for either method.}
 
-\restab{solvercmp}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{The same instance solved by a primal--dual interior-point method and by an SQP with an active-set QP solver, in both obstacle regimes. Both are started cold. Bold: the faster of the two.}
+  \label{res:tab:solvercmp}
+  \restab{solvercmp}
+\end{table}
 
 \resSubsec{Optimality conditions along the mission}
 \label{res:kkt}
@@ -155,7 +215,13 @@ The critical cone does not contract along this profile ($\resConeFirst$ at the f
 
 The cone dimension over the sampled profile ranges between $\resConeMin$ and $\resConeMax$ (Table~\ref{res:tab:kkt}), and the identity $\dim(\text{cone}) = n_{\text{var}} - \#\text{active}$ holds at every cycle, which is what strict complementarity buys.
 
-\restab{kkt}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Optimality diagnostics at sampled cycles of the recorded run \resBag. ``active'' counts equalities and active bounds together; ``rank'' is the rank of the Jacobian of the active constraints, so LICQ holds when the two coincide.}
+  \label{res:tab:kkt}
+  \restab{kkt}
+\end{table}
 
 \resSubsec{Soft obstacle constraint: exact $\ell^1$ penalty against $\ell^2$}
 \label{res:penalty}
@@ -168,7 +234,13 @@ The two penalties then behave exactly as the exact-penalty theorem predicts (Tab
 
 The practical reading for this stack is that a soft constraint can be made \emph{exactly} satisfied at a finite, computable weight, provided the penalty is non-smooth at the origin; the smooth quadratic relaxation that is more comfortable for the solver is precisely the one that can never close the violation.
 
-\restab{penalty}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Residual constraint violation against the penalty weight, for the non-smooth and the smooth relaxation of the same distance constraint. Bold: the violations that are exactly zero, which is the result the exact-penalty theorem predicts and the smooth relaxation never attains. Zero entries are below the solver tolerance of $1\times 10^{-8}$~m.}
+  \label{res:tab:penalty}
+  \restab{penalty}
+\end{table}
 
 \resSubsec{Adding a terminal equilibrium constraint}
 \label{res:terminal}
@@ -194,9 +266,21 @@ Measured on the predicted trajectory ($\resRobustCases$ cases, Table~\ref{res:ta
 
 \resNote{\textbf{Limit of this measurement, to be stated in the report.} The effect is not observable in the closed-loop harness: the executed clearance comes out identical with and without tightening, because the loop is closed by tracking a look-ahead setpoint on the predicted trajectory with a proportional controller, which washes out fine differences between MPC solutions. The tightening guarantees the margin \emph{in the plan}, and that is where it has been verified.}
 
-\restab{beta}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Constraint back-off derived from the $95$th percentile of the measured prediction error. The offset at $k=0$ is subtracted: it is time misalignment, not model uncertainty, and including it would inflate the tube by a constant.}
+  \label{res:tab:beta}
+  \restab{beta}
+\end{table}
 
-\restab{robust}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Effect of the tightening on the predicted trajectory.}
+  \label{res:tab:robust}
+  \restab{robust}
+\end{table}
 
 \resSubsec{Regularity of the solution: the left--right bifurcation}
 \label{res:bif}
@@ -209,7 +293,13 @@ The deployed weight sits below the threshold ($\resBifDeployedBelow$), and on th
 
 Two readings follow, and both are actionable. First, past the threshold the two minima are \emph{not} equivalent: their objective values differ by up to $\resBifCostGap\%$, so the initial guess decides not merely which side the robot passes on but how much the manoeuvre costs. Second, since the deployed weights are on the regular side, the cost-spike guard that clears the warm-start cache when the objective jumps is protecting against a phenomenon that does not occur at these weights --- worth stating as a measured fact about the deployed configuration rather than removing on the strength of one sweep.
 
-\restab{bif}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Left-biased against right-biased solve of the same instance, against the barrier weight. The separation is the distance between the two returned trajectories: a value at solver tolerance means the two guesses converged to the same minimum.}
+  \label{res:tab:bif}
+  \restab{bif}
+\end{table}
 
 \resSubsec{Reference generation: time-parametrised against path-parametrised}
 \label{res:pf}
@@ -222,7 +312,13 @@ Re-posing the same program with the path abscissa as a decision variable --- the
 
 It is not free: the iteration count rises from $\resIterTime$ to $\resIterTheta$, because the extra decision variable removes the term that was pinning the solution along the path. Reported as a trade rather than as an improvement, this is the cleanest reformulation available to the stack, and the one that would let $v_{\mathrm{ref}}$ disappear from the parameter file.
 
-\restab{pf}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Time-parametrised against path-parametrised reference, averaged over $\resPFcycles$ cycles replayed from the recorded run \resBag.}
+  \label{res:tab:pf}
+  \restab{pf}
+\end{table}
 
 \resSubsec{Prediction horizon and sampling time}
 \label{res:horizon}
@@ -237,9 +333,21 @@ Ranking the aggregated configurations on the three objectives that matter ---tim
 
 \resNote{\textbf{Before changing the deployed profile.} These are synthetic scenarios with static obstacles and frequent replanning. A very short horizon holds up only because the discrete planner is doing the avoidance; with dynamic obstacles, or a slower planner, the margin would disappear. The result is a reason to run the comparison on real missions, not a reason to retune from a table.}
 
-\restab{horizon_narrowgap}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Horizon campaign, scenario \texttt{narrow\_gap}. Bold: the deployed configuration $N=15$, $\Delta t=0.35$~s.}
+  \label{res:tab:horizon:narrowgap}
+  \restab{horizon_narrowgap}
+\end{table}
 
-\restab{horizon_utrap}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Horizon campaign, scenario \texttt{u\_trap}. Bold: the deployed configuration $N=15$, $\Delta t=0.35$~s.}
+  \label{res:tab:horizon:utrap}
+  \restab{horizon_utrap}
+\end{table}
 
 \resSubsec{Control horizon: separating preview from degrees of freedom}
 \label{res:nc}
@@ -256,7 +364,13 @@ The complementary reading is the one that matters for \S\,\ref{res:horizon}: whe
 
 One implementation detail carries theory. Imposing the input bounds on all $N$ steps when the inputs past $N_c$ are the same repeated expression generates duplicate rows with identical gradients; if active, they violate LICQ and make the multipliers non-unique --- breaking exactly the analysis of \S\,\ref{res:kkt}. The bounds must be imposed on the free columns only.
 
-\restab{nc}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Closed-loop outcome against the control horizon at fixed prediction horizon.}
+  \label{res:tab:nc}
+  \restab{nc}
+\end{table}
 
 \resSubsec{Multi-objective scalarisation and the Pareto front}
 \label{res:pareto}
@@ -269,5 +383,11 @@ The relative excursion over the simplex is what says whether a trade-off exists 
 
 The barycentre of the simplex, which would reproduce the tuning already in use, is not among the sampled points at this resolution, so the sweep cannot say whether the current weights are dominated. Sampling it explicitly is the cheapest way to make this section answer the question the report will ask of it.
 
-\restab{pareto}
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Closed-loop outcome of each scalarisation of the three objectives. Bold: non-dominated points.}
+  \label{res:tab:pareto}
+  \restab{pareto}
+\end{table}
 

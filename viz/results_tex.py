@@ -314,13 +314,23 @@ def sec_provenance(res: dict, M: Macros) -> list[str]:
     M.group("parametri deployati (dal profilo, non copiati a mano)")
     N = M.add("resN", str(p["N"]), "orizzonte in passi")
     dt = M.add("resDt", fx(p["dt"], 2), "passo di campionamento [s]")
-    M.add("resHorizonSeconds", fx(p["N"] * p["dt"], 1), "N*dt [s]")
+    M.add("resHorizonSeconds", fx(p["N"] * p["dt"], 2), "N*dt [s]")
     M.add("resVref", fx(p["v_ref"], 2), "velocita' di crociera [m/s]")
     M.add("resVxMax", fx(p["vx_max"], 2))
+    if "vx_min" in p:
+        # negativo: il report lo usa dentro un intervallo, quindi serve col segno
+        M.add("resVxMin", fx(p["vx_min"], 2), "limite di retromarcia [m/s]")
+        M.add("resVxMinAbs", fx(abs(p["vx_min"]), 2), "modulo del limite di retromarcia")
     M.add("resVyMax", fx(p["vy_max"], 2))
     M.add("resOmegaMax", fx(p["omega_max"], 2))
     M.add("resWobsDep", smart(p["W_obs_sigmoid"]), "peso della barriera")
     M.add("resObsRDep", fx(p["obs_r"], 2), "raggio di sicurezza [m]")
+    if "obs_alpha" in p:
+        M.add("resAobsDep", smart(p["obs_alpha"]), "pendenza della barriera")
+        M.add("resObsCheckR", fx(p["obs_check_radius"], 1),
+              "raggio di ricerca degli ostacoli [m]")
+        M.add("resMobs", str(int(p["max_obs_constraints"])),
+              "numero fisso di termini di ostacolo")
     M.add("resTauV", smart(p["tau_v"]), "costante di tempo [s]")
     M.add("resIntegrator", esc(p["integrator"]))
     M.add("resPathMode", esc(p["path_mode"]))
@@ -370,6 +380,7 @@ def sec_provenance(res: dict, M: Macros) -> list[str]:
 
 def sec_discretisation(res: dict, M: Macros) -> list[str]:
     d = res.get("classe1", {}).get("integratore")
+    b = res.get("classe2", {}).get("integratore_bag")
     if not d:
         return []
     M.group("discretizzazione (ordine di troncamento)")
@@ -379,39 +390,125 @@ def sec_discretisation(res: dict, M: Macros) -> list[str]:
     oe = M.add("resOrderEuler", fx(nom["ordine_euler"], 2), "ordine misurato, Euler")
     om = M.add("resOrderMidpoint", fx(nom["ordine_midpoint"], 2), "ordine misurato, punto medio")
     dep = d["al_dt_deployato"]
-    ee = M.add("resErrEulerDep", sci(dep["errore_euler_m"]), "errore a dt deployato [m]")
+    ee = M.add("resErrEulerDep", sci(dep["errore_euler_m"]), "errore a dt deployato [m], arco sintetico")
     em = M.add("resErrMidpointDep", sci(dep["errore_midpoint_m"]))
     gain = M.add("resIntegratorGain", f"{dep['guadagno']:.0f}", "rapporto Euler/punto medio")
+    Tsyn = M.add("resOrderWindow", fx(d.get("orizzonte_s", 3.0), 2), "finestra del test sintetico [s]")
 
-    rows = [[regime(k), fx(v["ordine_euler"], 2), fx(v["ordine_midpoint"], 2)]
-            for k, v in reg.items()]
     L = [
         r"\resSubsec{Model discretisation: truncation order}",
         r"\label{res:disc}",
         "",
-        r"\resNote{Feeds Report \texttt{sec:discretization}. Replaces the claim that the "
-        r"pose integration is ``one forward-Euler step'' with a measured convergence order.}",
+        r"\resNote{Feeds Report \texttt{sec:discretization}. Two measurements: the order of "
+        r"the scheme on a closed-form arc, and the error it actually makes on horizons the "
+        r"MPC really solved.}",
         "",
         f"The global integration error was fitted against the step size on three motion "
-        f"regimes. The measured orders are ${oe}$ for forward Euler and ${om}$ for the "
+        f"regimes, over a ${Tsyn}$~s window, with the exact solution available in closed "
+        f"form. The measured orders are ${oe}$ for forward Euler and ${om}$ for the "
         f"mid-point rule (Table~\\ref{{res:tab:order}}), i.e.\\ exactly the first and second "
         f"order predicted by the truncation analysis. At the deployed "
-        f"$\\Delta t=\\resDt$~s and over a $3$~s window the two integrators differ by "
-        f"${ee}$~m against ${em}$~m, a factor ${gain}$.",
+        f"$\\Delta t=\\resDt$~s the two differ by ${ee}$~m against ${em}$~m, a factor "
+        f"${gain}$. The step grid is built by halving from the deployed step, so the first "
+        f"row of the fit is the step the controller actually uses.",
         "",
     ]
+    rows = [[regime(k), fx(v["ordine_euler"], 2), fx(v["ordine_midpoint"], 2)]
+            for k, v in reg.items()]
     L += table("lrr", ["motion regime", "order, Euler", "order, mid-point"], rows,
                "Fitted global truncation order of the two integrators, by motion regime "
-               "(log--log fit of the global error against the step size).",
+               "(log--log fit of the global error against the step size, on a "
+               "constant-velocity arc whose exact solution is known).",
                "res:tab:order")
-    grid = [[fx(x, 4), m(sci(a)), m(sci(b))] for x, a, b in
-            zip(nom["dt"], nom["errore_euler"], nom["errore_midpoint"])]
-    L += table("rrr", [r"$\Delta t$ [s]", "error, Euler [m]", "error, mid-point [m]"],
-               grid,
-               f"Global error against the step size, {regime(nom_key)} regime. The "
-               f"orders of Table~\\ref{{res:tab:order}} are the log--log slopes of these "
-               f"two columns.",
-               "res:tab:ordergrid")
+
+    bl = res.get("classe1", {}).get("bersaglio_locale")
+    if bl:
+        M.group("bersaglio locale: le tre metriche (figura §3.1)")
+        M.add("resFigWorld", esc(bl["mondo"]), "mondo della figura")
+        M.add("resFigProjGeo", fx(bl["geo_proiezione"], 1),
+              "geodetica del bersaglio scelto dalla proiezione [m]")
+        M.add("resFigEuclGeo", fx(bl["geo_argmin_euclideo"], 1),
+              "geodetica del bersaglio scelto dall'argmin euclideo [m]")
+        M.add("resFigGeoGeo", fx(bl["geo_geodetica"], 1),
+              "geodetica del bersaglio scelto dalla geodetica [m]")
+
+    if not b:
+        return L
+
+    # --- la stessa misura su orizzonti VERI ------------------------------
+    M.group("integratore su orizzonti veri (bag)")
+    bd = b["al_dt_deployato"]
+    bc = M.add("resIntegBagCycles", str(b["cicli_usati"]), "orizzonti ri-risolti")
+    bbag = M.add("resIntegBagName", esc(b["bag"]), "bag usata")
+    be = M.add("resIntegBagEuler", sci(bd["errore_euler_m"]), "errore Euler, orizzonti veri [m]")
+    bm = M.add("resIntegBagMidpoint", sci(bd["errore_midpoint_m"]))
+    bep = M.add("resIntegBagEulerTail", sci(bd["p95_euler_m"]))
+    bmp = M.add("resIntegBagMidpointTail", sci(bd["p95_midpoint_m"]))
+    bg = M.add("resIntegBagGain", f"{bd['guadagno']:.0f}", "rapporto sugli orizzonti veri")
+    boe = M.add("resIntegBagOrderEuler", fx(b["ordine"]["euler"], 2))
+    bom = M.add("resIntegBagOrderMidpoint", fx(b["ordine"]["midpoint"], 2))
+    bw = M.add("resIntegBagOmega", fx(b["omega_ptp_mediano"], 2), "escursione di omega [rad/s]")
+    bl = M.add("resLagFloor", sci(b["lag_mediano_m"]), "spostamento trascurato dal lag [m]")
+
+    L += [
+        "",
+        f"The same comparison was then run on ${bc}$ horizons taken from bag "
+        f"\\texttt{{{bbag}}} and re-solved with the deployed profile, using each horizon's "
+        f"own optimal input sequence instead of a constant-velocity arc. The step is varied "
+        f"by subdividing the prediction interval while the input stays constant over each "
+        f"$\\Delta t$, so an order remains measurable on a real trajectory: it comes out "
+        f"${boe}$ and ${bom}$, unchanged. The error, however, does not. At the deployed step "
+        f"the median is ${be}$~m for Euler against ${bm}$~m for the mid-point rule, a factor "
+        f"${bg}$ rather than the ${gain}$ of the synthetic arc, with 95th percentiles "
+        f"${bep}$~m and ${bmp}$~m. The difference is the regime: over a real horizon the "
+        f"commanded yaw rate spans ${bw}$~rad/s and the per-step errors partly cancel, "
+        f"while the arc accumulates them along a single turn.",
+        "",
+        f"One number bounds the whole discussion. Holding the velocity at its post-lag value "
+        f"across the interval neglects a displacement of ${bl}$~m per horizon, which is "
+        f"larger than the mid-point truncation error itself: below that level refining the "
+        f"pose scheme cannot buy anything, because a different modelling choice dominates.",
+        "",
+    ]
+    grid = [[fx(x, 4), m(sci(a)), m(sci(c)), f"{a/c:.0f}"] for x, a, c in
+            zip(b["dt"], b["mediana"]["euler"], b["mediana"]["midpoint"])]
+    L += table("rrrr", [r"$\Delta t$ [s]", "error, Euler [m]",
+                        "error, mid-point [m]", "ratio"], grid,
+               f"Median position error at the end of the horizon, over {b['cicli_usati']} "
+               f"horizons re-solved from bag \\texttt{{{bbag}}}, against the exact arc on "
+               f"the same velocity sequence. The first row is the deployed step; the others "
+               f"subdivide the prediction interval without changing the input.",
+               "res:tab:integbag")
+
+    loop = res.get("classe3", {}).get("integratore_anello")
+    if loop:
+        rows = []
+        for mondo, r in loop.items():
+            rows.append([esc(mondo),
+                         fx(r["euler"]["costo_mediano"], 1),
+                         fx(r["midpoint"]["costo_mediano"], 1),
+                         fx(r["delta_costo_pct"], 1)])
+        spread = max(abs(r["delta_costo_pct"]) for r in loop.values())
+        sp = M.add("resIntegLoopSpread", fx(spread, 1), "scarto max in anello chiuso [%]")
+        segni = {r["delta_costo_pct"] > 0 for r in loop.values()}
+        L += [
+            "",
+            f"In closed loop the choice is not visible. Running the two schemes on the same "
+            f"worlds with everything else fixed moves the median cost by at most "
+            f"${sp}\\%$, and "
+            + ("the sign changes from world to world, which is the signature of run-to-run "
+               "variation rather than of an improvement"
+               if len(segni) > 1 else
+               "the effect is within run-to-run variation")
+            + ". Only the first input is applied and \\astar{} replans, so prediction "
+              "fidelity enters the executed trajectory only indirectly.",
+            "",
+        ]
+        L += table("lrrr", ["world", "median cost, Euler", "median cost, mid-point",
+                            r"$\Delta$ [\%]"], rows,
+                   "Closed-loop cost with the two integrators, same profile otherwise. "
+                   "A positive $\\Delta$ means the mid-point rule is cheaper.",
+                   "res:tab:integloop")
     return L
 
 
@@ -424,8 +521,10 @@ def sec_prediction(res: dict, M: Macros) -> list[str]:
     off = M.add("resPredOffset", fx(e["offset_k0"], 4), "offset a k=0 [m]")
     div = M.add("resPredDivergence", fx(e["divergenza_fine_orizzonte"], 3),
                 "divergenza a fine orizzonte [m]")
-    r_eul = e["divergenza_fine_orizzonte"] / e["errore_euler_3s"]
-    r_mid = e["divergenza_fine_orizzonte"] / e["errore_midpoint_3s"]
+    # I due denominatori vengono dalla misura sugli orizzonti VERI (classe2),
+    # non piu' da costanti scritte a mano al passo sbagliato.
+    r_eul = e["divergenza_fine_orizzonte"] / e["errore_euler_orizzonte"]
+    r_mid = e["divergenza_fine_orizzonte"] / e["errore_midpoint_orizzonte"]
     ve = M.add("resPredVsEuler", f"{r_eul:.0f}", "divergenza / errore Euler")
     vm = M.add("resPredVsMidpoint", f"{r_mid:.0f}", "divergenza / errore punto medio")
 
@@ -2066,7 +2165,28 @@ def load_extra(results_path: str) -> dict:
                 out[key] = json.load(fh)
         except Exception as exc:
             print(f"  [{fname} illeggibile: {exc}]", file=sys.stderr)
+            continue
+        # I sette satellite NON sono ricalcolati da make_results: legge la loro
+        # cache. Se il profilo e' cambiato dopo che la cache e' stata scritta, il
+        # report accoppia numeri nuovi a tabelle misurate su un'altra
+        # configurazione, e nulla lo segnala. E' successo con l'inviluppo di
+        # ingresso. Confrontare le date non e' una prova, ma trasforma un
+        # silenzio in una domanda.
+        prof = os.path.join(os.path.dirname(os.path.dirname(d)),
+                            "src", "a_star_mpc_planner", "config",
+                            "planner_params_g1.yaml")
+        if os.path.exists(prof) and os.path.getmtime(p) < os.path.getmtime(prof):
+            print(f"  [ATTENZIONE: {fname} e' PIU' VECCHIO del profilo "
+                  f"({_eta(p)} contro {_eta(prof)}). E' una cache: make_results "
+                  f"non la ricalcola. Rilanciare lo script satellite prima di "
+                  f"citarne i numeri.]", file=sys.stderr)
     return out
+
+
+def _eta(path: str) -> str:
+    import datetime
+    return datetime.datetime.fromtimestamp(
+        os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M")
 
 
 def write_all(res: dict, out_dir: str, extra: dict | None = None) -> list[str]:

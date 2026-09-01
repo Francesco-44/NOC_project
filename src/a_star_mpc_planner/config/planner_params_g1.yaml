@@ -139,8 +139,8 @@
     # La clearance SATURA appena superato il criterio della curva: oltre 5.2 s
     # si paga solo tempo di calcolo. Un passo copre ora 10.5 cm e 6.0 gradi,
     # sempre ben sotto obs_r (0.40 m): la barriera non e' scavalcabile fra due
-    # nodi. Errore di troncamento del punto medio: O(dt^2), da 8.7e-5 a 2.7e-4 m
-    # sull'orizzonte, irrilevante (tests/test_integrators.py).
+    # nodi. Errore di troncamento del punto medio: O(dt^2), 3.66e-4 m mediani
+    # sull'orizzonte, irrilevante (viz/integrator_bag.py).
     #
     # ATTENZIONE alla fedelta': dt e' il passo di PREDIZIONE, non il periodo di
     # controllo (mpc_rate_hz = 8 -> 0.125 s). Il rapporto passa da 1.6x a 2.8x.
@@ -173,11 +173,27 @@
     # Schema di integrazione del canale di posizione (dispense §2.1.3).
     #   'euler'    : eq. (2.9),  R(yaw) valutato a inizio intervallo, errore O(dt)
     #   'midpoint' : eq. (2.10), R(yaw) valutato a meta' intervallo,  errore O(dt^2)
-    # Misurato da tests/test_integrators.py a dt=0.2 su 3 s (vx=0.2, w=0.3):
-    # Euler sbaglia 1.74e-2 m, il punto medio 8.70e-5 m — 200x, al prezzo di una
-    # somma. In anello chiuso il guadagno e' pero' <=1.1% sul costo mediano,
-    # perche' si applica solo il primo ingresso e A* ripianifica: il vantaggio
-    # sta nella fedelta' della PREDIZIONE, non nella traiettoria percorsa.
+    # Misurato da viz/integrator_bag.py su 12 orizzonti VERI ripresi da
+    # viz/bags/industrial_v6 e ri-risolti col profilo deployato, ciascuno con la
+    # propria sequenza di ingressi ottima (non su un arco a velocita' costante:
+    # quello e' il regime giusto per stimare un ORDINE, non per stimare un
+    # costo). A dt=0.35 la mediana e' 2.08e-2 m per Euler contro 3.66e-4 m per il
+    # punto medio — 57x, al prezzo di una somma. Sull'arco sintetico lo stesso
+    # rapporto vale 114x: misurare li' sopravvaluta il beneficio del doppio,
+    # perche' su un orizzonte vero omega cambia segno (escursione mediana
+    # 0.54 rad/s) e gli errori si cancellano in parte.
+    #
+    # DOVE STA IL PAVIMENTO. Tenere v ferma al valore post-lag sull'intervallo
+    # trascura uno spostamento di 8.0e-4 m per orizzonte, PIU' GRANDE dell'errore
+    # di troncamento del punto medio: sotto quel livello raffinare lo schema non
+    # compra nulla, perche' domina un'altra scelta di modello.
+    #
+    # IN ANELLO CHIUSO NON SI VEDE. Misurato su u_trap e narrow_gap a parita' di
+    # tutto il resto: il costo mediano si sposta al massimo del 2.3% e IL SEGNO
+    # CAMBIA da mondo a mondo (-2.3% e +2.3%), cioe' e' variabilita' fra run, non
+    # un miglioramento. (Il valore "<=1.1%" che stava qui non era generato da
+    # nessuno script.) Si applica solo il primo ingresso e A* ripianifica: il
+    # vantaggio sta nella fedelta' della PREDIZIONE, non nella traiettoria.
     mpc_integrator: 'midpoint'
 
     # ─────────────────────────────────────────────────────────────

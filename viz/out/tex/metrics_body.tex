@@ -50,13 +50,23 @@ The configuration under test is $N=\resN$, $\Delta t=\resDt$~s (a $\resHorizonSe
 \resSubsec{Model discretisation: truncation order}
 \label{res:disc}
 
-\resNote{Feeds Report \texttt{sec:discretization}. Replaces the claim that the pose integration is ``one forward-Euler step'' with a measured convergence order.}
+\resNote{Feeds Report \texttt{sec:discretization}. Two measurements: the order of the scheme on a closed-form arc, and the error it actually makes on horizons the MPC really solved.}
 
-The global integration error was fitted against the step size on three motion regimes. The measured orders are $\resOrderEuler$ for forward Euler and $\resOrderMidpoint$ for the mid-point rule (Table~\ref{res:tab:order}), i.e.\ exactly the first and second order predicted by the truncation analysis. At the deployed $\Delta t=\resDt$~s and over a $3$~s window the two integrators differ by $\resErrEulerDep$~m against $\resErrMidpointDep$~m, a factor $\resIntegratorGain$.
+The global integration error was fitted against the step size on three motion regimes, over a $\resOrderWindow$~s window, with the exact solution available in closed form. The measured orders are $\resOrderEuler$ for forward Euler and $\resOrderMidpoint$ for the mid-point rule (Table~\ref{res:tab:order}), i.e.\ exactly the first and second order predicted by the truncation analysis. At the deployed $\Delta t=\resDt$~s the two differ by $\resErrEulerDep$~m against $\resErrMidpointDep$~m, a factor $\resIntegratorGain$. The step grid is built by halving from the deployed step, so the first row of the fit is the step the controller actually uses.
 
 \restab{order}
 
-\restab{ordergrid}
+
+The same comparison was then run on $\resIntegBagCycles$ horizons taken from bag \texttt{\resIntegBagName} and re-solved with the deployed profile, using each horizon's own optimal input sequence instead of a constant-velocity arc. The step is varied by subdividing the prediction interval while the input stays constant over each $\Delta t$, so an order remains measurable on a real trajectory: it comes out $\resIntegBagOrderEuler$ and $\resIntegBagOrderMidpoint$, unchanged. The error, however, does not. At the deployed step the median is $\resIntegBagEuler$~m for Euler against $\resIntegBagMidpoint$~m for the mid-point rule, a factor $\resIntegBagGain$ rather than the $\resIntegratorGain$ of the synthetic arc, with 95th percentiles $\resIntegBagEulerTail$~m and $\resIntegBagMidpointTail$~m. The difference is the regime: over a real horizon the commanded yaw rate spans $\resIntegBagOmega$~rad/s and the per-step errors partly cancel, while the arc accumulates them along a single turn.
+
+One number bounds the whole discussion. Holding the velocity at its post-lag value across the interval neglects a displacement of $\resLagFloor$~m per horizon, which is larger than the mid-point truncation error itself: below that level refining the pose scheme cannot buy anything, because a different modelling choice dominates.
+
+\restab{integbag}
+
+
+In closed loop the choice is not visible. Running the two schemes on the same worlds with everything else fixed moves the median cost by at most $\resIntegLoopSpread\%$, and the sign changes from world to world, which is the signature of run-to-run variation rather than of an improvement. Only the first input is applied and \astar{} replans, so prediction fidelity enters the executed trajectory only indirectly.
+
+\restab{integloop}
 
 \resSubsec{Open-loop prediction error along the horizon}
 \label{res:pred}

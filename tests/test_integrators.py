@@ -107,6 +107,111 @@ def global_error_table(v, T=3.0, dts=(0.2, 0.1, 0.05, 0.025, 0.0125)):
     return rows
 
 
+# ---------------------------------------------------------------------------
+# Sequenze di ingressi REALI (orizzonti risolti da una bag)
+# ---------------------------------------------------------------------------
+# Le funzioni sopra misurano l'ordine su un arco a velocita' costante: e' cio'
+# che serve per stimare un ordine (che e' una proprieta' asintotica e richiede
+# uno sweep su dt) ma NON e' il regime dell'MPC, che applica un ingresso diverso
+# a ogni nodo. Quelle che seguono ripetono la misura sulla sequenza di ingressi
+# ottima di un orizzonte vero, letta da viz/integrator_bag.py.
+#
+# COSA VIENE ISOLATO. Il canale di velocita' e' ZOH esatto a qualunque passo, e
+# sul profilo deployato (tau = 1 ms << dt) satura: v_{k+1} = u_k. La sequenza di
+# velocita' post-lag e' quindi calcolata UNA volta al passo deployato e tenuta
+# costante su ciascun intervallo, per tutti gli schemi e per il riferimento.
+# Cosi' l'unica differenza fra le tre traiettorie e' COME si valuta R(psi), che
+# e' esattamente la domanda posta. Includere il transitorio del lag nel
+# riferimento misurerebbe un'altra cosa (vedi lag_displacement).
+
+
+def lag_coeffs(dt, tau_v, tau_w):
+    """1 - exp(-dt/tau) per i due canali: gli stessi di mpc_tracker._passo."""
+    return (1.0 - math.exp(-dt / max(tau_v, 1e-9)),
+            1.0 - math.exp(-dt / max(tau_w, 1e-9)))
+
+
+def velocity_sequence(x0, U, dt, tau_v, tau_w):
+    """Velocita' post-lag lungo l'orizzonte. ZOH esatto: nessuna approssimazione."""
+    lv, lw = lag_coeffs(dt, tau_v, tau_w)
+    vx, vy, wz = float(x0[3]), float(x0[4]), float(x0[5])
+    out = []
+    for u in U:
+        vx = (1.0 - lv) * vx + lv * float(u[0])
+        vy = (1.0 - lw) * vy + lw * float(u[1])
+        wz = (1.0 - lw) * wz + lw * float(u[2])
+        out.append((vx, vy, wz))
+    return out
+
+
+def pose_track(pose0, V, dt, step, sub=1):
+    """Posa lungo l'orizzonte, integrata con `step` a passo dt/sub.
+
+    `sub` suddivide l'intervallo di predizione SENZA toccare l'ingresso, che
+    resta costante su ciascun dt: e' cosi' che si fa variare il passo di
+    integrazione a sequenza di comandi fissata, e quindi si misura un ordine su
+    una traiettoria vera.
+    """
+    h = dt / sub
+    pose = (float(pose0[0]), float(pose0[1]), float(pose0[2]))
+    out = [pose]
+    for v in V:
+        for _ in range(sub):
+            pose = step(pose, v, h)
+        out.append(pose)
+    return out
+
+
+def pose_track_exact(pose0, V, dt):
+    """Riferimento: arco esatto su ciascun intervallo a velocita' costante."""
+    pose = (float(pose0[0]), float(pose0[1]), float(pose0[2]))
+    out = [pose]
+    for v in V:
+        pose = exact_step(pose, v, dt)
+        out.append(pose)
+    return out
+
+
+def horizon_errors(x0, U, dt, tau_v, tau_w, subs=(1, 2, 4, 8, 16)):
+    """Errore di posizione lungo un orizzonte vero, per i due schemi.
+
+    Ritorna {'sub': [...], 'dt': [...], 'euler': [...], 'midpoint': [...]} con
+    l'errore FINALE (a fine orizzonte) contro l'arco esatto, uno per passo.
+    """
+    V = velocity_sequence(x0, U, dt, tau_v, tau_w)
+    ref = pose_track_exact(x0[:3], V, dt)
+    rx, ry = ref[-1][0], ref[-1][1]
+    out = {"sub": list(subs), "dt": [dt / s for s in subs],
+           "euler": [], "midpoint": []}
+    for s in subs:
+        for nome, step in (("euler", euler_step), ("midpoint", midpoint_step)):
+            tr = pose_track(x0[:3], V, dt, step, sub=s)
+            out[nome].append(math.hypot(tr[-1][0] - rx, tr[-1][1] - ry))
+    return out
+
+
+def lag_displacement(x0, U, dt, tau_v, tau_w):
+    """Spostamento trascurato tenendo v costante a v_{k+1} sull'intervallo.
+
+    Il modello dell'MPC risolve v' = (u - v)/tau, quindi dentro l'intervallo la
+    velocita' SALE verso u invece di essere gia' arrivata. L'integrale della
+    differenza vale (u - v_k) * tau * (1 - e^{-dt/tau}) per intervallo. Sul
+    profilo deployato tau e' 1 ms e il termine e' sub-millimetrico, ma e' dello
+    stesso ordine dell'errore del punto medio: serve a dire dove sta il
+    pavimento sotto cui raffinare lo schema non compra piu' nulla.
+    """
+    lv, lw = lag_coeffs(dt, tau_v, tau_w)
+    vx, vy, wz = float(x0[3]), float(x0[4]), float(x0[5])
+    tot = 0.0
+    for u in U:
+        dvx, dvy = float(u[0]) - vx, float(u[1]) - vy
+        tot += math.hypot(dvx * tau_v * lv, dvy * tau_w * lw)
+        vx = (1.0 - lv) * vx + lv * float(u[0])
+        vy = (1.0 - lw) * vy + lw * float(u[1])
+        wz = (1.0 - lw) * wz + lw * float(u[2])
+    return tot
+
+
 def test_orders():
     """Euler ~ ordine 1, punto medio ~ ordine 2, su piu' regimi di rotazione."""
     # (vx, vy, omega) — i limiti deployati sul G1 sono vx<=0.3, vy<=0.02, |w|<=0.3

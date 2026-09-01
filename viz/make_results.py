@@ -82,9 +82,13 @@ def provenance(profile: str, cfg) -> dict:
         "numpy": np.__version__,
         "parametri_chiave": {
             "N": cfg.N, "dt": cfg.dt, "v_ref": cfg.v_ref,
-            "vx_max": cfg.vx_max, "vy_max": cfg.vy_max, "omega_max": cfg.omega_max,
+            "vx_max": cfg.vx_max, "vx_min": cfg.vx_min,
+            "vy_max": cfg.vy_max, "omega_max": cfg.omega_max,
             "Q_x": cfg.Q_x, "Q_y": cfg.Q_y, "Q_yaw": cfg.Q_yaw,
             "W_obs_sigmoid": cfg.W_obs_sigmoid, "obs_r": cfg.obs_r,
+            "obs_alpha": cfg.obs_alpha,
+            "obs_check_radius": cfg.obs_check_radius,
+            "max_obs_constraints": cfg.max_obs_constraints,
             "tau_v": cfg.tau_v, "tau_w": cfg.tau_w,
             "integrator": cfg.integrator, "obstacle_mode": cfg.obstacle_mode,
             "path_mode": cfg.path_mode,
@@ -107,9 +111,17 @@ def classe1(cfg, raw, quick: bool) -> dict:
         "con deriva laterale": (0.20, 0.02, 0.30),
         "rotazione rapida (w=1.0)": (0.30, 0.00, 1.00),
     }
+    # La griglia dei passi DERIVA dal dt deployato invece di essere fissa: con
+    # una griglia costante il passo che il report cita (\resDt) puo' non esserci,
+    # e "al dt deployato" finisce per riportare l'errore misurato a un altro
+    # passo. T e' otto volte dt cosi' che ogni livello lo divida esattamente
+    # (integrate() lo pretende, e con un numero non intero di passi l'errore
+    # misurato sarebbe il disallineamento dell'orizzonte, non l'ordine).
+    dts_dep = tuple(cfg.dt / 2 ** i for i in range(5))
+    T_dep = 8.0 * cfg.dt
     integ = {}
     for nome, v in regimi.items():
-        rows = TI.global_error_table(v)
+        rows = TI.global_error_table(v, T=T_dep, dts=dts_dep)
         dts = [r[0] for r in rows]
         integ[nome] = {
             "dt": dts,
@@ -122,6 +134,7 @@ def classe1(cfg, raw, quick: bool) -> dict:
     i_dep = int(np.argmin(np.abs(np.array(dep["dt"]) - cfg.dt)))
     out["integratore"] = {
         "regimi": integ,
+        "orizzonte_s": T_dep,
         "al_dt_deployato": {
             "dt": dep["dt"][i_dep],
             "errore_euler_m": dep["errore_euler"][i_dep],
@@ -129,6 +142,14 @@ def classe1(cfg, raw, quick: bool) -> dict:
             "guadagno": dep["errore_euler"][i_dep] / max(dep["errore_midpoint"][i_dep], 1e-300),
         },
     }
+
+    # --- bersaglio locale: le tre metriche a confronto (§3.1) -----------
+    # Sono i numeri annotati sulla figura fig_local_target: il report li cita nel
+    # testo, e devono essere gli stessi. Calcolarli qui e' l'unico modo di
+    # garantirlo — una figura e una frase che si contraddicono sono peggio di
+    # nessuna delle due.
+    import fig_local_target as FLT
+    out["bersaglio_locale"] = FLT.measure(cfg, raw)
 
     # --- struttura e sparsita' dell'NLP (§0, §1.5) ----------------------
     sys.path.insert(0, os.path.join(_ROOT, "guides", "snippets"))
@@ -288,13 +309,24 @@ def classe2(cfg, raw, bagpath: str, quick: bool) -> dict:
         "biforca_mai": bool((seps > BS.TOL_SEP).any()),
     }
     out["biforcazione"] = bif
+
+    # --- integratore sugli orizzonti VERI della bag (§3.2) --------------
+    # Il test sintetico di classe1 misura l'ordine su un arco a velocita'
+    # costante: e' il regime giusto per stimare un ordine, non quello dell'MPC.
+    # Qui la stessa misura gira sulla sequenza di ingressi ottima di orizzonti
+    # realmente risolti, dove omega cambia segno e gli errori si cancellano in
+    # parte invece di sommarsi.
+    import integrator_bag as IB
+    out["integratore_bag"] = IB.measure(cfg, raw, bagpath,
+                                        max_frames=6 if quick else 12,
+                                        verbose=False)
     return out
 
 
 # ---------------------------------------------------------------------------
 # CLASSE 3 — prestazione in anello chiuso (dipende da run e mondo)
 # ---------------------------------------------------------------------------
-def classe3(cfg, raw, bagpath: str, quick: bool) -> dict:
+def classe3(cfg, raw, bagpath: str, quick: bool, integ: dict = None) -> dict:
     import bag_source
     import prediction_error as PE
     import formulation_compare as FC
@@ -327,9 +359,25 @@ def classe3(cfg, raw, bagpath: str, quick: bool) -> dict:
         "mediana_per_k": med, "p95_per_k": p95,
         "offset_k0": off,
         "divergenza_fine_orizzonte": (med[N] - off) if med[N] is not None else None,
-        # il confronto che spiega perche' RK2 non aiuta l'anello chiuso
-        "errore_euler_3s": 1.74e-2, "errore_midpoint_3s": 8.70e-5,
     }
+    # Il confronto che spiega perche' RK2 non aiuta l'anello chiuso. I due
+    # termini erano COSTANTI SCRITTE A MANO (1.74e-2 / 8.70e-5), misurate a
+    # dt=0.20 e citate sotto l'etichetta del dt deployato: appena il profilo si
+    # e' spostato a 0.35 il report ha cominciato a dire una cosa falsa senza che
+    # niente se ne accorgesse. Ora vengono dalla misura sugli orizzonti veri.
+    if integ:
+        out["errore_predizione"]["errore_euler_orizzonte"] = \
+            integ["al_dt_deployato"]["errore_euler_m"]
+        out["errore_predizione"]["errore_midpoint_orizzonte"] = \
+            integ["al_dt_deployato"]["errore_midpoint_m"]
+
+    # --- integratore in anello chiuso (§3.2) ---------------------------
+    # L'errore di predizione e' una cosa, il costo pagato in anello chiuso e'
+    # un'altra: si applica solo il primo ingresso e A* ripianifica. Finora
+    # l'affermazione ("<=1.1% sul costo mediano") non era generata da nessuno
+    # script; ora lo e'.
+    import integrator_bag as IB
+    out["integratore_anello"] = IB.closed_loop(cfg, raw, verbose=False)
 
     # --- path following in theta e vincolo terminale (§1.1, §1.2) -------
     cand = FC.moving_frames(frs)
@@ -503,10 +551,13 @@ def to_markdown(res: dict) -> str:
         L.append(f"\n### Errore di predizione (§7.2.5) — bag `{e['bag']}`, "
                  f"{e['cicli_usati']} cicli\n")
         L.append(f"Offset a k=0: {e['offset_k0']:.4f} m (allineamento temporale, non modello).")
-        L.append(f"**Divergenza a fine orizzonte: {e['divergenza_fine_orizzonte']:.3f} m**, "
-                 f"cioè {e['divergenza_fine_orizzonte']/e['errore_euler_3s']:.0f}× l'errore di "
-                 f"Euler e {e['divergenza_fine_orizzonte']/e['errore_midpoint_3s']:.0f}× quello "
-                 f"del punto medio.\n")
+        riga = f"**Divergenza a fine orizzonte: {e['divergenza_fine_orizzonte']:.3f} m**"
+        if "errore_euler_orizzonte" in e:
+            riga += (f", cioè {e['divergenza_fine_orizzonte']/e['errore_euler_orizzonte']:.0f}× "
+                     f"l'errore di Euler e "
+                     f"{e['divergenza_fine_orizzonte']/e['errore_midpoint_orizzonte']:.0f}× "
+                     f"quello del punto medio, sullo stesso orizzonte")
+        L.append(riga + ".\n")
         if "path_following" in c3:
             pf = c3["path_following"]
             L.append("\n### Path following in θ (§7.2.4)\n")
@@ -558,7 +609,8 @@ def main() -> int:
         res["classe2"] = classe2(cfg, raw, args.bag, args.quick)
     if "classe3" in voci:
         print("[3/3] classe 3 — prestazione in anello chiuso…", flush=True)
-        res["classe3"] = classe3(cfg, raw, args.bag, args.quick)
+        res["classe3"] = classe3(cfg, raw, args.bag, args.quick,
+                                 res.get("classe2", {}).get("integratore_bag"))
     res["meta"]["durata_s"] = time.perf_counter() - t0
 
     os.makedirs(args.out, exist_ok=True)

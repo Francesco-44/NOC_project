@@ -147,6 +147,18 @@ def main() -> int:
     print("  disallineamento fra l'istante di pubblicazione della predizione e")
     print(f"  quello di campionamento della posa: a ~{v_tip:.2f} m/s corrisponde a")
     print(f"  circa {off/max(v_tip,1e-9)*1000:.0f} ms, coerente con il periodo di ciclo misurato.")
+    # Errore di troncamento al passo deployato. Erano COSTANTI SCRITTE A MANO
+    # (1.74e-2 / 8.70e-5), misurate a dt=0.20 e stampate sotto l'etichetta del dt
+    # corrente: appena il profilo si e' spostato a 0.35 la riga ha cominciato a
+    # mentire. La finestra e' 8*dt perche' integrate() pretende che dt la divida.
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "tests"))
+    import test_integrators as _TI
+    _T = 8.0 * cfg.dt
+    _r = _TI.global_error_table((cfg.v_ref, 0.0, cfg.omega_max), T=_T, dts=(cfg.dt,))[0]
+    e_eul, e_mid = _r[1], _r[2]
+
     print()
     if fin.sum() > 2:
         kk = np.arange(N + 1)[fin]
@@ -157,11 +169,12 @@ def main() -> int:
               f"({N*cfg.dt:.1f} s).")
         print()
         print("  Confronto con l'errore di DISCRETIZZAZIONE (tests/test_integrators.py):")
-        print(f"  a dt={cfg.dt} su 3 s, Euler sbaglia 1.74e-2 m, il punto medio 8.7e-5 m.")
-        rap = (med[N] - off) / 1.74e-2
+        print(f"  a dt={cfg.dt} su {_T:.2f} s, Euler sbaglia {e_eul:.2e} m, "
+              f"il punto medio {e_mid:.2e} m.")
+        rap = (med[N] - off) / e_eul
         if rap > 2:
             print(f"  Qui la divergenza e' {rap:.0f}x l'errore di Euler e "
-                  f"{(med[N]-off)/8.7e-5:.0f}x quello del punto medio:")
+                  f"{(med[N]-off)/e_mid:.0f}x quello del punto medio:")
             print("  il termine dominante NON e' l'integratore ma il disallineamento")
             print("  di modello (uniciclo contro G1 a 29 gdl che cammina).")
             print("  E' la spiegazione quantitativa del perche' passare a RK2 migliori")
@@ -178,8 +191,8 @@ def main() -> int:
     p95 = np.array([np.percentile(acc[k], 95) if acc[k] else np.nan for k in range(N + 1)])
     a1.fill_between(kk, 0, p95, alpha=.2, color="#1f77b4", label="p95")
     a1.plot(kk, p50, "o-", color="#1f77b4", lw=2, label="median")
-    a1.axhline(1.74e-2, ls="--", c="#2ca02c",
-               label="Euler truncation error over 3 s (1.7 cm)")
+    a1.axhline(e_eul, ls="--", c="#2ca02c",
+               label=f"Euler truncation error over {_T:.1f} s ({e_eul*100:.1f} cm)")
     a1.set_xlabel("prediction horizon [s]"); a1.set_ylabel("position error [m]")
     a1.set_title("Prediction error against the plant")
     a1.grid(alpha=.3); a1.legend(fontsize=8)

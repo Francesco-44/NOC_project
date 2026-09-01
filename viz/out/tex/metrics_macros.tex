@@ -4,7 +4,7 @@
 %   rigenerare con:  python3 viz/make_results.py
 %              o con: python3 viz/results_tex.py
 %
-%   commit f456981951 on G1_optimal_trajectory   (2026-08-29T14:49:35+00:00)
+%   commit 13b211c9bf on main   (2026-09-01T19:48:02+00:00)
 %
 % CONVENZIONE
 %   - le macro NUMERICHE si espandono in contenuto da math mode:
@@ -28,10 +28,10 @@
 \providecommand{\restab}[1]{\input{\restabdir/#1}}
 
 % --- provenienza e profilo -----------------------------------------------
-\resdef{resCommit}{f456981951} % commit corto
-\resdef{resBranch}{G1\_optimal\_trajectory} % branch
+\resdef{resCommit}{13b211c9bf} % commit corto
+\resdef{resBranch}{main} % branch
 \resdef{resProfile}{\texttt{planner\_params\_g1.yaml}} % file YAML
-\resdef{resDate}{2026-08-29} % data della run
+\resdef{resDate}{2026-09-01} % data della run
 \resdef{resCasadi}{3.7.2}
 \resdef{resNumpy}{1.26.4}
 \resdef{resPython}{3.10.12}
@@ -40,13 +40,18 @@
 % --- parametri deployati (dal profilo, non copiati a mano) ---------------
 \resdef{resN}{15}              % orizzonte in passi
 \resdef{resDt}{0.35}           % passo di campionamento [s]
-\resdef{resHorizonSeconds}{5.2} % N*dt [s]
+\resdef{resHorizonSeconds}{5.25} % N*dt [s]
 \resdef{resVref}{0.27}         % velocita' di crociera [m/s]
 \resdef{resVxMax}{0.40}
+\resdef{resVxMin}{-0.20}       % limite di retromarcia [m/s]
+\resdef{resVxMinAbs}{0.20}     % modulo del limite di retromarcia
 \resdef{resVyMax}{0.20}
 \resdef{resOmegaMax}{0.40}
 \resdef{resWobsDep}{120}       % peso della barriera
 \resdef{resObsRDep}{0.40}      % raggio di sicurezza [m]
+\resdef{resAobsDep}{6.00}      % pendenza della barriera
+\resdef{resObsCheckR}{2.0}     % raggio di ricerca degli ostacoli [m]
+\resdef{resMobs}{8}            % numero fisso di termini di ostacolo
 \resdef{resTauV}{0.00100}      % costante di tempo [s]
 \resdef{resIntegrator}{midpoint}
 \resdef{resPathMode}{time}
@@ -55,16 +60,37 @@
 % --- discretizzazione (ordine di troncamento) ----------------------------
 \resdef{resOrderEuler}{1.00}   % ordine misurato, Euler
 \resdef{resOrderMidpoint}{2.00} % ordine misurato, punto medio
-\resdef{resErrEulerDep}{1.74\times 10^{-2}} % errore a dt deployato [m]
-\resdef{resErrMidpointDep}{8.70\times 10^{-5}}
-\resdef{resIntegratorGain}{200} % rapporto Euler/punto medio
+\resdef{resErrEulerDep}{2.85\times 10^{-2}} % errore a dt deployato [m], arco sintetico
+\resdef{resErrMidpointDep}{2.50\times 10^{-4}}
+\resdef{resIntegratorGain}{114} % rapporto Euler/punto medio
+\resdef{resOrderWindow}{2.80}  % finestra del test sintetico [s]
+
+% --- bersaglio locale: le tre metriche (figura §3.1) ---------------------
+\resdef{resFigWorld}{horseshoe} % mondo della figura
+\resdef{resFigProjGeo}{30.2} % geodetica del bersaglio scelto dalla proiezione [m]
+\resdef{resFigEuclGeo}{30.4} % geodetica del bersaglio scelto dall'argmin euclideo [m]
+\resdef{resFigGeoGeo}{7.4} % geodetica del bersaglio scelto dalla geodetica [m]
+
+% --- integratore su orizzonti veri (bag) ---------------------------------
+\resdef{resIntegBagCycles}{12}        % orizzonti ri-risolti
+\resdef{resIntegBagName}{industrial\_v6} % bag usata
+\resdef{resIntegBagEuler}{2.08\times 10^{-2}} % errore Euler, orizzonti veri [m]
+\resdef{resIntegBagMidpoint}{3.66\times 10^{-4}}
+\resdef{resIntegBagEulerTail}{3.69\times 10^{-2}}
+\resdef{resIntegBagMidpointTail}{7.16\times 10^{-4}}
+\resdef{resIntegBagGain}{57}          % rapporto sugli orizzonti veri
+\resdef{resIntegBagOrderEuler}{1.00}
+\resdef{resIntegBagOrderMidpoint}{2.00}
+\resdef{resIntegBagOmega}{0.54}       % escursione di omega [rad/s]
+\resdef{resLagFloor}{8.01\times 10^{-4}} % spostamento trascurato dal lag [m]
+\resdef{resIntegLoopSpread}{2.3}      % scarto max in anello chiuso [%]
 
 % --- errore di predizione in anello aperto -------------------------------
 \resdef{resPredCycles}{695}    % cicli del bag usati
 \resdef{resPredOffset}{0.0561} % offset a k=0 [m]
 \resdef{resPredDivergence}{0.797} % divergenza a fine orizzonte [m]
-\resdef{resPredVsEuler}{46}    % divergenza / errore Euler
-\resdef{resPredVsMidpoint}{9161} % divergenza / errore punto medio
+\resdef{resPredVsEuler}{38}    % divergenza / errore Euler
+\resdef{resPredVsMidpoint}{2180} % divergenza / errore punto medio
 
 % --- struttura e sparsita' dell'NLP --------------------------------------
 \resdef{resNvar}{141}         % variabili decisionali a N=15
@@ -90,17 +116,17 @@
 
 % --- derivate: AD contro differenze finite -------------------------------
 \resdef{resDerivNvar}{141}      % variabili del punto di prova
-\resdef{resTimeF}{84.0}         % una valutazione di f [us]
-\resdef{resTimeGrad}{118.1}     % un gradiente per AD [us]
-\resdef{resADratio}{1.42}       % AD in valutazioni di f
-\resdef{resADratioMin}{1.37}
-\resdef{resADratioMax}{1.46}
+\resdef{resTimeF}{149.0}        % una valutazione di f [us]
+\resdef{resTimeGrad}{398.6}     % un gradiente per AD [us]
+\resdef{resADratio}{2.41}       % AD in valutazioni di f
+\resdef{resADratioMin}{1.68}
+\resdef{resADratioMax}{3.54}
 \resdef{resFDforwardEvals}{142}
 \resdef{resFDcentralEvals}{282}
 \resdef{resFDforwardErr}{1.27\times 10^{-7}}
 \resdef{resFDcentralErr}{9.84\times 10^{-11}}
 \resdef{resCycleBudget}{125}    % budget di ciclo [ms]
-\resdef{resFDcentralBudget}{19} % quota del budget per FD centrate [%]
+\resdef{resFDcentralBudget}{34} % quota del budget per FD centrate [%]
 
 % --- hessiana esatta contro L-BFGS ---------------------------------------
 \resdef{resIterExactHess}{35}

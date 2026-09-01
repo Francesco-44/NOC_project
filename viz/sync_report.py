@@ -32,6 +32,8 @@ FIGURES = (
     ("pannello1_bag_*.pdf",             "cost_landscape.pdf"),
     ("pannello2_*_merit.pdf",           "decision_plane.pdf"),
     ("fig_grid_profile_g1.pdf",         "fig_grid_profile_g1.pdf"),
+    ("fig_local_target.pdf",            "fig_local_target.pdf"),
+    ("fig_barrier_shape.pdf",           "fig_barrier_shape.pdf"),
 )
 
 DEST_DEFAULT = os.path.join(_REPO, "report_draft", "build_integrated", "Metrics")
@@ -85,6 +87,17 @@ def sync(tex_dir: str, fig_dir: str, dest: str = DEST_DEFAULT,
         dst = os.path.join(dest, "fig", stabile)
         shutil.copyfile(cand[0], dst)
         scritti.append(dst)
+        # \graphicspath elenca Images/ PRIMA di Metrics/fig/, quindi un file con
+        # lo stesso nome in Images/ vince e la figura generata non compare mai.
+        # E' successo con fig_barrier_shape.pdf, residuo del report precedente:
+        # il documento compilava pulito mostrando la figura sbagliata, con
+        # parametri diversi da quelli descritti nel testo due righe sopra. Un
+        # errore che non si annuncia va cercato, non aspettato.
+        ombra = os.path.join(parent, "Images", stabile)
+        if os.path.exists(ombra) and verbose:
+            print(f"  [ATTENZIONE: {stabile} e' ombreggiata da {ombra} — "
+                  f"Images/ precede Metrics/fig/ in \\graphicspath, quindi il "
+                  f"report userebbe QUELLA. Rimuoverla.]", file=sys.stderr)
 
     return scritti
 

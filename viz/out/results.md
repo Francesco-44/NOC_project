@@ -2,8 +2,8 @@
 
 > Non modificare a mano: rigenerare con `python3 viz/make_results.py`.
 
-- data: 2026-08-29T14:49:35+00:00
-- commit: `f456981951` sul branch `G1_optimal_trajectory`  **(albero di lavoro sporco: numeri non riproducibili da questo commit)**
+- data: 2026-09-01T19:48:02+00:00
+- commit: `13b211c9bf` sul branch `main`  **(albero di lavoro sporco: numeri non riproducibili da questo commit)**
 - profilo: `src/a_star_mpc_planner/config/planner_params_g1.yaml`
 - CasADi 3.7.2, numpy 1.26.4, Python 3.10.12
 
@@ -23,7 +23,7 @@ Parametri: N=15, dt=0.35, v_ref=0.27, vx_max=0.4, W_obs=120.0, integrator=midpoi
 | con deriva laterale | 1.00 | 2.00 |
 | rotazione rapida (w=1.0) | 1.00 | 2.00 |
 
-Al dt deployato (0.2) su 3 s: Euler 1.740e-02 m, punto medio 8.700e-05 m — guadagno 200×.
+Al dt deployato (0.35) su 3 s: Euler 2.855e-02 m, punto medio 2.498e-04 m — guadagno 114×.
 
 
 ### Derivate: AD contro differenze finite (§5.2–5.3)
@@ -32,12 +32,12 @@ Al dt deployato (0.2) su 3 s: Euler 1.740e-02 m, punto medio 8.700e-05 m — gua
 |---|---|---|
 | differenze in avanti | 142 | 1.3e-07 |
 | differenze centrate | 282 | 9.8e-11 |
-| **AD inverso** | **1.4** (intervallo 1.4–1.5) | precisione macchina |
+| **AD inverso** | **2.4** (intervallo 1.7–3.5) | precisione macchina |
 
 *Il costo dell'AD è un micro-benchmark su tempi di ~100 μs: si riporta la mediana di più misure con il suo intervallo, perché una singola coppia oscilla sensibilmente. Quello che conta, ed è stabile, è che stia fra 1 e 3 come prevede il §5.3 — non la sua seconda cifra.*
 
 Passi ottimi misurati: avanti 1.49e-08 (teorico √eps = 1.49e-08), centrate 6.06e-06 (teorico eps^(1/3) = 6.06e-06).
-Le differenze centrate userebbero il 19% del budget di ciclo (125 ms).
+Le differenze centrate userebbero il 34% del budget di ciclo (125 ms).
 
 
 ### Hessiana esatta contro L-BFGS (§4.4.4)
@@ -111,7 +111,7 @@ Sul ciclo reale 436: biforca mai = **False**.
 ### Errore di predizione (§7.2.5) — bag `industrial_v6`, 695 cicli
 
 Offset a k=0: 0.0561 m (allineamento temporale, non modello).
-**Divergenza a fine orizzonte: 0.797 m**, cioè 46× l'errore di Euler e 9161× quello del punto medio.
+**Divergenza a fine orizzonte: 0.797 m**, cioè 38× l'errore di Euler e 2180× quello del punto medio, sullo stesso orizzonte.
 
 
 ### Path following in θ (§7.2.4)

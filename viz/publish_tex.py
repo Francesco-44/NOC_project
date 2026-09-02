@@ -15,7 +15,7 @@ Usa la Git Data API tramite `gh`, quindi:
 Uso:
     python3 viz/publish_tex.py --dry-run          # mostra cosa farebbe
     python3 viz/publish_tex.py                    # pubblica
-    python3 viz/publish_tex.py --dir Latex_noc/metrics --branch main
+    python3 viz/publish_tex.py --dir Latex_noc/Metrics --branch main
 """
 from __future__ import annotations
 
@@ -67,7 +67,14 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", default="Relo02/NOC_report")
     ap.add_argument("--branch", default="main")
-    ap.add_argument("--dir", default="Latex_noc/metrics",
+    # La cartella nel repo del report e' Latex_noc/Metrics, con la M maiuscola,
+    # ed e' quella che i .tex citano (\graphicspath{{Metrics/fig/}},
+    # \restabdir{Metrics/tab}). Il default era minuscolo: su un filesystem che
+    # distingue le maiuscole — e l'API di GitHub le distingue — pubblicare
+    # senza --dir creava una SECONDA cartella accanto alla prima invece di
+    # aggiornarla, e il report continuava a leggere quella vecchia senza che
+    # niente segnalasse l'errore.
+    ap.add_argument("--dir", default="Latex_noc/Metrics",
                     help="cartella di destinazione nel repo del report")
     ap.add_argument("--src", default=os.path.join(_HERE, "out", "tex"))
     ap.add_argument("--message", default=None)
@@ -94,10 +101,14 @@ def main() -> int:
     if args.report:
         if not os.path.exists(args.report):
             raise SystemExit(f"manca {args.report}")
-        # un livello sopra --dir: Latex_noc/Metrics -> Latex_noc/Report_metrics.tex,
+        # un livello sopra --dir: Latex_noc/Metrics -> Latex_noc/Report_integrated.tex,
         # che e' l'unico posto dove i percorsi relativi del report risolvono
         # (\graphicspath{{Images/}}, \input{Configuration_files/...},
         # \bibliography{bibliography} sono tutti relativi a quella cartella).
+        #
+        # Report_metrics.tex non passa piu' di qui: e' superato da
+        # Report_integrated.tex e vive dentro Metrics/, con i percorsi riscritti
+        # per quel livello.
         parent = os.path.dirname(D) or D
         locali[f"{parent}/{os.path.basename(args.report)}"] = open(args.report, "rb").read()
 

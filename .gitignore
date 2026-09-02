@@ -33,3 +33,7 @@ viz/bags/
 # (Images/) vivono nel repo del report, Metrics/ e' rigenerato da make_results.
 /report_draft/build_integrated/*
 !/report_draft/build_integrated/Report_integrated.tex
+# Istantanea congelata del sorgente, tenuta di proposito accanto all'originale:
+# senza questa riga la regola qui sopra la ingoierebbe e il backup non sarebbe
+# versionato ne' presente in un clone nuovo -- un backup che non c'e'.
+!/report_draft/build_integrated/Report_integrated_backup.tex

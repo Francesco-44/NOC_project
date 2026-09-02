@@ -915,6 +915,18 @@ def sec_terminal(res: dict, M: Macros) -> list[str]:
     fe = M.add("resTermFeasible", yesno(d["sempre_ammissibile"]))
     lo = M.add("resTermCostMin", pc(d["costo_relativo_min"], 1), "costo minimo [%]")
     hi = M.add("resTermCostMax", pc(d["costo_relativo_max"], 1), "costo massimo [%]")
+    # Cifra assoluta: e' quella che si puo' citare senza ingannare. Vedi il
+    # commento in make_results._classe3. Guardata con .get() perche' una cache
+    # generata prima di questa modifica non la contiene.
+    has_abs = all(k in d for k in ("costo_assoluto_min", "costo_assoluto_max",
+                                   "J_min", "J_max"))
+    if has_abs:
+        am = M.add("resTermAbsMin", fx(d["costo_assoluto_min"], 1),
+                   "aumento assoluto minimo di J*")
+        ax = M.add("resTermAbsMax", fx(d["costo_assoluto_max"], 1),
+                   "aumento assoluto massimo di J*")
+        jl = M.add("resTermJMin", fx(d["J_min"], 1), "J* piu' piccolo fra i cicli")
+        jh = M.add("resTermJMax", fx(d["J_max"], 1), "J* piu' grande fra i cicli")
     # Il lag discreto e' 1 - exp(-dt/tau): con tau << dt vale 1, cioe' v(k+1)=u(k).
     tau = float(M.params.get("tau_v", 0.0)) or 1e-12
     dtv = float(M.params.get("dt", 0.0))
@@ -937,11 +949,15 @@ def sec_terminal(res: dict, M: Macros) -> list[str]:
         f"set is not empty in practice and recursive feasibility is not obtained at the "
         f"price of an infeasible program.",
         "",
-        f"The cost of imposing it, measured as the relative increase of the optimal "
-        f"objective, ranges from ${lo}\\%$ to ${hi}\\%$ depending on the cycle. The upper "
-        f"end is paid where the horizon was being used to keep moving, which is the "
-        f"expected trade: a terminal stop constraint buys the stability argument by "
-        f"spending part of the horizon on braking.",
+        (f"The cost of imposing it is best read in absolute terms: the optimal objective "
+         f"rises by between ${am}$ and ${ax}$ across the sampled cycles, whose objectives "
+         f"themselves range from ${jl}$ to ${jh}$. The same increases therefore read as "
+         f"anything between ${lo}\\%$ and ${hi}\\%$, which is a statement about the "
+         f"denominator rather than about the constraint. The plan has to predict its own "
+         f"braking, and the braking is discarded at the next cycle."
+         if has_abs else
+         f"The cost of imposing it, measured as the relative increase of the optimal "
+         f"objective, ranges from ${lo}\\%$ to ${hi}\\%$ depending on the cycle."),
         "",
     ]
     if degenerate:

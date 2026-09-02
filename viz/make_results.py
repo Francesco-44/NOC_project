@@ -422,13 +422,21 @@ def classe3(cfg, raw, bagpath: str, quick: bool, integ: dict = None) -> dict:
             "iter_theta": float(a["iter_theta"].mean()),
             "velocita_inutilizzata_da_v_ref": float(1.0 - cfg.v_ref / cfg.vx_max),
         }
+        # Il costo RELATIVO da solo inganna: J* varia di quasi due ordini di
+        # grandezza fra i cicli, quindi lo stesso aumento assoluto si legge come
+        # +1% o +40% a seconda del denominatore. Si registrano entrambi, piu' il
+        # fondo scala di J*, cosi' il report puo' citare la cifra che significa
+        # qualcosa invece di quella che fa impressione.
+        dJ = a["J_con_terminale"] - a["J_senza_terminale"]
         out["vincolo_terminale"] = {
             "slack_max": float(a["slack_terminale"].max()),
             "sempre_ammissibile": bool(a["slack_terminale"].max() < 1e-6),
-            "costo_relativo_min": float(((a["J_con_terminale"] - a["J_senza_terminale"]) /
-                                         np.maximum(np.abs(a["J_senza_terminale"]), 1e-9)).min()),
-            "costo_relativo_max": float(((a["J_con_terminale"] - a["J_senza_terminale"]) /
-                                         np.maximum(np.abs(a["J_senza_terminale"]), 1e-9)).max()),
+            "costo_relativo_min": float((dJ / np.maximum(np.abs(a["J_senza_terminale"]), 1e-9)).min()),
+            "costo_relativo_max": float((dJ / np.maximum(np.abs(a["J_senza_terminale"]), 1e-9)).max()),
+            "costo_assoluto_min": float(dJ.min()),
+            "costo_assoluto_max": float(dJ.max()),
+            "J_min": float(a["J_senza_terminale"].min()),
+            "J_max": float(a["J_senza_terminale"].max()),
         }
     return out
 

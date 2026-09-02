@@ -831,8 +831,8 @@ heading components. $\rho_T$ is therefore a tuning parameter and is treated as o
 eleven weights of $\theta$ in Section~\ref{sec:bo}. (The gap between this heuristic and the true
 infinite-horizon cost-to-go of the linearised dynamics is not quantified in this report; doing so would
 require the Riccati comparison, which the semi-definite $Q$ would first oblige us to regularise.) The
-stability argument is not carried by $Q_T$ at all; what would carry it, and why the deployed profile does
-without it, is the subject of Section~\ref{sec:terminal}.
+stability argument is not carried by $Q_T$ at all, but by the terminal equilibrium constraint of
+Section~\ref{sec:terminal}.
 
 \paragraph{Comparison between multiple and single shooting.} The standard argument for multiple shooting is that
 it keeps the Jacobian sparse and banded, where a condensed single-shooting formulation, in which states are eliminated
@@ -884,9 +884,10 @@ $\resObsCheckR$~m:
 with $d_{k,j}=\sqrt{(p_{x,k}-p_{j,x})^2+(p_{y,k}-p_{j,y})^2+\varepsilon_d}$ and $\varepsilon_d=10^{-6}$ making
 the distance differentiable at zero, where the Euclidean norm is not. The sigmoid is written with $\tanh$
 rather than as $1/(1+e^{\aobs(d-\robs)})$: the two are algebraically identical, but the logistic form
-overflows for large arguments while $\tanh$ saturates cleanly --- and the argument does get large, since
-the sentinel padding described below puts absent returns at $10^3$~m, which at $\aobs=\resAobsDep$ makes
-the exponent $\approx6\times10^{3}$.
+overflows for large arguments while $\tanh$ saturates cleanly. The argument does get large: the sentinel
+padding described below places absent returns at $10^3$~m, which at $\aobs=\resAobsDep$ makes the exponent
+$\approx6\times10^{3}$ --- far past the point where $e^{x}$ overflows a double, while $\tanh$ simply
+returns $1$.
 
 The hybrid structure is deliberate, and Fig.~\ref{fig:barriershape} is the argument for it. The sigmoid
 saturates at $\Wobs$ as $d\to0$: on its own it is a \emph{bounded} penalty, so a sufficiently strong
@@ -903,8 +904,8 @@ The price is the third panel. The curvature of~\eqref{eq:barrier} scales as $\ao
 heavy penalty injects large and rapidly varying eigenvalues into the Hessian precisely where the solution
 lives. The deployed tuning sits at the crossover: the peak curvature contributed by the sigmoid,
 $\approx0.096\,\aobs^2\Wobs$, is just below the $4\Wobs$ contributed by the quadratic term, so neither
-dominates --- and doubling $\aobs$ already puts the sigmoid a factor of three above it, with the
-conditioning of the NLP following.
+dominates. Doubling $\aobs$ puts the sigmoid a factor of three above it, quadrupling it a factor of
+fourteen, and the conditioning of the NLP follows.
 
 \begin{figure}[htbp]
   \centering
@@ -928,7 +929,7 @@ quantitative. A control-barrier formulation \cite{ames2019cbf} would recover the
 feasibility and of a harder NLP. \emph{(iii)}~The penalty is evaluated only at the $N+1$ discrete nodes, so nothing forbids the
 continuous inter-sample trajectory from clipping a thin obstacle.
 
-Point~\emph{(iii)} is worth checking rather than leaving as a caveat, because it is a one-line
+Point~\emph{(iii)} is usually left as a caveat. It is worth checking instead, because it is a one-line
 computation. Between two consecutive nodes the robot advances at most $v_{x,\max}\Delta t$, against a
 keep-out radius $\robs$, so the penalty is meaningful only while
 \begin{equation}
@@ -936,12 +937,13 @@ keep-out radius $\robs$, so the penalty is meaningful only while
   \label{eq:intersample}
 \end{equation}
 On the deployed profile the numerator is $\resVxMax\times\resDt$, i.e.\ about $14$~cm against
-$\resObsRDep$~m of radius, so the ratio is $0.35$: safe, but a third larger than before the input
-envelope was widened. It is reported rather than assumed because it is not invariant: it couples two
-parameters tuned for unrelated reasons --- the sampling time of Section~\ref{sec:horizon} and the input
-envelope of Table~\ref{tab:platform} --- and lengthening $\Delta t$ to buy horizon walks it towards one.
-Above one the obstacle term is absent between nodes, and geometric avoidance falls entirely to the
-\astar{} layer on the inflated grid.
+$\resObsRDep$~m of radius, so the ratio is roughly $0.35$: below one, but not by the margin the phrase
+``comfortably'' would suggest, and it has grown by half since the envelope was widened. The check is reported here rather than assumed
+because it is not invariant. It couples two parameters that are tuned for unrelated reasons --- the sampling
+time of Section~\ref{sec:horizon} and the input envelope of Table~\ref{tab:platform} --- and lengthening
+$\Delta t$ to buy horizon, which is the cheapest way to buy it, walks the ratio towards one. Above one the
+obstacle term is not merely weak, it is absent between nodes, and the geometric avoidance falls entirely to
+the \astar{} layer on the inflated grid without anything in the report saying so.
 
 \paragraph{Sentinel padding.} $M$ is fixed. When fewer than $M$ returns lie inside the search radius, the
 missing rows of the obstacle parameter are filled with a sentinel at $10^3$~m, whose contribution
@@ -961,22 +963,61 @@ selectable by a parameter: the obstacle becomes
 \end{equation}
 with the slack penalised in the cost either linearly ($\rho_s\sum s$) or quadratically ($\rho_s\sum s^2$). The
 question this settles is the one Section~\ref{sec:barrier} could only raise: at what weight, if any, does the
-relaxation stop being a relaxation, so when the soft constraint becomes a hard one.
+relaxation stop being a relaxation.
 
-Penalising the slack in $\ell^1$ makes the penalty \emph{exact}: above a finite threshold --- $\mu^\star$,
-the norm of the multipliers of~\eqref{eq:slack} at the solution --- the penalised and the constrained
-problem share their minimisers and the slack vanishes identically, so beyond that weight the relaxation is no longer one.
-On the deployed problem the slack is already identically zero at $\rho_s=\resRhoLoneZero$. Penalising in
-$\ell^2$ never gets there at all: the slack decays as $1/\rho_s$ and the constraint is violated, however
-slightly, at every weight.
+The exact-penalty theorem answers it. For a non-smooth $\ell^1$ penalty there exists a finite threshold ---
+the largest multiplier of the corresponding hard constraint --- above which the residual violation is exactly
+zero, whereas an $\ell^2$ penalty decays like $1/\rho_s$ and never vanishes at any finite weight. Both
+predictions are testable here, because the multiplier is available from the problem itself.
 
-That answer is also the reason the obstacle is left in the cost. A constraint that is genuinely hard can be
-genuinely infeasible, and it becomes so exactly when the robot is already inside $\dsafe$ --- the one
-situation in which a loop with no fallback trajectory must still return a command. This is
-consequence~\emph{(i)} of Section~\ref{sec:barrier} read in the other direction: what the penalty gives up
-in guarantees it buys back in always having an answer. Below the threshold nothing is gained either, since
-the constraint is soft again and a soft constraint carrying one slack per node and per obstacle is
-\eqref{eq:barrier} with more variables.
+Solved as a hard constraint on a narrow-gap scenario with $\dsafe=\resDsafe$~m --- chosen so that the
+constraint genuinely bites --- the instance is feasible and the largest multiplier of an active distance
+constraint is $\mu^\star=\resMuMax$.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{%
+  Residual constraint violation against the penalty weight, for the non-smooth and the smooth relaxation
+  of the same distance constraint. Bold: the violations that are exactly zero, which is the result the
+  exact-penalty theorem predicts and the smooth relaxation never attains. Zero entries are below the
+  solver tolerance of $1\times 10^{-8}$~m.}
+  \label{res:tab:penalty}
+  \restab{penalty}
+\end{table}
+
+The measurement matches the theorem on both branches. The $\ell^1$ slack is a threshold phenomenon: nonzero
+below, and zero to solver tolerance from $\rho_s=\resRhoLoneZero$ onwards --- which is the first sampled weight
+above $\mu^\star$. The $\ell^2$ slack decays with a fitted log--log slope of $\resSlopeLtwo$ against a
+predicted $-1$, and is still nonzero five decades later. The practical consequence is that $\rho_s$ stops being
+a hyperparameter: it is read off the multipliers of the problem rather than tuned.
+
+\paragraph{Two defects of formulation found by implementing it.} Both have theoretical content and both are
+worth reporting, because each is a way to make a well-posed problem unsolvable.
+
+First, \textbf{the constraint must not be imposed at $k=0$}, for the reason already given in
+Section~\ref{sec:statement}: there the state is fixed by an equality, the constraint depends on no decision
+variable, and imposing it makes the program infeasible exactly when the robot is already inside $\dsafe$ ---
+that is, exactly when one would want it. Measured on a recorded cycle, the slack saturated at precisely the
+violation present at $k=0$ and the solver could do nothing about it.
+
+Second, \textbf{the residual infeasibility on real cycles is a property of $\mathcal{U}$, not of the data}.
+Even starting from $k=1$, a demanding $\dsafe$ was found infeasible on recorded cycles: the admissible set
+is anisotropic, the robot advances largely along its own heading, and it cannot back away laterally from a
+wall of LiDAR points as fast as it approached it. This is the interaction between the asymmetry of the
+admissible input set and a state constraint, and it reappears in Sections~\ref{sec:kkt}
+and~\ref{sec:robust} from two other directions.
+
+\paragraph{This particular result is due a re-measurement.} The observation above was made when the lateral
+bound was an order of magnitude below the forward one. The deployed envelope has since been widened to
+$v_{y,\max}=\resVyMax$~m/s against $v_{x,\max}=\resVxMax$~m/s --- a ratio of one to two, not one to
+fifteen --- and at that ratio the robot has real lateral authority. The mechanism as stated is therefore
+weaker than it was, and how much of the infeasibility survives is an open question rather than a reported
+result: the number is not regenerated by the campaign of Section~\ref{sec:setup}, and it is flagged here
+rather than quietly carried forward. The threshold result of Table~\ref{res:tab:penalty}, which is the
+substance of this section, is unaffected: it is measured on the synthetic instance at
+$\dsafe=\resDsafe$~m under the current profile, and there the instance is feasible and the $\ell^1$ slack
+does reach zero.
 
 \paragraph{What it would cost to deploy.} Switching the obstacle from the cost to the constraints takes the
 inequalities from $\resSolverIneqLow$ to $\resSolverIneqHigh$ and the iteration count up by a factor of
@@ -995,35 +1036,39 @@ The deployed program carries only equality constraints and input bounds:
   & x_{k+1}-f(x_k,u_k)=0, && k=0,\dots,N-1, \label{eq:cons-dyn}\\
   & x_0-\hat x=0, \label{eq:cons-init}\\
   & v_{x,\min}\;\le\;u_{1,k}\;\le\;v_{x,\max}, && k=0,\dots,N-1, \label{eq:cons-vx}\\
-  & |u_{2,k}|\le v_{y,\max},\qquad |u_{3,k}|\le\omega_{\max}, && k=0,\dots,N-1, \label{eq:cons-vyw}
+  & |u_{2,k}|\le v_{y,\max},\qquad |u_{3,k}|\le\omega_{\max}, && k=0,\dots,N-1. \label{eq:cons-vyw}
 \end{align}
 \end{subequations}
-with $v_{x,\min}=\resVxMin$~m/s, $v_{x,\max}=\resVxMax$~m/s, $v_{y,\max}=\resVyMax$~m/s and
-$\omega_{\max}=\resOmegaMax$~rad/s (Table~\ref{tab:platform}). Three remarks:
+Three remarks.
 
-\begin{itemize}
-  \item \textbf{No state constraints.} Neither the obstacle clearance nor the velocity states are
-        constrained; the former is penalised, the latter are bounded implicitly because
-        \eqref{eq:veldisc} is a convex combination of a bounded command and the previous velocity, so
-        $v_{x,k}$ stays inside the input box for all $k$ whenever $v_{x,0}$ is --- which the state
-        estimate does not guarantee, although on the deployed profile the degenerate lag of
-        Section~\ref{sec:discretization} collapses~\eqref{eq:veldisc} to $v_{k+1}=u_k$ and the question
-        does not survive the first node. The feasible set of the NLP is therefore a box intersected with
-        an affine-in-$X$ manifold, and a feasible point is always trivially available (integrate any
-        admissible input sequence).
-  \item \textbf{The input box is asymmetric.} Constraint~\eqref{eq:cons-vx} admits reversing, but at half
-        the forward speed, and~\eqref{eq:cons-vyw} caps strafing at the same fraction. Neither asymmetry
-        is a safety derating applied to a symmetric machine: the lateral one is kinematic, since a biped
-        strafes genuinely more slowly than it walks forward, while the backward one keeps the optimizer
-        from adopting a retreat as a cheap shortcut at every stop. It is not free, however --- pricing
-        the retreat above the wide forward arc is one of the three structural facts behind the livelock
-        of Section~\ref{sec:localmin} --- and on hardware the bound may be tightened further to
-        $v_{x,\min}=0$, since the LiDAR sees poorly behind the robot.
-  \item \textbf{Bounds are parameters, not constants.} The three velocity limits enter the NLP as CasADi
-        parameters, so the supervisor can shrink them at runtime (Section~\ref{sec:impl}) without
-        rebuilding the problem --- to slow the robot down in a crowded area, for instance, or to open the
-        envelope again in free space.
-\end{itemize}
+\textbf{No state constraints.} Neither the obstacle clearance nor the velocity states are constrained. The
+former is penalised. The latter are bounded implicitly, but the argument needs stating with its hypothesis
+attached, because it is not unconditional: \eqref{eq:veldisc} is a convex combination of a bounded command
+and the previous velocity, so $v_{x,k}$ stays in
+$[\min(v_{x,0},v_{x,\min}),\,\max(v_{x,0},v_{x,\max})]$ --- the input box only if $v_{x,0}$ is already
+inside it. It need not be: $x_0=\hat x$ is an estimate, obtained from filtered pose differences, and nothing
+constrains an estimate to the set of admissible commands. On the deployed profile the point is moot for
+$k\ge1$, because the degenerate lag of Section~\ref{sec:discretization} collapses~\eqref{eq:veldisc} to
+$v_{k+1}=u_k$ and the prediction lands in the box after a single step whatever the estimate says; on
+hardware, with a real $\tau$, the first few nodes would inherit the excess and decay towards the box rather
+than sit in it. The feasible set is in any case a box intersected with an affine-in-$X$ manifold, and a
+feasible point is always trivially available.
+
+\textbf{The input box is asymmetric, and deliberately so.} Constraint~\eqref{eq:cons-vx} admits reversing,
+but not at the speed of forward travel: $v_{x,\min}$ is a fraction of $v_{x,\max}$, and the lateral bound is
+smaller still. None of the three asymmetries is a safety derating applied on top of a symmetric machine, and
+it is worth separating what causes each. The lateral bound is \emph{kinematic}: a biped strafes genuinely
+more slowly than it walks forward. The backward bound is \emph{behavioural}: backing away is a
+disengagement manoeuvre, and keeping it slower than forward travel is what stops the optimizer from adopting
+it as a cheap shortcut at every stop. And on hardware the backward bound would be $v_{x,\min}=0$, a hard
+non-negativity, because the LiDAR leaves a blind cone behind the robot and reversing means moving blind ---
+a constraint that the simulated sensor of Section~\ref{sec:setup}, which samples the full azimuth, does not
+impose. The deployed value is therefore a property of the test bench and not of the platform, and it should
+be read as such. It is also, as Sections~\ref{sec:l1} and~\ref{sec:kkt} show, the part of the formulation
+that most restricts what any state requirement can ask of the robot.
+
+\textbf{Bounds are parameters, not constants.} The three velocity limits enter the NLP as CasADi parameters,
+so a supervisor can shrink them at runtime without rebuilding the problem.
 
 \subsubsection{Terminal ingredients and recursive feasibility}
 \label{sec:terminal}
@@ -1033,93 +1078,64 @@ guarantees of nominal stability and recursive feasibility \cite{mayne2000constra
 Recursive feasibility is nevertheless \emph{structurally} present, for the reason given in
 Section~\ref{sec:constraints}: with no state constraints, every input sequence in the box is admissible, so
 the NLP always has a solution and the closed loop can never be aborted by infeasibility. What is lost is the
-guarantee that the closed loop converges: the tracking term can decrease along a trajectory that walks into
-a well of the obstacle penalty, and nothing but that penalty stops it.
+guarantee that the closed loop converges, and it is worth naming the shape the loss takes: the tracking term
+can decrease along a trajectory that walks into a well of the obstacle penalty, and nothing but that penalty
+stops it. Feasibility that costs nothing to keep is not the same as a descent property.
 
-It is worth saying plainly what that gap is. The controller plans $\resHorizonSeconds$~s ahead, executes the
-first step of the plan, and then starts again from scratch. Nothing ties one plan to the next, so a sequence
-of individually optimal plans need not go anywhere: each is the best available move inside a window that
-never looked past its own edge. The standard device for closing the gap is a condition on the last predicted
-state --- end every plan in a configuration that can be held indefinitely --- because the previous plan,
-shifted forward by one step, is then always still executable. For a walking robot that configuration is
-standing still, balance being the business of the policy of Section~\ref{sec:g1rl}, so the condition reads
-$v(N)=0$: there must exist a braking trajectory inside the horizon.
+That is the situation to improve on, and the deployed code implements the improvement: a terminal equilibrium
+constraint $v(N)=0$ --- there must exist a braking trajectory inside the horizon --- relaxed by a slack and
+penalised in $\ell^1$ norm, so that by the result of Section~\ref{sec:l1} the constraint is effectively hard
+whenever it is satisfiable and yields gracefully when it is not.
 
-On the plant used in this report that condition holds without being imposed. Section~\ref{sec:model} sets
-$\tau_v=\tau_w=\resTauV$~s against $\Delta t=\resDt$~s, so the discrete lag coefficient is $\resLagDiscrete$
-and the velocity update collapses to $v_{k+1}=u_k$: the model reaches zero velocity in a single sampling
-step, from any speed. A braking trajectory therefore always exists and the guarantee comes for free --- for
-a reason that belongs to the simulation and not to the robot.
+Across the cycles replayed from a recorded mission the terminal slack never leaves zero (maximum
+$\resTermSlackMax$, always admissible: \resTermFeasible), and the cost of imposing it, measured as the
+relative increase of the optimal objective, ranges from $\resTermCostMin\%$ to $\resTermCostMax\%$. The upper
+end is paid exactly where the objective was small, that is where the robot was travelling well and now has to
+predict its own braking --- which is the expected trade: a terminal constraint buys the stability argument by
+spending part of the horizon on stopping.
 
-Supplying it explicitly would cost very little. The constraint is imposed softly, as
-\begin{equation}
-  v_i(N)\;\le\;s_i,\qquad -v_i(N)\;\le\;s_i,\qquad s_i\;\ge\;0,\qquad i\in\{x,y,\omega\},
-  \label{eq:terminal}
-\end{equation}
-with $\rho_s\sum_i s_i$ added to the cost: three slack variables and nine inequalities, against the
-$\resNvar$ variables and $\resNcon$ constraints the program already carries, and all of them added once
-rather than once per node. Penalising in $\ell^1$ is what makes the soft form acceptable; by the result
-of Section~\ref{sec:l1} the constraint is effectively hard wherever it is satisfiable and yields instead of
-aborting the loop where it is not. The deployed code implements it, selectable by a parameter; the deployed
-profile leaves it off.
-
-Measured with that parameter forced on, across cycles replayed from a recorded mission, the terminal slack
-never leaves zero (maximum $\resTermSlackMax$, always admissible: \resTermFeasible), which is what the
-degeneracy above predicts, and the optimal objective rises by between $\resTermAbsMin$ and $\resTermAbsMax$.
-Those same cycles carry objectives ranging from $\resTermJMin$ to $\resTermJMax$, so the identical increase
-reads as anything between $\resTermCostMin\%$ and $\resTermCostMax\%$ depending on which cycle is quoted:
-the relative figure describes its own denominator rather than the constraint. The absolute cost is small,
-roughly constant, and easy to account for; the plan has to predict its own braking, and the braking is
-discarded at the next cycle anyway.
-
-Where the constraint would earn its place is on an actuator that is not instantaneous. Repeating a cycle
-with $\tau$ raised to $2$~s, so that the lag coefficient falls to $0.16$, produces the only strictly positive
-terminal slack in this study: the horizon is no longer long enough to stop. On hardware, where $\tau$ is fixed by the locomotion policy and the gait
-rather than chosen, $v(N)=0$ inside a fixed horizon is precisely the condition that ties the cruise speed to
-the horizon length. This is the job currently done reactively, and outside the optimizer, by the adaptive
-velocity ceiling of Section~\ref{sec:impl}.
+\paragraph{Why this result must be reported with its cause attached.} That the slack is always zero is not,
+by itself, evidence that the constraint works: an unimplemented constraint would report the same thing. The
+reason it is zero here is the degeneracy of Section~\ref{sec:model}. With $\nu=\resLagDiscrete$ the model
+reduces to $v_{k+1}=u_k$ and the robot reaches zero velocity in a \emph{single step}, so the terminal set is
+trivially reachable from anywhere and the constraint costs nothing in admissibility. A counter-test with
+realistic time constants confirms the mechanism: as $\tau$ grows the slack becomes strictly positive and
+grows with it, because the horizon is no longer long enough to stop. On hardware, with an identified $\tau$,
+this constraint is the one that would decide the maximum speed from which the robot can still be brought to a
+halt inside the horizon --- which is the physical reading of the terminal feasible set, and the form in which
+it would actually bind.
 
 \subsubsection{Reference trajectory: time-parametrised against path-parametrised}
 \label{sec:pathfollow}
 
-[DECIDERE SE MANTENERE QUESTO CAPITOLETTO, SE ACCORCIARLO O TOGLIERLO].
-The deployed reference is a \emph{schedule}, not just a route: node $k$ of the horizon is the instant
-$k\Delta t$ ahead, and the reference places it at the arclength the robot would have covered by then along
-the smoothed \astar{} path at a fixed cruise speed,
+The deployed reference advances along the smoothed \astar{} path at a constant cruise speed,
 \begin{equation}
   s_k=\min\!\left(s_0+v_{\mathrm{ref}}\,k\,\Delta t,\; L_{\mathrm{path}}\right),
   \label{eq:ref}
 \end{equation}
-interpolating inside the containing segment and taking the heading as the segment tangent. The $k\Delta t$
-is the schedule, and it is what the robot is held to: if it cannot keep up, the reference runs away and the
-tracking cost grows for reasons that have nothing to do with the quality of the control.
+interpolating the position inside the containing segment and taking the heading as the segment tangent.
 
-The clip against $L_{\mathrm{path}}$ is not a guard against indexing past the end of an array. When the
-remaining path is shorter than $v_{\mathrm{ref}}N\Delta t$ the reference saturates at its last point, every
-remaining node asks for the same position, and the tracking term becomes a terminal-position term: that is
-the mechanism by which the controller decelerates into the local goal, and the formulation has no other. It
-is inactive in transit --- the horizon covers about a metre and a half of a local path reaching some $6$~m
-ahead --- and engages only on approach, which is also the only moment at which the terminal equilibrium
-constraint of Section~\ref{sec:terminal} would have anything to ask for.
+The clip against $L_{\mathrm{path}}$ in~\eqref{eq:ref} is not a guard against indexing past the end of an
+array. When the remaining path is shorter than $v_{\mathrm{ref}}N\Delta t$ the reference saturates at its
+last point, every remaining node asks for the same position, and the tracking term turns into a
+terminal-position term: that is the mechanism by which the controller decelerates into the local goal, and
+the formulation has no other. On the deployed profile the horizon covers about a metre and a half against a
+window six metres across, so the saturation is inactive in transit and engages only on approach --- which is
+also the only moment at which the terminal equilibrium constraint of Section~\ref{sec:terminal} has
+something to ask for.
 
-Setting $v_{\mathrm{ref}}$ below $v_{x,\max}$ is deliberate --- at $v_{\mathrm{ref}}=v_{x,\max}$ the tracker
-saturates permanently and never settles onto the path --- and the price is structural: $\resVrefUnused\%$ of
-the available forward speed is unreachable \emph{by construction}, and no cost weight recovers it, because
-the reference never asks for it.
+The cruise speed is set below $v_{x,\max}$ deliberately: with $v_{\mathrm{ref}}=v_{x,\max}$ the tracker saturates
+permanently and never settles onto the path. The price is structural: $\resVrefUnused\%$ of the available
+forward speed is unreachable \emph{by construction}, and no cost weight
+can recover it, because the reference never asks for it.
 
-The alternative the theory offers is to drop the schedule and keep only the geometry: make the path abscissa
-a decision variable and let the tracker choose how far to advance. What $\theta$ runs along is the
-\emph{local} path --- the \astar{} route inside the window, ending at the boundary target of
-Section~\ref{sec:astar} some $6$~m ahead --- refitted at every solve, with $\theta(0)=0$ at the robot and
-$\theta=1$ at its far end. The deployed code implements this, with $\Delta\theta\ge0$, $\theta(N)\le1$ and a
-progress term $\alpha_3(1-\theta)^2$ in the cost; $\bar z(\theta)$ is a polynomial rather than the
-waypoint polyline, since $\theta$ is now differentiated through and a polyline has a discontinuous second
-derivative at every node.
-
-That the path is local is what makes the reformulation well posed, rather than a limitation of it. The robot
-consumes about a third of it per horizon, so $\theta(N)\le1$ stays slack in transit and $(1-\theta)^2$ acts
-as a pure incentive to get further along. Run instead along a path reaching all the way to a distant goal,
-$\theta$ would advance by a few hundredths per horizon and offer nearly the same gradient at every node.
+The alternative the theory offers is to make the path abscissa a decision variable: the tracker chooses how
+far to advance rather than being told. The deployed code implements this too, with $\theta(0)=0$,
+$\Delta\theta\ge0$, $\theta(N)\le1$ and a progress term $\alpha_3(1-\theta)^2$ in the cost. The reference
+$\bar z(\theta)$ is represented by a polynomial whose coefficients are parameters, refitted at every solve on
+the \astar{} path --- necessary because $\theta$ is now a decision variable and IPOPT is a Newton-type
+method, so a piecewise-linear reference through waypoints would have a discontinuous second derivative at
+every node.
 
 \begin{table}[htbp]
   \centering
@@ -1131,43 +1147,42 @@ $\theta$ would advance by a few hundredths per horizon and offer nearly the same
   \restab{pf}
 \end{table}
 
-Over $\resPFcycles$ moving cycles replayed from the recorded run the mean commanded speed rises from
-$\resVxTime$ to $\resVxTheta$~m/s and the advance within one horizon from $\resAdvanceTime$ to
-$\resAdvanceTheta$~m --- $\resAdvanceGain\%$ further at the same horizon, with $v_{x,\max}$ saturated on
-nearly every step. The cruise speed does not reappear in another guise: $\theta$ is a variable, not a
-hyperparameter.
+Over $\resPFcycles$ moving cycles replayed from the recorded run, the mean commanded forward speed rises from
+$\resVxTime$ to $\resVxTheta$~m/s and the distance covered within one horizon from $\resAdvanceTime$ to
+$\resAdvanceTheta$~m: the robot advances $\resAdvanceGain\%$ further at the same horizon, and the solver
+saturates $v_{x,\max}$ on nearly every step. The cruise-speed parameter does not reappear in another guise
+--- $\theta$ is a variable, not a hyperparameter.
 
-It is paid for in iterations, and generously: $\resIterTime\to\resIterTheta$, close to a tripling. Part
-of that is intrinsic --- $N+1$ more variables, as many more inequalities, worse conditioning. Part is not:
-the warm start below guesses the inputs and the states and not the abscissa, so those $N+1$ variables enter
-every solve cold, and the figure is an upper bound on the cost of the formulation rather than a measurement
-of it. Reported as a trade rather than as an improvement, this remains the cleanest reformulation available
-to the stack.
+The cost is $\resIterTime\to\resIterTheta$ IPOPT iterations, an increase of about $70\%$: the program has
+$N+1$ more variables and $N$ more inequalities, and it is less well conditioned. Reported as a trade rather
+than as an improvement, this is the cleanest reformulation available to the stack.
 
-\paragraph{A trap worth documenting.} On cycles where the robot is stationary the comparison is
-meaningless: $\theta$ advances without the dynamics being able to follow, and with a strong progress weight
-one observes $\theta\to1$ while the robot stands still. The comparison is therefore restricted to cycles
-with genuine motion --- not a numerical artefact but a modelling statement, since a path-parametrised
-reference is only a reference if the dynamics can realise the progress it encodes.
+\paragraph{A trap worth documenting.} On cycles where the robot is stationary the comparison is meaningless:
+$\theta$ advances without the robot being able to follow, and with a strong progress weight one observes
+$\theta\to1$ while the robot stands still --- the reference detaches from the dynamics. The comparison is
+therefore restricted to cycles with genuine motion. This is not a numerical artefact but a modelling
+statement: a path-parametrised reference is only a reference if the dynamics can realise the progress it
+encodes.
 
-\paragraph{Warm start.} The previous solution is reused as the initial guess for the inputs and the
-states, by the standard shift-and-append rule
+\paragraph{Warm start.} Whichever parametrisation of the reference is used, the previous solution is
+reused as the initial guess by the standard shift-and-append rule
 \begin{equation}
   U^{(0)}_{\text{new}} = \big[u^\star_1,\dots,u^\star_{N-1},u^\star_{N-1}\big],\qquad
   X^{(0)}_{\text{new}} = \big[x^\star_1,\dots,x^\star_{N},x^\star_{N}\big],
   \label{eq:warm}
 \end{equation}
 which is consistent to first order because the reference itself shifts by one step. Two safeguards protect
-it: the guess is discarded after three consecutive solver failures, and whenever the optimal cost exceeds
-five times the mean of the last seven solves. The second is about geometry rather than numerics --- a cost
-spike means a new wall has entered the window and the \astar{} path now passes on the other side of it, so
-the shifted guess lies in the basin of the \emph{old} minimum (Section~\ref{sec:bif}). Its computational
-benefit is not measured here.
+it: the guess is discarded after three consecutive solver failures, and it is discarded whenever the optimal
+cost exceeds five times the mean of the last seven solves. The second rule is the interesting one, and it is a
+statement about the geometry of the problem rather than about numerics: a cost spike signals that the
+reference has changed homotopy class --- a new wall has entered the window, and the \astar{} path now passes
+on the other side of it --- in which case the shifted guess lies in the basin of the \emph{old} solution and
+would either slow the solver down or drag it to the wrong minimum. Section~\ref{sec:bif} shows, in the bifurcation sweep, the situation the second
+safeguard exists to catch; its computational benefit is not re-measured in this report.
 
 \subsubsection{Robust constraints: tightening from the measured prediction error}
 \label{sec:robust}
 
-[DECIDERE SE MANTENERE QUESTO CAPITOLETTO, SE ACCORCIARLO O TOGLIERLO].
 Every constraint in~\eqref{eq:ocp} is imposed on the \emph{predicted} trajectory, and
 Section~\ref{sec:prederr} measures how far the prediction drifts from what the robot actually does. A
 clearance guaranteed in the plan is therefore not a clearance guaranteed on the floor. The standard remedy is

@@ -130,7 +130,7 @@ plant consists in a non-linear forward kinematic dynamics, valid for each legged
 abstracted as a body-frame holonomic agent, with first-order actuator lag for modeling the low level dynamics latency, yielding a six-state, three-input
 discrete model; the nonlinear MPC tracker formulated in CasADi and solved by IPOPT at
 $8$~Hz. Because that abstraction leaves the two machines with the same states and the same inputs, the stack
-is substantially identical on both: what changes between them is the tuning, the identified lag and the
+is substantially identical on both: what changes between them is the tuning, the assumed lag and the
 quantitative conclusions that follow, not the formulation. The eleven cost weights of that NLP are firstly tuned by heuristics, but can be further improved by an offline calibration using a per-axis Bayesian scheme: a
 one-dimensional Gaussian process per weight, six closed-loop mission rollouts each, swept in order of
 influence with every optimum carried forward, for $67$ rollouts in total; that campaign is the one part of
@@ -180,8 +180,8 @@ argument, and is not related to the multipliers $\lambda$.
 \vspace{4pt}
 \noindent\begin{tabularx}{\textwidth}{@{}lX@{\hspace{1.0em}}lX@{}}
 \multicolumn{4}{@{}l}{\textit{State, input and model}}\\[2pt]
-$x$ & state                         & $\tau_v,\tau_w$ & actuator time constants [s] \\
-$u$ & commanded body twist          & $\nu_v,\nu_w$ & discrete lag coefficients \\
+$x$ & state                         & $\tau_{v_x},\tau_{v_y},\tau_\omega$ & actuator time constants [s] \\
+$u$ & commanded body twist          & $\nu_{v_x},\nu_{v_y},\nu_\omega$ & discrete lag coefficients \\
 $p_x,p_y,\psi$ & world-frame pose [m], [rad] & $\Delta t$ & sampling time [s] \\
 $v_x,v_y,\omega$ & body twist [m/s], [rad/s] & $N$ & prediction horizon [steps] \\
 $t$ & continuous time [s]           & $\Ninput$ & control horizon [steps] \\[10pt]
@@ -357,9 +357,9 @@ are the only exteroceptive input of the stack.
   \caption{The two platforms as the controller sees them. The rows above the first rule are properties of the
   machine, those between the rules are properties of the locomotion layer that receives the MPC command, and
   those below are the ones that enter the optimization program: the prediction model~\eqref{eq:lagcont}, the
-  admissible input set and the horizon. The two
-  time constants were identified on the Go2 (Section~\ref{sec:model}) and carried over unchanged to the G1,
-  which is the concrete form the ``robot-agnostic'' claim takes.}
+  admissible input set and the horizon. The three
+  time constants are the same assumed values on both machines (Section~\ref{sec:model}), never identified on
+  either, which is the concrete form the ``robot-agnostic'' claim takes.}
   \label{tab:platforms}
   \begin{tabular}{lll}
     \toprule
@@ -375,7 +375,7 @@ are the only exteroceptive input of the stack.
     Command interface             & body-frame twist $u$            & body-frame twist $u$, remapped \\
                                   &                                 & (Section~\ref{sec:g1rl}) \\
     \midrule
-    Abstraction used by the MPC   & \multicolumn{2}{c}{first-order velocity lag, $\tau_v=0.12$~s, $\tau_w=0.10$~s} \\
+    Abstraction used by the MPC   & \multicolumn{2}{c}{first-order velocity lag, $\tau_{v_x}=0.12$~s, $\tau_{v_y}=\tau_\omega=0.10$~s} \\
     Admissible input set          & \multicolumn{2}{l}{$v_x\in[\resVxMin,\,\resVxMax]$~m/s, $|v_y|\le\resVyMax$~m/s, $|\omega|\le\resOmegaMax$~rad/s} \\
     Horizon                       & \multicolumn{2}{l}{$N=\resN$, $\Delta t=\resDt$~s ($\resHorizonSeconds$~s of preview), re-solved at $8$~Hz} \\
     \bottomrule
@@ -501,8 +501,8 @@ the model of Section~\ref{sec:model} has the form it has. First, the twist enter
 geometry~\eqref{eq:steplen}: no measured trunk velocity is fed back, so the layer is a feedforward map and the
 trunk velocity approaches the commanded one over roughly one stride rather than immediately. Second, that
 step geometry is re-evaluated only once per stride, so a command that changes faster than $1/\Tstr=2$~Hz is
-averaged, not tracked; a first-order lag with $\tau_v=0.12$~s reaches $98\%$ of its final value in
-$4\tau_v\approx\Tstr$, which is why the one-parameter fit of Section~\ref{sec:model} describes the layer as
+averaged, not tracked; a first-order lag with $\tau_{v_x}=0.12$~s reaches $98\%$ of its final value in
+$4\tau_{v_x}\approx\Tstr$, which is why the one-parameter fit of Section~\ref{sec:model} describes the layer as
 well as it does. Third, the gait applies its own saturation, $|v_x^{\mathrm{cmd}}|\le0.3$~m/s,
 $|v_y^{\mathrm{cmd}}|\le0.25$~m/s and $|\omega^{\mathrm{cmd}}|\le0.5$~rad/s in the deployed configuration.
 
@@ -564,8 +564,8 @@ a cascade of four loops whose rates are separated by roughly a decade each: the 
 recomputed at $1$~Hz, the MPC at $8$~Hz, the locomotion layer at $50$--$200$~Hz, and the joint PD loop at the
 motor-driver rate. That separation is the standard justification for designing each layer against a static
 abstraction of the one below it, and the abstraction used here is deliberately minimal: three decoupled
-first-order lags, Eq.~\eqref{eq:lagcont}, whose time constants are identified in Section~\ref{sec:model}. Both
-locomotion layers, the hand-designed one and the learned one, are approximated by the same two numbers.
+first-order lags, Eq.~\eqref{eq:lagcont}, whose time constants are chosen in Section~\ref{sec:model}. Both
+locomotion layers, the hand-designed one and the learned one, are approximated by the same small set of numbers.
 
 % This is the entire content of the ``robot-agnostic'' claim, and it is worth stating what it costs. The
 % abstraction discards leg dynamics, contact, footstep timing and the two nonlinearities named above --- the
@@ -692,9 +692,9 @@ where $(p_x,p_y)$ and $\psi$ are the world-frame pose and $(v_x,v_y,\omega)$ the
 realised by the platform. In continuous time the actuator behaves as three decoupled first-order lags driven
 by the commands,
 \begin{equation}
-  \dot v_x = \frac{u_1-v_x}{\tau_v},\qquad
-  \dot v_y = \frac{u_2-v_y}{\tau_w},\qquad
-  \dot \omega = \frac{u_3-\omega}{\tau_w},
+  \dot v_x = \frac{u_1-v_x}{\tau_{v_x}},\qquad
+  \dot v_y = \frac{u_2-v_y}{\tau_{v_y}},\qquad
+  \dot \omega = \frac{u_3-\omega}{\tau_\omega},
   \label{eq:lagcont}
 \end{equation}
 while the pose obeys the holonomic body-to-world rotation
@@ -704,19 +704,29 @@ while the pose obeys the holonomic body-to-world rotation
   \dot\psi = \omega .
   \label{eq:kincont}
 \end{equation}
-The identified constants are $\tau_v=0.12$~s and $\tau_w=0.10$~s.
-% \footnote{In the deployed code the lateral
-% velocity $v_y$ is propagated with $\tau_w$ rather than $\tau_v$, i.e.\ lateral motion is assumed to respond as
-% fast as yaw. The two constants differ by $20$~ms, well inside the identification uncertainty, so the
-% substitution is numerically immaterial; it is reported here because the analysis reproduces the deployed
-% formulation exactly rather than an idealisation of it.}
+The three constants are design choices, not identified quantities. No step-response experiment was run on
+either platform, and the simulation-error identification that would produce them is a different class of
+problem (optimal system identification) that is deliberately left outside the scope of this report. What was
+done instead is to pick values of the right order of magnitude, namely the settling time of the low-level
+locomotion loop, which runs one decade faster than the $\Delta t=\resDt$~s of the tracker, and to check that
+the closed loop is insensitive to the choice: $\tau_{v_x}=0.12$~s, $\tau_{v_y}=\tau_\omega=0.10$~s.
+
+The lateral and the yaw constant are held equal because nothing in the available data distinguishes them.
+Both channels are produced by the same low-level layer from the same twist command (CHAMP's body-velocity
+controller on the Go2, the AMO policy's tracking head on the G1), whereas forward travel is the axis the gait
+is designed around and is given the slightly slower response. Setting $\tau_{v_y}=\tau_\omega$ is therefore
+an admission that only two responses are being modelled, not three; the third symbol is kept in the notation
+because the axes are conceptually distinct and because an identification under physics would very likely
+separate them. At the horizon used here the choice is in any case immaterial: at $\Delta t=\resDt$~s the two
+discrete lag coefficients differ by $0.9459$ against $0.9698$, a gap far below the prediction error of
+Section~\ref{sec:discretization}.
 
 Model~\eqref{eq:lagcont}--\eqref{eq:kincont} is holonomic: unlike a differential-drive vehicle, the platform
 can command a lateral velocity, so no nonholonomic constraint appears and the input set is a box. This is what
 makes the resulting NLP comparatively benign, the nonlinearity is confined to the rotation
 $R(\psi)$ and to the obstacle distances.
 
-% At the identified $\tau_v=0.12$~s the instantaneous model mispredicts the horizon
+% At the identified $\tau_{v_x}=0.12$~s the instantaneous model mispredicts the horizon
 % end-point by ${\sim}7$~cm, which is of the same order as the tracking accuracy the controller is asked to
 % deliver.
 
@@ -725,7 +735,7 @@ $R(\psi)$ and to the obstacle distances.
 %   \includegraphics[width=0.92\textwidth]{fig_lag_model.pdf}
 %   \caption{Actuator-lag modelling. Left: response of the first-order-lag model~\eqref{eq:lagcont} against the
 %   instantaneous model $v\equiv u$ for a step in commanded forward velocity. Right: maximum position
-%   prediction error accumulated over one $5$~s horizon by neglecting the lag, as a function of $\tau_v$.}
+%   prediction error accumulated over one $5$~s horizon by neglecting the lag, as a function of $\tau_{v_x}$.}
 %   \label{fig:lag}
 % \end{figure}
 
@@ -920,14 +930,14 @@ $8$-connected discretisation introduces.
 
 With sampling time $\Delta t$, the lag subsystem~\eqref{eq:lagcont} is linear and time-invariant, so it is
 discretised \emph{exactly} under a zero-order-hold input. Defining
-$\nu_v = 1-e^{-\Delta t/\tau_v}$ and $\nu_w = 1-e^{-\Delta t/\tau_w}$, the velocity update is the
+$\nu_i = 1-e^{-\Delta t/\tau_i}$ for $i\in\{v_x,v_y,\omega\}$, the velocity update is the
 exact solution of~\eqref{eq:lagcont} over one step,
 \begin{equation}
-  v_{x,k+1}=(1-\nu_v)v_{x,k}+\nu_v u_{1,k},\qquad
-  \omega_{k+1}=(1-\nu_w)\omega_{k}+\nu_w u_{3,k},
+  v_{x,k+1}=(1-\nu_{v_x})v_{x,k}+\nu_{v_x} u_{1,k},\qquad
+  \omega_{k+1}=(1-\nu_\omega)\omega_{k}+\nu_\omega u_{3,k},
   \label{eq:veldisc}
 \end{equation}
-and analogously for $v_y$. No approximation is involved here and none should be claimed: this is the Lagrange
+and analogously for $v_y$ with $\nu_{v_y}$. No approximation is involved here and none should be claimed: this is the Lagrange
 formula for a linear time-invariant (LTI) system under a piecewise-constant input, and it is exact at the sampling instants. On the
 deployed G1 profile it is straightforward, since $\nu=1$ reduces~\eqref{eq:veldisc} to
 $v_{k+1}=u_k$; the statement is retained because it is the part of the model that would carry the weight on hardware, where $\tau$ is real.
@@ -1270,7 +1280,8 @@ standing still, balance being the business of the policy of Section~\ref{sec:g1r
 $v(N)=0$: there must exist a braking trajectory inside the horizon.
 
 On the plant used in this report that condition holds without being imposed. Section~\ref{sec:model} sets
-$\tau_v=\tau_w=\resTauV$~s against $\Delta t=\resDt$~s, so the discrete lag coefficient is $\resLagDiscrete$
+$\tau_{v_x}=\tau_{v_y}=\tau_\omega=\resTauV$~s against $\Delta t=\resDt$~s, so every discrete lag
+coefficient is $\resLagDiscrete$
 and the velocity update collapses to $v_{k+1}=u_k$: the model reaches zero velocity in a single sampling
 step, from any speed. A braking trajectory therefore always exists and the guarantee comes for free, for
 a reason that belongs to the simulation and not to the robot.
@@ -2122,7 +2133,7 @@ That last point is also the substantive reason the numbers are not carried over,
 from the logistical one. By~\eqref{eq:barrier} both $\robs$ and $\aobs$ are tied to a footprint: $\robs$ is a
 clearance radius in metres and $\aobs$ the sharpness of the zone it centres. The two machines do not share a
 footprint, so the two axes that carry the entire result are the two with the weakest claim to transfer,
-weaker, in fact, than the identified time constants of Table~\ref{tab:platforms}, which at least describe the
+weaker, in fact, than the assumed time constants of Table~\ref{tab:platforms}, which at least describe the
 same kind of quantity on both platforms. Re-running the campaign on the G1 before its kinematics and the two
 horizons are settled would in any case tune a configuration that is about to change. The procedure is stated
 in Section~\ref{sec:bo}, and bounded in advance by the prediction it makes, so that the measurement, when

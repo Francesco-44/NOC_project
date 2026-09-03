@@ -2470,51 +2470,51 @@ Section~\ref{sec:impl} are the ones analysed throughout this report.
 
 
 %=============================================================================
-\section{Discussion and limitations}
-\label{sec:discussion}
+% \section{Discussion and limitations}
+% \label{sec:discussion}
 
-\paragraph{What the formulation guarantees, and what it does not.} In its deployed configuration the NLP is
-always feasible, because the only constraints are the dynamics and the input box; for a real-time loop with
-no fallback trajectory this is a genuine robustness property, and it is why the penalty formulation was
-preferred to a constrained one. But there is no terminal set in that configuration and no Lyapunov argument,
-so nominal asymptotic stability and recursive feasibility in the standard sense
-\cite{mayne2000constrained} are not established. Section~\ref{sec:terminal} supplies the missing ingredient
-and prices it, and Section~\ref{sec:l1} supplies the exact relaxation that makes a constrained formulation
-survivable; assembling the two into a configuration that is simultaneously deployable and certified is the
-natural next step, and it is now cheaper than this report previously argued: Section~\ref{sec:nc} shows that
-the long prediction horizon a rigorous terminal ingredient would want can be carried at \emph{lower} solve
-cost than the present short one, by blocking the inputs rather than shortening the prediction. What such a
-configuration would still have to prove is that the terminal set remains reachable once the actuator lag is
-identified under physics, where the degenerate lag of Section~\ref{sec:terminal} no longer flatters it.
+% \paragraph{What the formulation guarantees, and what it does not.} In its deployed configuration the NLP is
+% always feasible, because the only constraints are the dynamics and the input box; for a real-time loop with
+% no fallback trajectory this is a genuine robustness property, and it is why the penalty formulation was
+% preferred to a constrained one. But there is no terminal set in that configuration and no Lyapunov argument,
+% so nominal asymptotic stability and recursive feasibility in the standard sense
+% \cite{mayne2000constrained} are not established. Section~\ref{sec:terminal} supplies the missing ingredient
+% and prices it, and Section~\ref{sec:l1} supplies the exact relaxation that makes a constrained formulation
+% survivable; assembling the two into a configuration that is simultaneously deployable and certified is the
+% natural next step, and it is now cheaper than this report previously argued: Section~\ref{sec:nc} shows that
+% the long prediction horizon a rigorous terminal ingredient would want can be carried at \emph{lower} solve
+% cost than the present short one, by blocking the inputs rather than shortening the prediction. What such a
+% configuration would still have to prove is that the terminal set remains reachable once the actuator lag is
+% identified under physics, where the degenerate lag of Section~\ref{sec:terminal} no longer flatters it.
 
-\paragraph{The weakest link is not the optimizer.} Every campaign in Section~\ref{sec:performance} solved its
-NLP successfully, and Section~\ref{sec:kkt} certifies those solutions as strict local minima with unique
-multipliers. The systematic failures of the system are elsewhere. One is a \emph{modelling} failure: the
-prediction diverges from the plant by $\resPredDivergence$~m over a single horizon, and no amount of
-numerical care inside the program can repair a model that is a planar holonomic agent standing in for a
-walking humanoid. The other is a \emph{formulation} failure: the greedy rolling-horizon target rule of
-Section~\ref{sec:localmin} discards the topology of the free space, and the repair had to be posed in the
-target rule rather than in the NLP.
+% \paragraph{The weakest link is not the optimizer.} Every campaign in Section~\ref{sec:performance} solved its
+% NLP successfully, and Section~\ref{sec:kkt} certifies those solutions as strict local minima with unique
+% multipliers. The systematic failures of the system are elsewhere. One is a \emph{modelling} failure: the
+% prediction diverges from the plant by $\resPredDivergence$~m over a single horizon, and no amount of
+% numerical care inside the program can repair a model that is a planar holonomic agent standing in for a
+% walking humanoid. The other is a \emph{formulation} failure: the greedy rolling-horizon target rule of
+% Section~\ref{sec:localmin} discards the topology of the free space, and the repair had to be posed in the
+% target rule rather than in the NLP.
 
-\paragraph{The input set was the binding constraint, and widening it was the fix.} Two independent
-measurements converged on the diagnosis, both on the narrow envelope: the critical cone collapsed towards a
-single degree of freedom (\S\ref{sec:kkt}), and the $\ell^1$-relaxed obstacle constraint was infeasible at
-demanding clearances because lateral translation was bounded far below forward travel (\S\ref{sec:l1}). A
-controller whose admissible set has been reduced to essentially one degree of freedom is not being limited
-by its objective, and effort spent on weights is effort spent on the wrong object. The envelope was widened
-on that evidence, and the campaign reported here measures the result: the cone holds $\resConeLast$ of
-$\resNvar$ dimensions at the last sampled cycle and no longer collapses. The diagnosis was right, and it is
-the one recommendation of this report that has already been acted on.
+% \paragraph{The input set was the binding constraint, and widening it was the fix.} Two independent
+% measurements converged on the diagnosis, both on the narrow envelope: the critical cone collapsed towards a
+% single degree of freedom (\S\ref{sec:kkt}), and the $\ell^1$-relaxed obstacle constraint was infeasible at
+% demanding clearances because lateral translation was bounded far below forward travel (\S\ref{sec:l1}). A
+% controller whose admissible set has been reduced to essentially one degree of freedom is not being limited
+% by its objective, and effort spent on weights is effort spent on the wrong object. The envelope was widened
+% on that evidence, and the campaign reported here measures the result: the cone holds $\resConeLast$ of
+% $\resNvar$ dimensions at the last sampled cycle and no longer collapses. The diagnosis was right, and it is
+% the one recommendation of this report that has already been acted on.
 
-\paragraph{Scope of the numbers, stated plainly.} The plant used throughout is kinematic, and deliberately
-so: with the prediction model equal to the simulation model, the experiments measure the optimizer rather
-than the gait. The price is that every conclusion depending on the actuator pole is out of reach here,
-which is why the selection of the sampling time from the plant bandwidth, a standard piece of this analysis,
-is absent from this report and deferred until $\tau$ is identified under physics. Two further limits belong
-in the same paragraph. The closed-loop counterfactuals use synthetic worlds, one of which (the U-trap) grazes
-obstacles in every configuration and therefore cannot support any comparison of clearances. And the loop is
-closed through a look-ahead setpoint rather than by applying $u^\star_0$, which washes out fine differences
-between MPC solutions.
+% \paragraph{Scope of the numbers, stated plainly.} The plant used throughout is kinematic, and deliberately
+% so: with the prediction model equal to the simulation model, the experiments measure the optimizer rather
+% than the gait. The price is that every conclusion depending on the actuator pole is out of reach here,
+% which is why the selection of the sampling time from the plant bandwidth, a standard piece of this analysis,
+% is absent from this report and deferred until $\tau$ is identified under physics. Two further limits belong
+% in the same paragraph. The closed-loop counterfactuals use synthetic worlds, one of which (the U-trap) grazes
+% obstacles in every configuration and therefore cannot support any comparison of clearances. And the loop is
+% closed through a look-ahead setpoint rather than by applying $u^\star_0$, which washes out fine differences
+% between MPC solutions.
 
 %=============================================================================
 \section{Conclusions}

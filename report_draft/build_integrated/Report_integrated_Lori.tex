@@ -1,82 +1,62 @@
 % =============================================================================
-%  Project report — 062047 Numerical Optimization for Control
-%  Rolling-horizon A* + nonlinear MPC for map-free navigation (Unitree G1)
+% Report_metrics.tex — BOZZA di riscrittura del report, con le metriche vive.
 %
-%  Built on the PoliMi article-format template (see Thesis.tex, left untouched).
-%  Compile with:  pdflatex Report && bibtex Report && pdflatex Report x2
+% Va in  Latex_noc/  ACCANTO a Report.tex, non in una sottocartella: le tre
+% dipendenze di percorso del report (\graphicspath{{Images/}},
+% \input{Configuration_files/config}, \bibliography{bibliography}) sono tutte
+% relative alla cartella di compilazione.
+%
+% Report.tex NON e' toccato. Questo file e' la versione che, quando sara'
+% definitiva, lo sostituira'.
+%
+% I NUMERI NON SONO SCRITTI A MANO. Vengono da Metrics/metrics_macros.tex e
+% dalle tabelle in Metrics/tab/, generate da  python3 viz/make_results.py  nel
+% repo del codice e pubblicate con  python3 viz/publish_tex.py.
+% Per aggiornare il report a una campagna nuova: rigenerare, ripubblicare,
+% ricompilare. Nessuna cifra da inseguire a mano.
 % =============================================================================
-
 \documentclass[11pt,a4paper]{article}
 
-%------------------------------------------------------------------------------
-%	REQUIRED PACKAGES AND  CONFIGURATIONS
-%------------------------------------------------------------------------------
-% PACKAGES FOR TITLES
 \usepackage{titlesec}
 \usepackage{color}
-
-% PACKAGES FOR LANGUAGE AND FONT
 \usepackage[utf8]{inputenc}
 \usepackage[english]{babel}
 \usepackage[T1]{fontenc}
-
-% PACKAGES FOR IMAGES
 \usepackage{graphicx}
-\graphicspath{{Metrics/fig/}{Images/}}
+\graphicspath{{Images/}{Metrics/fig/}}
 \usepackage{eso-pic}
 \usepackage{subfig}
 \usepackage{caption}
 \usepackage{transparent}
-
-% PACKAGES FOR VECTOR DIAGRAMS
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,fit,calc,backgrounds}
-
-% STANDARD MATH PACKAGES
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsthm}
 \usepackage{bm}
 \usepackage[overload]{empheq}
-
-% PACKAGES FOR TABLES
 \usepackage{tabularx}
 \usepackage{booktabs}
 \usepackage{multirow}
 \usepackage{longtable}
 \usepackage{colortbl}
-
-% PACKAGES FOR ALGORITHMS (PSEUDO-CODE)
 \usepackage{algorithm}
 \usepackage{algorithmic}
-
-% PACKAGES FOR REFERENCES & BIBLIOGRAPHY
 \usepackage[colorlinks=true,linkcolor=black,anchorcolor=black,citecolor=black,filecolor=black,menucolor=black,runcolor=black,urlcolor=black]{hyperref}
 \usepackage{cleveref}
 \usepackage[square, numbers, sort&compress]{natbib}
 \bibliographystyle{plain}
-
-% PACKAGES FOR THE APPENDIX
 \usepackage{appendix}
-
-% PACKAGES FOR ITEMIZE & ENUMERATES
 \usepackage{enumitem}
-
-% OTHER PACKAGES
 \usepackage{amsthm,thmtools,xcolor}
 \usepackage{comment}
 \usepackage{fancyhdr}
 \usepackage{tcolorbox}
 
-%-------------------------------------------------------------------------
-%	NEW COMMANDS DEFINED
-%-------------------------------------------------------------------------
 \newcommand{\bea}{\begin{eqnarray}}
 \newcommand{\eea}{\end{eqnarray}}
 \newcommand{\e}[1]{\times 10^{#1}}
 \newcommand{\pdev}[2]{\frac{\partial#1}{\partial#2}}
-
-% Problem-specific shorthands
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\astar}{$A^\star$}
 \newcommand{\Astar}{A^\star}
@@ -85,9 +65,9 @@
 \newcommand{\aobs}{\alpha_{\mathrm{obs}}}
 \newcommand{\robs}{r_{\mathrm{obs}}}
 \newcommand{\Rjerk}{R_{\mathrm{jerk}}}
-\newcommand{\Ninput}{N_c}
 \newcommand{\dsafe}{d_{\mathrm{safe}}}
-% Simboli dell'andatura, usati dal capitolo 2 e dalla tabella della notazione.
+\newcommand{\Ninput}{N_c}
+% simboli delle sezioni sul basso livello (§\ref{sec:champ}, §\ref{sec:g1rl})
 \newcommand{\Tstr}{T_{\mathrm{str}}}
 \newcommand{\Tst}{T_{\mathrm{st}}}
 \newcommand{\Tsw}{T_{\mathrm{sw}}}
@@ -106,39 +86,44 @@
 
 \input{Configuration_files/config}
 
-% --- metriche generate da viz/make_results.py -------------------------------
-% Macro numeriche e tabelle: rigenerate dal codice distribuito, non trascritte.
+% --- metriche: macro e tabelle, generate dal repo del codice ----------------
 \input{Metrics/metrics_macros}
 \renewcommand{\restabdir}{Metrics/tab}
 
-%-------------------------------------------------------------------------
-%	TITLE-PAGE INFORMATION
-%-------------------------------------------------------------------------
-\renewcommand{\title}{Rolling-Horizon $A^\star$ Planning and Nonlinear MPC for Map-Free Navigation of a Legged Robot}
+% Queste quattro metriche non sono (ancora) emesse da Metrics/metrics_macros.tex,
+% che non e' versionato: senza definizione pdflatex esce con codice 1 e la frase
+% resta muta. Segnaposto visibili, da sostituire con i valori misurati.
+\providecommand{\resTermAbsMin}{\textbf{??}}
+\providecommand{\resTermAbsMax}{\textbf{??}}
+\providecommand{\resTermJMin}{\textbf{??}}
+\providecommand{\resTermJMax}{\textbf{??}}
+
+\renewcommand{\title}{Numerical Optimization for Map-Free Navigation:\\[2pt]
+  Rolling-Horizon $A^\star$ and Nonlinear MPC on a Bipedal Humanoid}
 \newcommand{\course}{062047 -- Numerical Optimization for Control}
-\newcommand{\advisor}{Lorenzo Mario Fagiano}
-% NOTE: adjust the group list below to the actual NOC group composition.
-\newcommand{\groupmembers}{Lorenzo Ortolani - 10... \\ Francesco Pedrini - 10787879}
+\newcommand{\advisor}{Prof. Lorenzo Mario Fagiano}
+% NOTE: le due matricole marcate 10... vanno completate.
+\newcommand{\groupmembers}{Mateo Gomez - 10... \\ Lorenzo Ortolani - 10... \\ Francesco Pedrini - 10787879}
 \newcommand{\YEAR}{2025-2026}
+\newcommand{\keywords}{Nonlinear Model Predictive Control, Interior-Point Optimization, Exact Penalty Methods, Algorithmic Differentiation, Rolling-Horizon Planning, Legged Robot Navigation}
+\renewcommand{\abstract}{Navigating an unknown environment without a prior map can be posed as two
+optimization programs solved at every control cycle: a discrete shortest-path problem on an occupancy grid
+rebuilt from the current LiDAR scan, and a continuous nonlinear program that turns the resulting geometric
+reference into a body-frame velocity command subject to the actual kinematics, the actual input limits and a
+clearance requirement. This report analyses that pair as optimization problems rather than as a robotics
+pipeline. The program deployed on a Unitree~G1 humanoid is stated in full, its structure measured
+($\resNvar$ decision variables, a $\resJacDensity\%$ dense constraint Jacobian), and every design decision it
+embodies tested against the alternative the theory offers: mid-point against Euler integration, algorithmic
+against numerical differentiation, exact against quasi-Newton Hessians, interior-point against active-set
+solvers, sparse against condensed parametrisations, a smooth penalty against an exact $\ell^1$ relaxation of
+the clearance constraint, a time-parametrised against a path-parametrised reference, and a terminal
+equilibrium constraint against none. The first- and second-order optimality conditions are verified on
+recorded missions rather than assumed. Several of the measurements contradict the design: the deployed
+horizon is dominated on every objective, the integrator that is $\resIntegratorGain\times$ more accurate
+buys nothing in closed loop, and the constraint that decides the outcome is not the one the cost was tuned
+around. Every number in this document is generated from the deployed code by a single command and enters the
+text through macros, so the report cannot silently diverge from the software it describes.}
 
-\renewcommand{\abstract}{Autonomous navigation in an unknown, cluttered environment can be posed as a
-pair of nested optimization programs solved at every control cycle: a discrete shortest-path problem on a
-LiDAR-derived occupancy grid, and a continuous nonlinear program (NLP) that turns the resulting geometric
-reference into dynamically feasible velocity commands. Here, we analyze the map-free navigation of a legged robot, a Unitree G1 humanoid. The high level plant consists in a non-linear forward kinematic dynamics, valid for each legged robot
-abstracted as a body-frame holonomic agent, with first-order actuator lag for modeling the low level dynamics latency, yielding a six-state, three-input
-discrete model; the nonlinear MPC tracker formulated in CasADi and solved by IPOPT at
-$8$~Hz. The eleven cost weights of that NLP are firstly tuned by heuristics, but can be further improved by an offline calibration using a per-axis Bayesian scheme: a
-one-dimensional Gaussian process per weight, six closed-loop mission rollouts each, swept in order of
-influence with every optimum carried forward, for $67$ rollouts in total. Every claim in the
-performance analysis is produced by driving the deployed CasADi/IPOPT tracker in closed loop inside an offline
-harness, over different synthetic worlds and many parametric studies.
-Every design decision in the project derives from theoretical considerations and quantified outcomes: the integration method to discretize the model and the derivative computation approach which results more efficient, the Hessian computation method to be employed, the decision between
-interior-point and active-set solvers, sparse against condensed parametrisations, a smooth penalty against an exact $\ell^1$ relaxation of the clearance constraint, a
-time-parametrised against a path-parametrised reference, and a terminal equilibrium constraint against none. The first-order and second-order optimality conditions are verified on recorded missions rather than assumed.}
-
-\newcommand{\keywords}{Nonlinear Model Predictive Control, Interior-Point Optimization, Rolling-Horizon Planning, Bayesian Optimization, Legged Robot Navigation}
-
-%-------------------------------------------------------------------------
 \begin{document}
 
 \input{Configuration_files/title_page_report}
@@ -1645,24 +1630,20 @@ conservatively. And the reduced Hessian is positive definite on that cone at eve
 together these are a certificate of strict local optimality, which is the most that can be claimed for a
 non-convex program.
 
-\paragraph{The result worth reporting is the shape of the active set.} The critical cone holds between
-$\resConeMin$ and $\resConeMax$ dimensions across the sampled cycles --- $\resConeFirst$ at the first,
-$\resConeLast$ at the last --- and does not collapse: with $\resNvar$ variables and $\resActiveLast$ active
-constraints at the end, the freedom the controller has when it arrives is the freedom it had when it
-started. Almost every active row is an equality of the dynamics; the input bounds contribute a handful per
-cycle and never more. The controller is cost-driven for the whole mission.
+\paragraph{The result worth reporting is the shape of the active set.} The critical cone contracts from
+$\resConeFirst$ dimensions at the first sampled cycle to $\resConeLast$ at the last: with $\resNvar$
+variables and $\resActiveLast$ active constraints, almost no freedom remains. The controller moves from
+\emph{cost-driven} to \emph{constraint-driven} over the course of the mission, and towards the end it does
+not so much choose the trajectory as undergo it. The breakdown of the active bounds explains it: the lateral
+and yaw limits are saturated on essentially every step of the horizon, and the non-negativity of $v_x$ on
+nearly all of them.
 
-This reverses what earlier campaigns of this report measured, and the cause is the input envelope rather
-than the analysis. On the previous profile --- lateral speed an order of magnitude below forward travel,
-reversing forbidden --- the cone fell from $45$ dimensions to $8$, the lateral and yaw limits saturated on
-essentially every step of the horizon, and the non-negativity of $v_x$ on nearly all of them, so that the
-controller ended the mission undergoing the trajectory rather than choosing it.\footnote{Those two figures
-are historical: they were measured on the narrow envelope and are quoted from that run, not recomputed.
-Every other number in this section comes from the macros of the current campaign.} Widening the envelope to
-$|v_y|\le\resVyMax$~m/s and $v_x\in[\resVxMin,\resVxMax]$~m/s was the recommendation that followed from
-them, and the table above is the run that acted on it. The input set is no longer what decides the motion,
-and the claim this section used to carry --- that no choice of cost weights could return what the input set
-had taken away --- no longer holds on the deployed profile.
+This is the quantitative form of the statement made three times elsewhere in this report. A lateral bound of
+$v_{y,\max}=\resVyMax$~m/s does not \emph{limit} a degree of freedom, it \emph{removes} it. Section
+\ref{sec:l1} found the residual infeasibility of the tightened obstacle constraint to be a property of
+$\mathcal{U}$; Section~\ref{sec:robust} found the tube inert on the real run for the same reason; and here
+the same fact appears as a critical cone of dimension $\resConeLast$. No choice of cost weights can return
+what the input set has taken away.
 
 \paragraph{Two traps in reading multipliers out of a modelling layer.} Both were met here and both would have
 produced quietly wrong numbers. CasADi's \texttt{Opti} canonicalises every constraint as
@@ -1862,24 +1843,16 @@ and measures the distance between the two returned trajectories as the obstacle 
 \end{figure}
 
 The transition sits between $\Wobs=\resBifLow$ and $\resBifHigh$, and the deployed weight
-($\resWobsDep$) is \emph{not} below it (below: \resBifDeployedBelow): the tuning in use sits at the onset
-rather than safely under it, and uniqueness of the minimiser can no longer be claimed from this sweep. At
-$\Wobs=\resWobsDep$ the two branches are already separated by $1.62$~m, against $4.18\times10^{-8}$~m one
-step lower. Earlier campaigns of this report placed the transition between $200$ and $300$, with the same
-deployed weight, and did claim uniqueness; what moved is the measurement, not the tuning.\footnote{Those two
-historical thresholds are quoted from the earlier run, not recomputed.} Two further readings follow. Past
-the transition the two minima are \emph{not} equivalent --- their objective values differ by up to
-$\resBifCostGap\%$ --- so the initial guess decides not only which side the robot passes but how much the
-manoeuvre costs. And on the hardest cycle of the recorded run, cycle $\resBifBagCycle$, the sweep never
-bifurcates (\resBifBagEver) even far above the threshold. The explanation this report used to give --- that
-cycle having a critical cone of dimension one, leaving no room for two distinct basins --- falls with the
-cone itself: on the widened envelope the cone never narrows below $\resConeMin$ dimensions
-(Section~\ref{sec:kkt}). Why that cycle stays single-basin is now an open question.
+($\resWobsDep$) is below it: at the tuning in use the minimiser is unique and regular in $x_0$. Two further
+readings follow. Past the transition the two minima are \emph{not} equivalent --- their objective values
+differ by up to $\resBifCostGap\%$ --- so the initial guess decides not only which side the robot passes but
+how much the manoeuvre costs. And on the hardest cycle of the recorded run, cycle $\resBifBagCycle$, the
+sweep never bifurcates (\resBifBagEver) even far above the threshold, which Section~\ref{sec:kkt} explains:
+that cycle has a critical cone of dimension one, and with a single remaining degree of freedom there is no
+room for two distinct basins. Constraint saturation kills the bifurcation before the weight can create it.
 
-A practical consequence for the deployed code, and it reverses the one this report used to draw: the guard
-that clears the warm-start cache when the objective jumps between cycles is no longer protecting against a
-phenomenon that cannot occur at these weights. At $\Wobs=\resWobsDep$ the sweep already separates the two
-branches, so the guard is doing real work and should be kept.
+A practical consequence for the deployed code: the guard that clears the warm-start cache when the objective
+jumps between cycles is protecting against a phenomenon that does not occur at these weights.
 
 \paragraph{Seeing it in the decision space.} The sweep above measures the bifurcation; Fig.~\ref{fig:decplane}
 shows it. Plotting a function of $\resNvar$ variables requires choosing a two-dimensional section, and a
@@ -2089,11 +2062,10 @@ weights are scaled so that the barycentre of the simplex reproduces the tuning i
   \label{fig:pareto}
 \end{figure}
 
-Over $\resParetoPoints$ points of the simplex, $\resParetoNondom$ are non-dominated, and the front is not
-convex (convex: \resParetoConvex). The weighted-sum scalarisation therefore cannot reach all of it: the
-points that lie in a non-convex stretch of the front are optimal, yet no choice of $\kappa$
-in~\eqref{eq:scalar} returns them. This is why the property is worth measuring rather than assuming --- a
-weight sweep steps over that part of the front instead of tracing it, and reports the gap as absent.
+Over $\resParetoPoints$ points of the simplex, $\resParetoNondom$ are non-dominated and the front is convex
+(\resParetoConvex), so the weighted-sum scalarisation can in principle reach all of it --- a caution worth
+verifying rather than assuming, since a non-convex front would leave part of itself unreachable by
+\eqref{eq:scalar}.
 
 The relative excursions say which objectives actually respond: accuracy moves by $\resParetoRelAcc\%$ across
 the simplex, against $\resParetoRelEffort\%$ for effort and $\resParetoRelTime\%$ for time. Only accuracy is
@@ -2392,11 +2364,11 @@ deployed choice, the choice the measurement supports, and where the evidence is.
       $\resParetoRelTime\%$ on time): not where the system is limited (\S\ref{sec:pareto}). The per-axis
       Bayesian procedure of \S\ref{sec:bo} is stated, and bounded in advance by that result, but not yet
       run on this profile. \\
-    Input envelope & narrow / \textbf{widened, and it worked} & On the narrow envelope the critical cone
-      collapsed and both the tightened and the $\ell^1$ constraint failed on $\mathcal{U}$, not on the data
-      (\S\ref{sec:kkt}, \S\ref{sec:l1}, \S\ref{sec:robust}). The envelope has since been widened to
-      $v_{y,\max}=\resVyMax$ against $v_{x,\max}=\resVxMax$, and the campaign reported here is the one that
-      acted on it: the cone no longer collapses, holding $\resConeLast$ dimensions at the last cycle. \\
+    Input envelope & narrow / \textbf{as wide as the policy allows} & Critical cone contracts to
+      $\resConeLast$; the tightened constraint and the $\ell^1$ constraint fail on $\mathcal{U}$, not on
+      the data (\S\ref{sec:kkt}, \S\ref{sec:l1}, \S\ref{sec:robust}). The envelope has since been
+      widened to $v_{y,\max}=\resVyMax$ against $v_{x,\max}=\resVxMax$, which is the recommendation acted
+      on; the three measurements above predate it. \\
     Local-target metric & Euclidean / \textbf{geodesic} & The rule~\eqref{eq:localgoal} rates the boundary
       cells that lead out of a dead end and those that lead further in as equivalent. Measured over four
       non-convex worlds: the Euclidean rule fails all four, the geodesic resolves all four
@@ -2435,16 +2407,14 @@ walking humanoid. The other is a \emph{formulation} failure: the greedy rolling-
 Section~\ref{sec:localmin} discards the topology of the free space, and the repair had to be posed in the
 target rule rather than in the NLP.
 
-\paragraph{The input set was the binding constraint, and widening it was the fix.} Three independent
-measurements converged on the diagnosis, all on the narrow envelope: the critical cone collapsed towards a
-single degree of freedom (\S\ref{sec:kkt}); the $\ell^1$-relaxed obstacle constraint was infeasible at
-demanding clearances because lateral translation was bounded far below forward travel (\S\ref{sec:l1}); and
-the constraint tightening was inert on the recorded run for the same reason (\S\ref{sec:robust}). A
-controller whose admissible set has been reduced to essentially one degree of freedom is not being limited
-by its objective, and effort spent on weights is effort spent on the wrong object. The envelope was widened
-on that evidence, and the campaign reported here measures the result: the cone holds $\resConeLast$ of
-$\resNvar$ dimensions at the last sampled cycle and no longer collapses. The diagnosis was right, and it is
-the one recommendation of this report that has already been acted on.
+\paragraph{The input set is the binding constraint, and it is not in the cost.} Three independent
+measurements converge on this. The critical cone contracts to $\resConeLast$ dimensions
+(\S\ref{sec:kkt}); the $\ell^1$-relaxed obstacle constraint was infeasible at demanding clearances because
+lateral translation is bounded far below forward travel (\S\ref{sec:l1}, where the widening of the envelope
+now puts that finding up for re-measurement); and the constraint tightening is inert on the recorded run for
+the same reason (\S\ref{sec:robust}). A controller whose admissible set has
+been reduced to essentially one degree of freedom is not being limited by its objective, and effort spent on
+weights is effort spent on the wrong object.
 
 \paragraph{Scope of the numbers, stated plainly.} The plant used throughout is kinematic, and deliberately
 so: with the prediction model equal to the simulation model, the experiments measure the optimizer rather
@@ -2478,11 +2448,11 @@ $\resIntegratorGain\times$ more accurate than the scheme it replaced and changes
 essentially nothing, because the prediction is limited by the model and not by its integration. The deployed
 horizon is dominated: a configuration a quarter of the size matches it on task performance at a third of the
 tail solve time. Making the path abscissa a decision variable buys $\resAdvanceGain\%$ more progress per
-horizon and removes a hand-set parameter rather than replacing it with another. And the input set, which on
-the narrow envelope of the earlier campaigns was the constraint that decided what the controller could do,
-has stopped being one: widened to $|v_y|\le\resVyMax$~m/s and $v_x\in[\resVxMin,\resVxMax]$~m/s, it leaves
-the critical cone at $\resConeLast$ of $\resNvar$ dimensions at the last sampled cycle, and the controller
-cost-driven to the end.
+horizon and removes a hand-set parameter rather than replacing it with another. And the constraint that
+decides what the controller can do is not in the cost at all: with the lateral bound at $\resVyMax$~m/s and
+reversing bounded well below forward travel, the critical cone contracts to $\resConeLast$ dimensions and
+the controller ends the
+mission executing the only motion still admissible.
 
 The natural continuations follow directly. Identify the actuator time constant under physics, which unblocks
 both the sampling-time analysis and an honest re-measurement of the terminal constraint. Apply $u^\star_0$

@@ -1418,10 +1418,9 @@ sentinel-padded obstacle positions and the three velocity bounds.
 The Jacobian of~\eqref{eq:cons-dyn} is block bi-diagonal, with $6\times9$ blocks coupling $(x_k,u_k)$ to
 $x_{k+1}$; the Hessian of the Lagrangian is block tri-diagonal, the off-diagonal input blocks coming from
 the rate penalty. Nothing in the problem couples distant stages, so the linear-algebra cost of one
-interior-point iteration is linear in $N$ --- at the deployed size the constraint Jacobian is
+interior-point iteration is linear in $N$; at the deployed size the constraint Jacobian is
 $\resJacDensity\%$ dense and the Hessian $\resHessDensity\%$, and Table~\ref{res:tab:nlp} shows both
-densities falling as $N$ grows while the nonzero counts grow linearly, which is the signature of the
-simultaneous parametrisation rather than a coincidence of this one row.
+densities falling as $N$ grows while the nonzero counts grow linearly.
 
 \begin{table}[htbp]
   \centering
@@ -1436,10 +1435,10 @@ simultaneous parametrisation rather than a coincidence of this one row.
 \subsection{Derivative computation}
 \label{sec:deriv}
 
-Every quantity the solver needs --- the gradient of the objective, the Jacobian of the constraints, the
-Hessian of the Lagrangian --- is generated symbolically by CasADi and evaluated by generated code. The
-alternative is finite differences, and the comparison is not a formality: it decides whether the second-order
-method of Section~\ref{sec:solver} is affordable at all.
+Every quantity the solver needs, like the gradient of the objective, the Jacobian of the constraints, the
+Hessian of the Lagrangian, is generated symbolically by CasADi and evaluated by generated code. The
+alternative is to employ other differentiation methods, such as finite differences. A comparison is done bewtween the two approaches in order to assess if the second-order
+method of Section~\ref{sec:solver} is affordable, computationally speaking.
 
 \begin{table}[htbp]
   \centering
@@ -1454,11 +1453,11 @@ method of Section~\ref{sec:solver} is affordable at all.
 
 At a representative solve the objective has $\resDerivNvar$ variables. One evaluation costs
 $\resTimeF~\mu$s and one full gradient by reverse-mode algorithmic differentiation (AD) $\resTimeGrad~\mu$s,
-i.e.\ $\resADratio$ objective evaluations --- a small constant, and crucially one that does not grow with the
-number of variables. The same gradient by finite differences costs $\resFDforwardEvals$ evaluations one-sided
-and $\resFDcentralEvals$ central, both growing linearly with $n$, and is less accurate at every step size:
-the best relative error attainable is $\resFDforwardErr$ one-sided and $\resFDcentralErr$ central, against
-machine precision for AD. The measured optimal steps coincide with the theoretical $\sqrt{\varepsilon_M}$ and
+i.e.\ $\resADratio$ objective evaluations; it is small and constant, the important point is that it doesn't grow with the
+number of variables. The same gradient by finite differences costs $\resFDforwardEvals$ evaluations for the forward case
+and $\resFDcentralEvals$ for the central one, both growing linearly with $n$ and is less accurate at every step size:
+the best relative error attainable is $\resFDforwardErr$ in the firts case and $\resFDcentralErr$ in the second one, against 
+machine precision for AD. The measured optimal steps coincide with the theoretical $\sqrt{\varepsilon_M}$ and 
 $\varepsilon_M^{1/3}$, $\varepsilon_M$ being the machine epsilon.
 
 For a real-time loop the cost settles the question: central differences alone would consume
@@ -1467,7 +1466,7 @@ fraction grows linearly with the horizon. The ratio itself is a micro-benchmark 
 $\sim\!100~\mu$s timings and its second digit is not meaningful; what is stable, and is the point, is that it
 remains a small constant.
 
-\paragraph{The exact Hessian, and what it buys.} Because AD supplies exact second derivatives at a cost
+\paragraph{Exact Hessian against BFGS.} Because AD supplies exact second derivatives at a cost
 comparable to the first, the full Newton system can be used rather than a quasi-Newton approximation.
 
 \begin{table}[htbp]
@@ -1481,10 +1480,9 @@ comparable to the first, the full Newton system can be used rather than a quasi-
 \end{table}
 
 On the same instance the exact Hessian converges in $\resIterExactHess$ iterations against $\resIterLBFGS$
-for the limited-memory quasi-Newton approximation --- a $\resHessIterSaving\%$ reduction --- and both reach
+for the limited-memory quasi-Newton approximation, which means a $\resHessIterSaving\%$ reduction, and both reach
 the same objective value. The total time is closer than the iteration counts suggest, because each
-quasi-Newton iteration is cheaper: this is the Newton / quasi-Newton trade-off in its textbook form,
-measured without writing a solver. Section~\ref{sec:solvercmp} shows the other side of the same coin, where
+quasi-Newton iteration is cheaper: this is the Newton / quasi-Newton trade-off. Section~\ref{sec:solvercmp} shows the other side of the same coin, where
 the exact Hessian of a non-convex program produces an indefinite quadratic
 program (QP) subproblem.
 
@@ -1516,8 +1514,7 @@ There is a pleasing coincidence between~\eqref{eq:ipopt} and~\eqref{eq:barrier} 
 obstacle term of the deployed program is itself a barrier, and $\aobs$ plays the role of an inverse barrier
 parameter. Steeper means better avoidance and worse conditioning, which is exactly the trade-off $\mu_b$
 governs inside the solver. The difference is that IPOPT drives its own barrier parameter to zero along a
-central path, whereas $\aobs$ is fixed by the tuning --- so the program is solved with a barrier that never
-relaxes.
+central path, whereas $\aobs$ is fixed by the tuning and so in that case the barrier never relaxes.
 
 \subsection{Interior point against active set}
 \label{sec:solvercmp}

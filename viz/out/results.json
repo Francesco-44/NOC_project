@@ -143,7 +143,11 @@
           "jac_nnz": 256,
           "jac_density": 0.025157232704402517,
           "hess_nnz": 600,
-          "hess_density": 0.06510416666666667
+          "hess_density": 0.06510416666666667,
+          "n_var_state": 66,
+          "n_var_input": 30,
+          "n_eq_dyn": 60,
+          "n_barrier": 176
         },
         {
           "N": 15,
@@ -155,7 +159,11 @@
           "jac_nnz": 381,
           "jac_density": 0.017321331151118384,
           "hess_nnz": 885,
-          "hess_density": 0.044514863437452847
+          "hess_density": 0.044514863437452847,
+          "n_var_state": 96,
+          "n_var_input": 45,
+          "n_eq_dyn": 90,
+          "n_barrier": 256
         },
         {
           "N": 25,
@@ -167,7 +175,11 @@
           "jac_nnz": 631,
           "jac_density": 0.010670319264069264,
           "hess_nnz": 1455,
-          "hess_density": 0.02726710518918311
+          "hess_density": 0.02726710518918311,
+          "n_var_state": 156,
+          "n_var_input": 75,
+          "n_eq_dyn": 150,
+          "n_barrier": 416
         },
         {
           "N": 50,
@@ -179,7 +191,11 @@
           "jac_nnz": 1256,
           "jac_density": 0.005443450523542057,
           "hess_nnz": 2880,
-          "hess_density": 0.013850415512465374
+          "hess_density": 0.013850415512465374,
+          "n_var_state": 306,
+          "n_var_input": 150,
+          "n_eq_dyn": 300,
+          "n_barrier": 816
         }
       ]
     },

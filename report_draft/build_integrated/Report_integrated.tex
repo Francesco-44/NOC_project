@@ -794,6 +794,18 @@ that grazes a wall, while a doorway is never closed outright. The Euclidean heur
 the bracket is bounded below by $1$, so no edge can be cheaper than its Euclidean length; the search is
 therefore an exact \astar{} and returns a cost-optimal path on the current occupancy grid.
 
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig_grid_astar.pdf}
+  \caption{Rolling-horizon local goal selection (left) and the corresponding occupancy grid with the
+  \astar{} path (right). The window $\mathcal{W}(\hat x)$ is re-centred on the robot every replanning
+  cycle rather than covering the whole map, so when the global goal $x_g$ falls outside it a local target
+  is projected onto the window boundary along the ray towards $x_g$ and \astar{} plans only up to that
+  point. This is what keeps the discrete search cheap regardless of how far the goal actually is, at the
+  cost of the target rule discussed next.}
+  \label{fig:astargrid}
+\end{figure}
+
 \paragraph{What the discrete layer is for.} Choosing \emph{which side} of an obstacle to pass on is a discrete decision. Take a trajectory that passes on the left and one that passes on the right: turning the first into the second means moving it continuously through intermediate trajectories, and at least one of those must run through the obstacle. The feasible set is therefore disconnected, with one component per side, and a gradient-based solver stays in the component its initial guess falls into: it converges to the best trajectory on one side and never learns that the other side existed. Writing the choice into the NLP would require binary variables and turn it into a mixed-integer nonlinear program, whose solution time is not compatible with a control loop at 8~Hz. A graph search represents the same choice natively, and on a $60\times60$
 grid it costs a few milliseconds. Delegating the decision to the A* algorithm is therefore what leaves the continuous program
 smooth, with a box-shaped input set and no integer variables --- the structure that
@@ -1286,91 +1298,6 @@ rather than chosen, $v(N)=0$ inside a fixed horizon is precisely the condition t
 the horizon length. This is the job currently done reactively, and outside the optimizer, by the adaptive
 velocity ceiling of Section~\ref{sec:impl}.
 
-\subsubsection{Reference trajectory: time-parametrised against path-parametrised}
-\label{sec:pathfollow}
-
-[DECIDERE SE MANTENERE QUESTO CAPITOLETTO, SE ACCORCIARLO O TOGLIERLO].
-The deployed reference is a \emph{schedule}, not just a route: node $k$ of the horizon is the instant
-$k\Delta t$ ahead, and the reference places it at the arclength the robot would have covered by then along
-the smoothed \astar{} path at a fixed cruise speed,
-\begin{equation}
-  s_k=\min\!\left(s_0+v_{\mathrm{ref}}\,k\,\Delta t,\; L_{\mathrm{path}}\right),
-  \label{eq:ref}
-\end{equation}
-interpolating inside the containing segment and taking the heading as the segment tangent. The $k\Delta t$
-is the schedule, and it is what the robot is held to: if it cannot keep up, the reference runs away and the
-tracking cost grows for reasons that have nothing to do with the quality of the control.
-
-The clip against $L_{\mathrm{path}}$ is not a guard against indexing past the end of an array. When the
-remaining path is shorter than $v_{\mathrm{ref}}N\Delta t$ the reference saturates at its last point, every
-remaining node asks for the same position, and the tracking term becomes a terminal-position term: that is
-the mechanism by which the controller decelerates into the local goal, and the formulation has no other. It
-is inactive in transit --- the horizon covers about a metre and a half of a local path reaching some $6$~m
-ahead --- and engages only on approach, which is also the only moment at which the terminal equilibrium
-constraint of Section~\ref{sec:terminal} would have anything to ask for.
-
-Setting $v_{\mathrm{ref}}$ below $v_{x,\max}$ is deliberate --- at $v_{\mathrm{ref}}=v_{x,\max}$ the tracker
-saturates permanently and never settles onto the path --- and the price is structural: $\resVrefUnused\%$ of
-the available forward speed is unreachable \emph{by construction}, and no cost weight recovers it, because
-the reference never asks for it.
-
-The alternative the theory offers is to drop the schedule and keep only the geometry: make the path abscissa
-a decision variable and let the tracker choose how far to advance. What $\theta$ runs along is the
-\emph{local} path --- the \astar{} route inside the window, ending at the boundary target of
-Section~\ref{sec:astar} some $6$~m ahead --- refitted at every solve, with $\theta(0)=0$ at the robot and
-$\theta=1$ at its far end. The deployed code implements this, with $\Delta\theta\ge0$, $\theta(N)\le1$ and a
-progress term $\alpha_3(1-\theta)^2$ in the cost; $\bar z(\theta)$ is a polynomial rather than the
-waypoint polyline, since $\theta$ is now differentiated through and a polyline has a discontinuous second
-derivative at every node.
-
-That the path is local is what makes the reformulation well posed, rather than a limitation of it. The robot
-consumes about a third of it per horizon, so $\theta(N)\le1$ stays slack in transit and $(1-\theta)^2$ acts
-as a pure incentive to get further along. Run instead along a path reaching all the way to a distant goal,
-$\theta$ would advance by a few hundredths per horizon and offer nearly the same gradient at every node.
-
-\begin{table}[htbp]
-  \centering
-  \small
-  \caption{%
-  Time-parametrised against path-parametrised reference, averaged over $\resPFcycles$ cycles replayed from
-  the recorded run \resBag.}
-  \label{res:tab:pf}
-  \restab{pf}
-\end{table}
-
-Over $\resPFcycles$ moving cycles replayed from the recorded run the mean commanded speed rises from
-$\resVxTime$ to $\resVxTheta$~m/s and the advance within one horizon from $\resAdvanceTime$ to
-$\resAdvanceTheta$~m --- $\resAdvanceGain\%$ further at the same horizon, with $v_{x,\max}$ saturated on
-nearly every step. The cruise speed does not reappear in another guise: $\theta$ is a variable, not a
-hyperparameter.
-
-It is paid for in iterations, and generously: $\resIterTime\to\resIterTheta$, close to a tripling. Part
-of that is intrinsic --- $N+1$ more variables, as many more inequalities, worse conditioning. Part is not:
-the warm start below guesses the inputs and the states and not the abscissa, so those $N+1$ variables enter
-every solve cold, and the figure is an upper bound on the cost of the formulation rather than a measurement
-of it. Reported as a trade rather than as an improvement, this remains the cleanest reformulation available
-to the stack.
-
-\paragraph{A trap worth documenting.} On cycles where the robot is stationary the comparison is
-meaningless: $\theta$ advances without the dynamics being able to follow, and with a strong progress weight
-one observes $\theta\to1$ while the robot stands still. The comparison is therefore restricted to cycles
-with genuine motion --- not a numerical artefact but a modelling statement, since a path-parametrised
-reference is only a reference if the dynamics can realise the progress it encodes.
-
-\paragraph{Warm start.} The previous solution is reused as the initial guess for the inputs and the
-states, by the standard shift-and-append rule
-\begin{equation}
-  U^{(0)}_{\text{new}} = \big[u^\star_1,\dots,u^\star_{N-1},u^\star_{N-1}\big],\qquad
-  X^{(0)}_{\text{new}} = \big[x^\star_1,\dots,x^\star_{N},x^\star_{N}\big],
-  \label{eq:warm}
-\end{equation}
-which is consistent to first order because the reference itself shifts by one step. Two safeguards protect
-it: the guess is discarded after three consecutive solver failures, and whenever the optimal cost exceeds
-five times the mean of the last seven solves. The second is about geometry rather than numerics --- a cost
-spike means a new wall has entered the window and the \astar{} path now passes on the other side of it, so
-the shifted guess lies in the basin of the \emph{old} minimum (Section~\ref{sec:bif}). Its computational
-benefit is not measured here.
-
 \subsubsection{Robust constraints: tightening from the measured prediction error}
 \label{sec:robust}
 
@@ -1803,101 +1730,6 @@ platform, with $v_{y,\max}=\resVyMax$~m/s against a forward bound of $\resVxMax$
 admitted only at a fraction of that, the region is markedly asymmetric about
 the heading. The cost is what chooses inside it; the input set is what draws it.
 
-\subsection{Prediction error: the model against the plant}
-\label{sec:prederr}
-% alias: Sezioni 2.3.3 e 3.3.8 rimandano qui come "model mismatch".
-\label{sec:mismatch}
-
-The most consequential measurement in this report requires no new experiment: the bags already contain, at
-each cycle, the trajectory the MPC predicted, and the poses the robot subsequently reached. Comparing the
-prediction published at time $t$ with the pose measured at $t+k\Delta t$, over $\resPredCycles$ usable
-cycles, gives the growth of the prediction error along the horizon.
-
-\begin{table}[htbp]
-  \centering
-  \small
-  \caption{%
-  Open-loop prediction error along the horizon, over $\resPredCycles$ cycles of the recorded run \resBag.}
-  \label{res:tab:pred}
-  \restab{pred}
-\end{table}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.92\textwidth]{prediction_error}
-  \caption{Prediction error against the position along the horizon, over $\resPredCycles$ cycles of the
-  recorded run \resBag: median and $95$th percentile. The residual at $k=0$ is time misalignment between the
-  instant the prediction is published and the instant the pose is sampled, not model error, and is subtracted
-  before quoting the divergence.}
-  \label{fig:prederr}
-\end{figure}
-
-The residual at $k=0$ is $\resPredOffset$~m and is \emph{not} model error: at the first node the predicted
-state \emph{is} $\hat x$, imposed as an equality constraint. It measures the delay between the instant the
-prediction is published and the instant the pose is sampled, and it is subtracted to isolate the genuine
-divergence, which is $\resPredDivergence$~m at the end of the horizon.
-
-Put beside Section~\ref{sec:discretization}, that number closes a circle and is uncomfortable. The divergence
-is $\resPredVsEuler$ times the truncation error of forward Euler over the same window, and
-$\resPredVsMidpoint$ times that of the mid-point rule now deployed. The integrator was never the dominant
-term. Upgrading it improved the arithmetic of the prediction by a factor $\resIntegratorGain$ and left the
-closed loop essentially unchanged, and this is why: what limits the prediction is not how the model is
-integrated but that the model is a planar holonomic agent and the plant is a twenty-nine-degree-of-freedom
-humanoid walking. The correct response is not a better integrator but either a better model or, more
-cheaply, an explicit account of the residual --- which is what the constraint tightening of
-Section~\ref{sec:robust} does with this very curve.
-
-\subsection{Regularity of the solution and the left--right bifurcation}
-\label{sec:bif}
-
-The program is non-convex, so its solution need not depend continuously on the data. The place where this is
-visible is an obstacle centred on the reference: the problem then admits two symmetric local minima --- pass
-left, pass right --- and the MPC law is a well-defined function of the state only as long as one of them
-dominates.
-
-The experiment solves the \emph{same} instance twice, from a left-biased and a right-biased initial guess,
-and measures the distance between the two returned trajectories as the obstacle weight is swept.
-
-\begin{table}[htbp]
-  \centering
-  \small
-  \caption{%
-  Left-biased against right-biased solve of the same instance, against the barrier weight. The separation
-  is the distance between the two returned trajectories: a value at solver tolerance means the two guesses
-  converged to the same minimum.}
-  \label{res:tab:bif}
-  \restab{bif}
-\end{table}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=0.92\textwidth]{bifurcation}
-  \caption{Separation between the trajectories returned from a left-biased and a right-biased initial guess,
-  against the obstacle weight $\Wobs$. Below the transition the two guesses collapse onto the same minimum
-  and the control law is a regular function of the state; above it they do not.}
-  \label{fig:bif}
-\end{figure}
-
-The transition sits between $\Wobs=\resBifLow$ and $\resBifHigh$, and the deployed weight
-($\resWobsDep$) is \emph{not} below it (below: \resBifDeployedBelow): the tuning in use sits at the onset
-rather than safely under it, and uniqueness of the minimiser can no longer be claimed from this sweep. At
-$\Wobs=\resWobsDep$ the two branches are already separated by $1.62$~m, against $4.18\times10^{-8}$~m one
-step lower. Earlier campaigns of this report placed the transition between $200$ and $300$, with the same
-deployed weight, and did claim uniqueness; what moved is the measurement, not the tuning.\footnote{Those two
-historical thresholds are quoted from the earlier run, not recomputed.} Two further readings follow. Past
-the transition the two minima are \emph{not} equivalent --- their objective values differ by up to
-$\resBifCostGap\%$ --- so the initial guess decides not only which side the robot passes but how much the
-manoeuvre costs. And on the hardest cycle of the recorded run, cycle $\resBifBagCycle$, the sweep never
-bifurcates (\resBifBagEver) even far above the threshold. The explanation this report used to give --- that
-cycle having a critical cone of dimension one, leaving no room for two distinct basins --- falls with the
-cone itself: on the widened envelope the cone never narrows below $\resConeMin$ dimensions
-(Section~\ref{sec:kkt}). Why that cycle stays single-basin is now an open question.
-
-A practical consequence for the deployed code, and it reverses the one this report used to draw: the guard
-that clears the warm-start cache when the objective jumps between cycles is no longer protecting against a
-phenomenon that cannot occur at these weights. At $\Wobs=\resWobsDep$ the sweep already separates the two
-branches, so the guard is doing real work and should be kept.
-
 \paragraph{Seeing it in the decision space.} The sweep above measures the bifurcation; Fig.~\ref{fig:decplane}
 shows it. Plotting a function of $\resNvar$ variables requires choosing a two-dimensional section, and a
 random one would almost surely contain nothing: the plane here is built to contain the structure. The program
@@ -2074,52 +1906,52 @@ If active, they violate LICQ and make the multipliers non-unique --- breaking ex
 Section~\ref{sec:kkt}. The bounds must be imposed on the free columns only, and with that correction LICQ and
 strict complementarity hold for every $\Ninput$.
 
-\subsection{Multi-objective scalarisation}
-\label{sec:pareto}
+% \subsection{Multi-objective scalarisation}
+% \label{sec:pareto}
 
-The cost~\eqref{eq:cost} is a scalarisation: several competing objectives combined into one stage cost by a
-convex combination of weights,
-\begin{equation}
-  \min_{U,X}\ \sum_{j} \kappa_j f_j(X,U),
-  \qquad 0\le\kappa_j\le1,\qquad \sum_j \kappa_j = 1 .
-  \label{eq:scalar}
-\end{equation}
-The three objectives that~\eqref{eq:cost} introduces are tracking accuracy (the $Q$ block), control effort
-(the $R$ block) and progress along the path (the term in $(1-\theta)^2$ of Section~\ref{sec:pathfollow}). The
-weights are scaled so that the barycentre of the simplex reproduces the tuning in use.
+% The cost~\eqref{eq:cost} is a scalarisation: several competing objectives combined into one stage cost by a
+% convex combination of weights,
+% \begin{equation}
+%   \min_{U,X}\ \sum_{j} \kappa_j f_j(X,U),
+%   \qquad 0\le\kappa_j\le1,\qquad \sum_j \kappa_j = 1 .
+%   \label{eq:scalar}
+% \end{equation}
+% The three objectives that~\eqref{eq:cost} introduces are tracking accuracy (the $Q$ block), control effort
+% (the $R$ block) and progress along the path (the term in $(1-\theta)^2$ of Section~\ref{sec:pathfollow}). The
+% weights are scaled so that the barycentre of the simplex reproduces the tuning in use.
 
-\begin{table}[htbp]
-  \centering
-  \small
-  \caption{%
-  Closed-loop outcome of each scalarisation of the three objectives. Bold: non-dominated points.}
-  \label{res:tab:pareto}
-  \restab{pareto}
-\end{table}
+% \begin{table}[htbp]
+%   \centering
+%   \small
+%   \caption{%
+%   Closed-loop outcome of each scalarisation of the three objectives. Bold: non-dominated points.}
+%   \label{res:tab:pareto}
+%   \restab{pareto}
+% \end{table}
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\textwidth]{pareto_front}
-  \caption{Sampling of the weight simplex: the achieved objectives for each scalarisation, the non-dominated
-  set, and the utopia point. The metrics used to \emph{evaluate} the solutions use fixed weights, not the
-  sampled ones --- otherwise each point of the simplex would be judged by a different yardstick.}
-  \label{fig:pareto}
-\end{figure}
+% \begin{figure}[htbp]
+%   \centering
+%   \includegraphics[width=\textwidth]{pareto_front}
+%   \caption{Sampling of the weight simplex: the achieved objectives for each scalarisation, the non-dominated
+%   set, and the utopia point. The metrics used to \emph{evaluate} the solutions use fixed weights, not the
+%   sampled ones --- otherwise each point of the simplex would be judged by a different yardstick.}
+%   \label{fig:pareto}
+% \end{figure}
 
-Over $\resParetoPoints$ points of the simplex, $\resParetoNondom$ are non-dominated, and the front is not
-convex (convex: \resParetoConvex). The weighted-sum scalarisation therefore cannot reach all of it: the
-points that lie in a non-convex stretch of the front are optimal, yet no choice of $\kappa$
-in~\eqref{eq:scalar} returns them. This is why the property is worth measuring rather than assuming --- a
-weight sweep steps over that part of the front instead of tracing it, and reports the gap as absent.
+% Over $\resParetoPoints$ points of the simplex, $\resParetoNondom$ are non-dominated, and the front is not
+% convex (convex: \resParetoConvex). The weighted-sum scalarisation therefore cannot reach all of it: the
+% points that lie in a non-convex stretch of the front are optimal, yet no choice of $\kappa$
+% in~\eqref{eq:scalar} returns them. This is why the property is worth measuring rather than assuming --- a
+% weight sweep steps over that part of the front instead of tracing it, and reports the gap as absent.
 
-The relative excursions say which objectives actually respond: accuracy moves by $\resParetoRelAcc\%$ across
-the simplex, against $\resParetoRelEffort\%$ for effort and $\resParetoRelTime\%$ for time. Only accuracy is
-genuinely under the control of the weights. Time and effort are nearly fixed, and Section~\ref{sec:pathfollow}
-explains why: in path-parametrised mode the solver saturates $v_{x,\max}$ almost everywhere, so the duration
-of the mission is decided by the kinematics and the input bounds rather than by the tuning. The trade-off is
-real but mild, and the practical conclusion is that weight tuning is not where this system is limited ---
-unlike the control horizon, which Section~\ref{sec:nc} shows to be leaving a factor of two in solve time on
-the table.
+% The relative excursions say which objectives actually respond: accuracy moves by $\resParetoRelAcc\%$ across
+% the simplex, against $\resParetoRelEffort\%$ for effort and $\resParetoRelTime\%$ for time. Only accuracy is
+% genuinely under the control of the weights. Time and effort are nearly fixed, and Section~\ref{sec:pathfollow}
+% explains why: in path-parametrised mode the solver saturates $v_{x,\max}$ almost everywhere, so the duration
+% of the mission is decided by the kinematics and the input bounds rather than by the tuning. The trade-off is
+% real but mild, and the practical conclusion is that weight tuning is not where this system is limited ---
+% unlike the control horizon, which Section~\ref{sec:nc} shows to be leaving a factor of two in solve time on
+% the table.
 
 \subsection{Offline weight tuning by Bayesian optimization}
 \label{sec:bo}
@@ -2147,8 +1979,7 @@ tool is a Gaussian-process surrogate \cite{rasmussen2006gp,shahriari2016bo}.
 The obstacle is dimension, and it is worth being precise about it because it dictates the method. A surrogate
 over $\Theta\subset\R^{11}$ needs a sample density that a rollout-priced objective cannot supply: a budget of
 $n$ evaluations covers each axis with $n^{1/11}$ points, so even a hundred rollouts amount to fewer than two
-points per coordinate. A surrogate fitted on such a sample spends most of its capacity on coordinates that
-turn out not to matter, and any acquisition rule that rewards unexplored regions never runs out of them.
+points per coordinate.
 
 \paragraph{The objective.} Each evaluation is a full closed-loop mission driving the production tracker, with
 a time cap:
@@ -2189,7 +2020,7 @@ of the posterior \emph{mean} over a fine grid,
 which uses the smoothed estimate rather than the best sampled point and therefore does not require the
 optimum to fall on a grid node. The total cost is $11m+1$ rollouts, and the by-product is worth as much as
 the optimum: eleven curves with error bands, each showing how much the objective actually depends on the
-weight in question, on which the reader can check the tuning instead of trusting it.
+weight in question.
 
 Three decisions make the scheme defensible, and each is a place where it could quietly go wrong.
 \emph{Separability.} Assembling per-axis optima into one vector is exact only when

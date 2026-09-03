@@ -104,12 +104,42 @@
     \fbox{\parbox[c][0.745\linewidth][c]{0.955\linewidth}{\centering\footnotesize\itshape
       photograph of the G1 humanoid\\[2pt] \textrm{(add \texttt{Images/G1.jpeg})}}}}}}}
 
+% Screenshot dei simulatori (Sezione sec:deployment): si includono da soli non
+% appena il file compare in Images/, con la stessa logica di \gonephoto.
+%   #1 nome del file senza estensione   #2 altezza della cornice (frazione di \linewidth)
+%   #3 didascalia del segnaposto
+\newcommand{\simshot}[3]{%
+  \IfFileExists{Images/#1.png}{\includegraphics[width=\linewidth]{#1.png}}{%
+  \IfFileExists{Images/#1.jpg}{\includegraphics[width=\linewidth]{#1.jpg}}{%
+  \IfFileExists{Images/#1.jpeg}{\includegraphics[width=\linewidth]{#1.jpeg}}{%
+    \fbox{\parbox[c][#2\linewidth][c]{0.97\linewidth}{\centering\footnotesize\itshape
+      #3\\[2pt] \textrm{(add \texttt{\detokenize{Images/#1.png}})}}}}}}}
+
 \input{Configuration_files/config}
 
 % --- metriche generate da viz/make_results.py -------------------------------
 % Macro numeriche e tabelle: rigenerate dal codice distribuito, non trascritte.
 \input{Metrics/metrics_macros}
 \renewcommand{\restabdir}{Metrics/tab}
+
+% --- macro citate nel testo ma non prodotte da make_results.py --------------
+% Il corpo del capitolo 4 usa queste nove macro, che il generatore non emette:
+% senza queste definizioni la compilazione si ferma con "Undefined control
+% sequence". Provenienza di ogni numero indicata qui sotto. Se in futuro
+% viz/make_results.py le emettera', questo blocco va cancellato.
+%
+% dalla tabella res:tab:solvercmp (regime piccolo, istanze risolte da entrambi)
+\resdef{resSolverRatioMin}{1.2}
+% da viz/out/horizon_sweep_ext.json (108 configurazioni, campagna estesa)
+\resdef{resSweepSolves}{8688}     % solve totali
+\resdef{resSweepFails}{308}       % solve falliti
+\resdef{resFailPctN}{0.7}         % fallimenti a N=15 [%]
+\resdef{resFailPctNmid}{3.5}      % fallimenti a N=26 [%]
+\resdef{resFailPctNbig}{6.5}      % fallimenti a N=40 [%]
+% misurati costruendo l'NLP del tracker deployato (CasADi 3.7.2, expand:true)
+\resdef{resNops}{3603}            % istruzioni scalari di f e g a N=15
+\resdef{resColdDep}{0.48}         % costruzione + primo solve a N=15 [s]
+\resdef{resColdMax}{0.78}         % costruzione + primo solve a N=40 [s]
 
 %-------------------------------------------------------------------------
 %	TITLE-PAGE INFORMATION
@@ -1636,7 +1666,7 @@ changes between cycles is a \emph{parameter} rather than a constant:
   \item $\mathcal{O}\in\R^{2\times M}$, the (sentinel-padded) obstacle positions;
   \item the three velocity bounds of~\eqref{eq:cons-vx}--\eqref{eq:cons-vyw}.
 \end{itemize}
-At the deployed $N=\resN$ and $M=\resMobs$ these account for $6+96+16+3=\resNparam$ parameter slots.
+At the deployed $N=\resN$ and $M=\resMobs$ these account for $6+96+16+3=\resNpar$ parameter slots.
 Consequently the expression graph, the derivative code and the sparsity patterns are generated exactly once at
 start-up; a cycle only writes numbers into parameter slots and calls the solver. The graph is flattened with
 \texttt{expand:\,true}, which converts the \texttt{MX} graph into scalar \texttt{SX} operations and removes
@@ -2280,68 +2310,164 @@ hypothesis the data does not support.
 Table~\ref{tab:guidelines} collects the actionable outcome of the campaigns above. Each row names the
 deployed choice, the choice the measurement supports, and where the evidence is.
 
-\begin{table}[htbp]
+% \begin{table}[htbp]
+%   \centering
+%   \small
+%   \caption{Design guidelines extracted from the numerical study. Bold in the second column marks a
+%   recommendation that differs from what is deployed.}
+%   \label{tab:guidelines}
+%   \begin{tabular}{p{0.21\textwidth}p{0.19\textwidth}p{0.52\textwidth}}
+%     \toprule
+%     Decision & Deployed / supported & Evidence \\
+%     \midrule
+%     Integration scheme & mid-point / keep & Order $\resOrderMidpoint$ against $\resOrderEuler$,
+%       $\resIntegratorGain\times$ more accurate for one addition (\S\ref{sec:discretization}), but see the
+%       next row before spending anything more here. \\
+%     Prediction model & lag model / \textbf{revisit} & Divergence $\resPredDivergence$~m per horizon,
+%       $\resPredVsMidpoint\times$ the integrator error: the model, not the arithmetic, is the dominant term. \\
+%     Parametrisation & multiple shooting / keep & Hessian $\resShootHessDensMulti\%$ dense against
+%       $\resShootHessDensSingle\%$ condensed; claim the structure, not the speed (\S\ref{sec:shoot}). \\
+%     Obstacle relaxation & smooth penalty / keep, with $\ell^1$ available & $\ell^1$ slack exactly zero from
+%       $\rho_s=\resRhoLoneZero>\mu^\star$; $\ell^2$ never vanishes (\S\ref{sec:l1}). \\
+%     Obstacle at $k=0$ & excluded / keep & Including it cannot change the solution and makes the program
+%       infeasible exactly when it matters (\S\ref{sec:statement}, \S\ref{sec:l1}). \\
+%     Terminal ingredient & none / \textbf{add} & Slack identically zero, cost $\resTermCostMin\%$ to
+%       $\resTermCostMax\%$; but the result is flattered by the degenerate lag and must be re-measured under
+%       physics (\S\ref{sec:terminal}). \\
+%     Reference & time-parametrised / \textbf{path-parametrised} & $+\resAdvanceGain\%$ advance per horizon and
+%       one parameter eliminated, at $+70\%$ iterations. \\
+%     Derivatives & AD / keep & $\resADratio$ objective evaluations against $\resFDcentralEvals$, and more
+%       accurate; finite differences would cost $\resFDcentralBudget\%$ of the cycle budget
+%       (\S\ref{sec:deriv}). \\
+%     Hessian & exact / keep & $\resIterExactHess$ against $\resIterLBFGS$ iterations
+%       ($-\resHessIterSaving\%$) at the same optimum (\S\ref{sec:deriv}). \\
+%     Solver class & interior point / keep & $\resSolverRatioLow\times$ faster at $\resSolverIneqLow$
+%       inequalities, $\resSolverRatioHigh\times$ at $\resSolverIneqHigh$ (\S\ref{sec:solvercmp}). \\
+%     Barrier weight $\Wobs$ & $\resWobsDep$ / keep & Below the bifurcation threshold
+%       $[\resBifLow,\resBifHigh]$: the control law is regular in $x_0$ (\S\ref{sec:landscape}). \\
+%     Horizon $N,\Delta t$ & $\resN$, $\resDt$~s / \textbf{$N=26$, $\Delta t=0.35$~s} & Dominated, but only
+%       marginally on $(N,\Delta t)$ alone; the real gain needs $\Ninput$ (next row). Short horizons win on
+%       time and lose on safety: every configuration with $N\Delta t\le2$~s grazes (\S\ref{sec:horizon}). \\
+%     Control horizon $\Ninput$ & $=N$ / \textbf{$\Ninput=10$} & With $N=26$: same time to goal, same
+%       clearance, tail solve time $24.3$~ms against $59.3$ (\S\ref{sec:nc}). \\
+%     Move blocking & absent / \textbf{add} & Earlier defended as a considered choice; the joint sweep
+%       withdraws both grounds, and the recorded run misses its cycle budget ($157.9$~ms against
+%       $\resCycleBudget$) (\S\ref{sec:nc}). \\
+%     Weight tuning & scalarisation / not critical & Only accuracy responds ($\resParetoRelAcc\%$ against
+%       $\resParetoRelTime\%$ on time): not where the system is limited. The per-axis
+%       Bayesian procedure of \S\ref{sec:bo} is stated, and bounded in advance by that result, but not yet
+%       run on this profile. \\
+%     Input envelope & narrow / \textbf{widened, and it worked} & On the narrow envelope the critical cone
+%       collapsed and both the tightened and the $\ell^1$ constraint failed on $\mathcal{U}$, not on the data
+%       (\S\ref{sec:kkt}, \S\ref{sec:l1}). The envelope has since been widened to
+%       $v_{y,\max}=\resVyMax$ against $v_{x,\max}=\resVxMax$, and the campaign reported here is the one that
+%       acted on it: the cone no longer collapses, holding $\resConeLast$ dimensions at the last cycle. \\
+%     Local-target metric & Euclidean / \textbf{geodesic} & The rule~\eqref{eq:localgoal} rates the boundary
+%       cells that lead out of a dead end and those that lead further in as equivalent. Measured over four
+%       non-convex worlds: the Euclidean rule fails all four, the geodesic resolves all four
+%       (Table~\ref{tab:escape}, \S\ref{sec:nonconvex}). \\
+%     Target memory & none / keep none & The tabu was predicted to be needed and measured not to be: with the
+%       geodesic metric the runs are identical with and without it, because the candidate targets lie on the
+%       unvisited frontier where the penalty is identically zero (\S\ref{sec:memoryfix}). \\
+%     \bottomrule
+%   \end{tabular}
+% \end{table}
+
+\section{Simulation and hardware deployment}
+\label{sec:deployment}
+
+\paragraph{Simulation setting.} Before testing on the hardware without first running, unchanged,
+against a physics simulator: the stack is a set of ROS~2 nodes, and the simulator replaces only the two ends
+of the chain, the sensors that feed it and the locomotion layer that consumes its twist. Three simulators
+were used, and the reason there are three is that they answer different questions.
+
+\emph{Gazebo} is where the stack was first closed, on the Go2, and it is still the cheapest way to exercise
+the full node graph: it runs faster than real time, its worlds are built out of primitives, and its sensor
+plugins publish on the same topics as the drivers. Figure~\ref{fig:sim-gazebo} shows one such world, a walled
+arena with pallets and boxes, carrying the G1 under the deployed configuration. Alongside it is the telemetry
+front-end used throughout the campaigns, Foxglove connected to the ROS bridge: the traces are the three
+components of the commanded twist $u=(v_x^{\mathrm{cmd}},v_y^{\mathrm{cmd}},\omega^{\mathrm{cmd}})$ that the
+MPC publishes at $8$~Hz, and the 3-D panel shows the accumulated LiDAR returns with the local occupancy grid
+of Section~\ref{sec:overview} rebuilt on top of them. What Gazebo cannot supply is appearance: its rendering
+is too synthetic to exercise anything that looks at an image.
+
+\emph{MuJoCo} and \emph{Isaac Sim} were therefore added for the G1, and both bring a contact solver rather
+than a kinematic surrogate, so the reinforcement-learning gait of Section~\ref{sec:g1rl} is driven against
+the dynamics it was trained for and the twist the MPC publishes is tracked by a walking machine rather than
+by an integrator. MuJoCo is the lighter of the two and is what the recorded missions come from: the replay
+bag \resBag{} of Section~\ref{sec:setup} was logged with the G1 walking a mapless MuJoCo world
+(Figure~\ref{fig:sim-mujoco}), which is why the operating points certified in Section~\ref{sec:kkt} are
+contact-driven ones even though the prediction model inside the NLP is not. Isaac Sim is the photorealistic
+end of the range, and it is the only one whose rendering is good enough to close a perception loop on:
+Figure~\ref{fig:sim-isaac} shows the G1 standing in a textured warehouse among racking, pallets, cones and a
+forklift, a scene whose clutter is geometric and visual at once.
+
+That photorealism is what makes the odometry front-end testable in simulation at all. The pose the stack
+consumes is not published by the platform: it is estimated on board by \emph{visual--inertial odometry}, a
+stereo camera fused with the IMU, and it enters the graph through the odometry bridge of
+Section~\ref{sec:overview}, which is where the estimate is turned into the single pose topic and
+differentiated into the body-frame velocity estimate that seeds $\hat x$ at every cycle. The right-hand panel
+of Figure~\ref{fig:sim-isaac} shows both halves of that arrangement running together: the visual odometry
+track, and the displays the navigation stack actually plans on, which are all LiDAR-derived, the marked
+returns with the ground plane rejected, the local voxel map, the stop and slow-down zones of the collision
+monitor, and the MPC prediction published each cycle. The division of labour is deliberate and worth stating
+plainly, because it is the one the whole report assumes: the camera localises, and the LiDAR is the only
+exteroceptive input that reaches the optimization programs, exactly as declared in
+Section~\ref{sec:platforms}. A perception failure and a planning failure therefore stay separable, which they
+would not be if the same sensor served both.
+
+One caveat closes the paragraph, so that the simulators are not read as the plant of
+Section~\ref{sec:performance}. The physics simulators are what the \emph{deployed} stack runs against; the
+counterfactual campaigns of that section deliberately do not use them, because with the prediction model
+equal to the simulation model those experiments measure the optimizer rather than the gait
+(Section~\ref{sec:discussion}). The simulators answer the complementary question, whether the stack survives
+contact, latency and a real perception front-end, and it is in that role that they are reported here.
+
+\begin{figure}[htbp]
   \centering
-  \small
-  \caption{Design guidelines extracted from the numerical study. Bold in the second column marks a
-  recommendation that differs from what is deployed.}
-  \label{tab:guidelines}
-  \begin{tabular}{p{0.21\textwidth}p{0.19\textwidth}p{0.52\textwidth}}
-    \toprule
-    Decision & Deployed / supported & Evidence \\
-    \midrule
-    Integration scheme & mid-point / keep & Order $\resOrderMidpoint$ against $\resOrderEuler$,
-      $\resIntegratorGain\times$ more accurate for one addition (\S\ref{sec:discretization}), but see the
-      next row before spending anything more here. \\
-    Prediction model & lag model / \textbf{revisit} & Divergence $\resPredDivergence$~m per horizon,
-      $\resPredVsMidpoint\times$ the integrator error: the model, not the arithmetic, is the dominant term. \\
-    Parametrisation & multiple shooting / keep & Hessian $\resShootHessDensMulti\%$ dense against
-      $\resShootHessDensSingle\%$ condensed; claim the structure, not the speed (\S\ref{sec:shoot}). \\
-    Obstacle relaxation & smooth penalty / keep, with $\ell^1$ available & $\ell^1$ slack exactly zero from
-      $\rho_s=\resRhoLoneZero>\mu^\star$; $\ell^2$ never vanishes (\S\ref{sec:l1}). \\
-    Obstacle at $k=0$ & excluded / keep & Including it cannot change the solution and makes the program
-      infeasible exactly when it matters (\S\ref{sec:statement}, \S\ref{sec:l1}). \\
-    Terminal ingredient & none / \textbf{add} & Slack identically zero, cost $\resTermCostMin\%$ to
-      $\resTermCostMax\%$; but the result is flattered by the degenerate lag and must be re-measured under
-      physics (\S\ref{sec:terminal}). \\
-    Reference & time-parametrised / \textbf{path-parametrised} & $+\resAdvanceGain\%$ advance per horizon and
-      one parameter eliminated, at $+70\%$ iterations. \\
-    Derivatives & AD / keep & $\resADratio$ objective evaluations against $\resFDcentralEvals$, and more
-      accurate; finite differences would cost $\resFDcentralBudget\%$ of the cycle budget
-      (\S\ref{sec:deriv}). \\
-    Hessian & exact / keep & $\resIterExactHess$ against $\resIterLBFGS$ iterations
-      ($-\resHessIterSaving\%$) at the same optimum (\S\ref{sec:deriv}). \\
-    Solver class & interior point / keep & $\resSolverRatioLow\times$ faster at $\resSolverIneqLow$
-      inequalities, $\resSolverRatioHigh\times$ at $\resSolverIneqHigh$ (\S\ref{sec:solvercmp}). \\
-    Barrier weight $\Wobs$ & $\resWobsDep$ / keep & Below the bifurcation threshold
-      $[\resBifLow,\resBifHigh]$: the control law is regular in $x_0$ (\S\ref{sec:landscape}). \\
-    Horizon $N,\Delta t$ & $\resN$, $\resDt$~s / \textbf{$N=26$, $\Delta t=0.35$~s} & Dominated, but only
-      marginally on $(N,\Delta t)$ alone; the real gain needs $\Ninput$ (next row). Short horizons win on
-      time and lose on safety: every configuration with $N\Delta t\le2$~s grazes (\S\ref{sec:horizon}). \\
-    Control horizon $\Ninput$ & $=N$ / \textbf{$\Ninput=10$} & With $N=26$: same time to goal, same
-      clearance, tail solve time $24.3$~ms against $59.3$ (\S\ref{sec:nc}). \\
-    Move blocking & absent / \textbf{add} & Earlier defended as a considered choice; the joint sweep
-      withdraws both grounds, and the recorded run misses its cycle budget ($157.9$~ms against
-      $\resCycleBudget$) (\S\ref{sec:nc}). \\
-    Weight tuning & scalarisation / not critical & Only accuracy responds ($\resParetoRelAcc\%$ against
-      $\resParetoRelTime\%$ on time): not where the system is limited. The per-axis
-      Bayesian procedure of \S\ref{sec:bo} is stated, and bounded in advance by that result, but not yet
-      run on this profile. \\
-    Input envelope & narrow / \textbf{widened, and it worked} & On the narrow envelope the critical cone
-      collapsed and both the tightened and the $\ell^1$ constraint failed on $\mathcal{U}$, not on the data
-      (\S\ref{sec:kkt}, \S\ref{sec:l1}). The envelope has since been widened to
-      $v_{y,\max}=\resVyMax$ against $v_{x,\max}=\resVxMax$, and the campaign reported here is the one that
-      acted on it: the cone no longer collapses, holding $\resConeLast$ dimensions at the last cycle. \\
-    Local-target metric & Euclidean / \textbf{geodesic} & The rule~\eqref{eq:localgoal} rates the boundary
-      cells that lead out of a dead end and those that lead further in as equivalent. Measured over four
-      non-convex worlds: the Euclidean rule fails all four, the geodesic resolves all four
-      (Table~\ref{tab:escape}, \S\ref{sec:nonconvex}). \\
-    Target memory & none / keep none & The tabu was predicted to be needed and measured not to be: with the
-      geodesic metric the runs are identical with and without it, because the candidate targets lie on the
-      unvisited frontier where the penalty is identically zero (\S\ref{sec:memoryfix}). \\
-    \bottomrule
-  \end{tabular}
-\end{table}
+  \simshot{gazebo_foxglove}{0.52}{Gazebo: G1 in the walled arena, with the Foxglove telemetry front-end}
+  \caption{Gazebo (right), where the stack was first closed on the Go2 and which now carries the G1 in
+  scripted arena worlds, with the Foxglove front-end used for telemetry (left). The traces are the three
+  components of the twist commanded by the MPC; the 3-D panel shows the accumulated LiDAR returns and the
+  local occupancy grid rebuilt from the newest scan. Gazebo is the fastest of the three simulators and the
+  only one routinely run faster than real time, which is what makes it the one used for regression runs of
+  the whole node graph.}
+  \label{fig:sim-gazebo}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \simshot{mujoco}{0.52}{MuJoCo: G1 walking the mapless world from which the replay bag was recorded}
+  \caption{The G1 in MuJoCo, the lighter of the two dynamic simulators and the one the replay bag
+  \resBag{} was recorded in (Section~\ref{sec:setup}). Rendering is minimal here by design: what MuJoCo is
+  used for is the contact solver, so that the twist published by the MPC is tracked by the gait policy under
+  the dynamics it was trained on.}
+  \label{fig:sim-mujoco}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \simshot{isaac_sim}{0.52}{Isaac Sim: G1 in the photorealistic warehouse, with the RViz view of the
+    navigation stack alongside}
+  \caption{The G1 in Isaac Sim (left) and the navigation stack running on it (right). The simulated scene
+  supplies both the contact dynamics for the gait policy of Section~\ref{sec:g1rl} and the rendered stereo
+  pair from which the visual--inertial odometry is computed. In the RViz view every display the planner
+  consumes is LiDAR-derived: the marked returns with the ground rejected, the local voxel map, the stop and
+  slow-down zones, and the MPC prediction of Section~\ref{sec:nlp}; the visual odometry appears as a separate
+  track, feeding the pose bridge of Section~\ref{sec:overview} rather than the map.}
+  \label{fig:sim-isaac}
+\end{figure}
+
+\paragraph{Hardware deployment.} The stack was deployed on both machines, the Go2 and the G1, and on both it
+runs on an NVIDIA Jetson Orin Nano carried by the robot, as a companion computer rather than a replacement
+for the vendor controller: the internal PC keeps the sensors and the locomotion layer, and the Jetson runs
+the ROS~2 nodes of Section~\ref{sec:overview}. The two exchange over DDS, the transport ROS~2 already speaks,
+so the board subscribes to the LiDAR returns and to the state published by the internal PC and publishes back
+the body-frame twist $u$ that Section~\ref{sec:platforms} declares as the common command interface of the two
+platforms. Nothing in the optimization program crosses that boundary differently: the deployed profile
+\resProfile{}, the horizon $N=\resN$ at $\Delta t=\resDt$~s and the solver options of
+Section~\ref{sec:impl} are the ones analysed throughout this report.
+
 
 %=============================================================================
 \section{Discussion and limitations}

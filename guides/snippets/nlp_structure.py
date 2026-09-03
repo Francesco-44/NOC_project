@@ -56,8 +56,12 @@ def structure(cfg: MPCConfig, N: int) -> dict:
     hess = ca.hessian(f + ca.dot(lam, g), x)[0].sparsity()
 
     n_var, n_con = int(x.shape[0]), int(g.shape[0])
+    NX = tracker.NX
     # uguaglianze: NX per passo (dinamica) + NX (condizione iniziale)
-    n_eq = tracker.NX * N + tracker.NX
+    n_eq_dyn = NX * N
+    n_eq = n_eq_dyn + NX
+    n_var_state = NX * (N + 1)
+    M = int(tracker.cfg.max_obs_constraints)
     return {
         "N": N,
         "n_var": n_var,
@@ -69,6 +73,13 @@ def structure(cfg: MPCConfig, N: int) -> dict:
         "jac_density": jac.nnz() / max(1, n_con * n_var),
         "hess_nnz": int(hess.nnz()),
         "hess_density": hess.nnz() / max(1, n_var * n_var),
+        # Scomposizione per la tabella "alla Report.tex" del cap. 4.1: stato
+        # contro ingresso, dinamica contro condizione iniziale, termini di
+        # barriera nel costo (non nei vincoli — §sec:dims lo sottolinea).
+        "n_var_state": n_var_state,
+        "n_var_input": n_var - n_var_state,
+        "n_eq_dyn": n_eq_dyn,
+        "n_barrier": 2 * M * (N + 1),
     }
 
 

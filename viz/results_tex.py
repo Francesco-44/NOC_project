@@ -591,6 +591,14 @@ def sec_nlp(res: dict, M: Macros) -> list[str]:
     npar = M.add("resNpar", str(dep["n_par"]), "parametri CasADi")
     jd = M.add("resJacDensity", fx(100 * dep["jac_density"], 2), "densita' jacobiano [%]")
     hd = M.add("resHessDensity", fx(100 * dep["hess_density"], 2), "densita' hessiana [%]")
+    # Scomposizione "alla Report.tex": stato/ingresso, dinamica/condizione
+    # iniziale, termini di barriera. Guardati con .get() perche' una cache
+    # generata prima di nlp_structure.structure() averli non li contiene.
+    if all(k in dep for k in ("n_var_state", "n_var_input", "n_eq_dyn", "n_barrier")):
+        M.add("resNvarState", str(dep["n_var_state"]), "variabili di stato")
+        M.add("resNvarInput", str(dep["n_var_input"]), "variabili di ingresso")
+        M.add("resNeqDyn", str(dep["n_eq_dyn"]), "uguaglianze di dinamica")
+        M.add("resNBarrier", str(dep["n_barrier"]), "termini di barriera nel costo")
     big = max(per_N, key=lambda r: r["N"])
     M.add("resNvarBig", str(big["n_var"]), f"variabili a N={big['N']}")
     M.add("resNbig", str(big["N"]))

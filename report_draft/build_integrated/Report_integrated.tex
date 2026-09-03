@@ -1459,8 +1459,42 @@ error as in the velocity-form MPC of \cite{rawlings2017mpc}.
 \subsection{Problem dimensions and structure}
 \label{sec:dims}
 
-Table~\ref{res:tab:nlp} reports the size of the NLP against the horizon, measured on the deployed profile
-rather than counted by hand.
+Table~\ref{tab:dims} reports the size of the NLP at the deployed setting $N=\resN$, $M=\resMobs$. It is a
+medium-scale, sparse, smooth, non-convex problem: $\resNvar$ decision variables, $\resNeq$ equality
+constraints, $\resNineq$ simple input bounds, and $2M(N+1)=\resNBarrier$ barrier terms in the objective ---
+there are no obstacle \emph{constraints}, so there is no obstacle multiplier and no non-trivial active set
+to identify: the entire inequality budget of the deployed program is the $\resNineq$ box bounds on the
+inputs. A further $\resNpar$ quantities enter as CasADi parameters: the measured state, the reference, the
+sentinel-padded obstacle positions and the three velocity bounds.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{NLP dimensions at the deployed configuration $N=\resN$, $\Delta t=\resDt$~s, $M=\resMobs$.}
+  \label{tab:dims}
+  \begin{tabular}{llr}
+    \toprule
+    Quantity & Expression & Value \\
+    \midrule
+    State variables            & $6(N+1)$        & $\resNvarState$ \\
+    Input variables            & $3N$            & $\resNvarInput$ \\
+    Total decision variables   & $6(N+1)+3N$     & $\mathbf{\resNvar}$ \\
+    Dynamic equalities         & $6N$            & $\resNeqDyn$ \\
+    Initial-state equalities   & $6$             & $6$ \\
+    Total equality constraints & $6(N+1)$        & $\mathbf{\resNeq}$ \\
+    Input bounds               & $4N$            & $\mathbf{\resNineq}$ \\
+    Barrier terms (sigmoid + quadratic) & $2M(N+1)$ & $\resNBarrier$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The Jacobian of~\eqref{eq:cons-dyn} is block bi-diagonal, with $6\times9$ blocks coupling $(x_k,u_k)$ to
+$x_{k+1}$; the Hessian of the Lagrangian is block tri-diagonal, the off-diagonal input blocks coming from
+the rate penalty. Nothing in the problem couples distant stages, so the linear-algebra cost of one
+interior-point iteration is linear in $N$ --- at the deployed size the constraint Jacobian is
+$\resJacDensity\%$ dense and the Hessian $\resHessDensity\%$, and Table~\ref{res:tab:nlp} shows both
+densities falling as $N$ grows while the nonzero counts grow linearly, which is the signature of the
+simultaneous parametrisation rather than a coincidence of this one row.
 
 \begin{table}[htbp]
   \centering
@@ -1471,23 +1505,6 @@ rather than counted by hand.
   \label{res:tab:nlp}
   \restab{nlp}
 \end{table}
-
-At the deployed $N=\resN$ the program carries $\resNvar$ decision variables and $\resNcon$ constraints, of
-which $\resNeq$ are equalities --- the dynamics plus the initial condition --- and $\resNineq$ are simple
-bounds on the inputs. A further $\resNpar$ quantities enter as CasADi parameters: the measured state, the
-reference, the sentinel-padded obstacle positions and the three velocity bounds. The problem is therefore
-medium-scale, sparse, smooth and non-convex.
-
-The constraint Jacobian is $\resJacDensity\%$ dense and the Hessian of the Lagrangian $\resHessDensity\%$.
-Both densities fall as $N$ grows while the nonzero counts grow linearly, which is the signature of the
-simultaneous parametrisation: the Jacobian of~\eqref{eq:cons-dyn} is block bi-diagonal, the Hessian block
-tri-diagonal with the off-diagonal input blocks coming from the rate penalty, and nothing couples distant
-stages. The linear-algebra cost of one interior-point iteration is consequently linear in $N$.
-
-It is worth being explicit about what is \emph{not} in this table, because it shapes everything in
-Section~\ref{sec:solvercmp}. There are no obstacle constraints: the $2M(N+1)$ obstacle terms all live in the
-objective. There is therefore no obstacle multiplier, no non-trivial active set to identify, and the entire
-inequality budget of the deployed program is $\resNineq$ box bounds on the inputs.
 
 \subsection{Derivative computation}
 \label{sec:deriv}

@@ -324,8 +324,8 @@ body-frame velocity interface of the locomotion controller:
         single pose topic and differentiates it, with an exponential filter, into a body-frame velocity estimate (the robot does
         not publish a usable body-frame twist);
   \item a \textbf{mapping module} that rebuilds a local Gaussian occupancy grid from the newest scan at
-        $1$~Hz and maintains a sparse world-frame cell map of confirmed obstacle cells, on which the memory-augmented target rule of Section~\ref{sec:memoryfix} plans; its purpose
-        is precisely to repair the failure mode analysed in Section~\ref{sec:localmin};
+        $1$~Hz and maintains a sparse world-frame cell map of confirmed obstacle cells, on which the geodesic target rule of Section~\ref{sec:astar} plans; its purpose
+        is precisely to repair the failure mode measured in Section~\ref{sec:localmin};
   \item the \textbf{\astar{} local planner}, which solves the discrete program of
         Section~\ref{sec:astar} on that grid;
   \item the \textbf{nonlinear MPC tracker}, which solves the NLP of Section~\ref{sec:nlp} at $8$~Hz and
@@ -669,7 +669,7 @@ locomotion layers, the hand-designed one and the learned one, are approximated b
 \label{sec:grid}
 
 Let $\mathcal{P}_k=\{p_i\in\R^3\}_{i=1}^{N_k}$ be the LiDAR point cloud available at cycle $k$, projected on
-the plane. The grid is a square of side $2h_w$ ($h_w=5$~m) centred on the robot position, discretised with
+the plane. The occupancy grid~\cite{elfes1989occupancy} is a square of side $2h_w$ ($h_w=5$~m) centred on the robot position, discretised with
 resolution $\Delta=0.25$~m into $n_c=2h_w/\Delta=40$ cells per axis. The occupancy probability of cell $c$ is
 a Gaussian tail of the distance to the nearest return,
 \begin{equation}
@@ -841,7 +841,7 @@ $8$-connected edges carry the cost
   \qquad c_{\mathrm{move}}\in\{1,\sqrt2\},
   \label{eq:astarcost}
 \end{equation}
-and a standard \astar{} search returns the cheapest path between two cells. The normalised quadratic
+and a standard \astar{} search returns the cheapest path between two cells~\cite{hart1968astar}. The normalised quadratic
 in~\eqref{eq:astarcost} is what produces medial-axis-like paths: a cell just below the hard threshold costs
 ($1+w_{\mathrm{obs}}$) times an open cell, so the search prefers the middle of a corridor to a shorter path
 that grazes a wall, while a doorway is never closed outright. The Euclidean heuristic is admissible because
@@ -860,22 +860,36 @@ therefore an exact \astar{} and returns a cost-optimal path on the current occup
   \label{fig:astargrid}
 \end{figure}
 
-\paragraph{What the discrete layer is for.} Choosing \emph{which side} of an obstacle to pass on is a discrete decision. Take a trajectory that passes on the left and one that passes on the right: turning the first into the second means moving it continuously through intermediate trajectories, and at least one of those must run through the obstacle. The feasible set is therefore disconnected, with one component per side, and a gradient-based solver stays in the component its initial guess falls into: it converges to the best trajectory on one side and never learns that the other side existed. Writing the choice into the NLP would require binary variables and turn it into a mixed-integer nonlinear program, whose solution time is not compatible with a control loop at 8~Hz. A graph search represents the same choice natively, and on a $60\times60$
-grid it costs a few milliseconds. Delegating the decision to the A* algorithm is therefore what leaves the continuous program
-smooth, with a box-shaped input set and no integer variables, the structure that
-Sections~\ref{sec:dims} and~\ref{sec:solver} exploit throughout.
+\paragraph{What the discrete layer is for.} Choosing \emph{which side} of an obstacle to pass on is a
+discrete decision. Deforming a trajectory that passes on the left into one that passes on the right
+sweeps it through the obstacle: the feasible set is disconnected, one component per side, and a
+gradient-based solver stays in the component its initial guess falls into. Writing the choice into the NLP would require
+binary variables and a mixed-integer program, whose solution time is not compatible with a loop at $8$~Hz,
+whereas a graph search represents it natively and costs a few milliseconds on a $60\times60$ grid.
+Delegating it to \astar{} is what leaves the continuous program smooth and box-constrained, the structure
+that Sections~\ref{sec:dims} and~\ref{sec:solver} exploit. The price is that the choice precedes the MPC and cannot be revised by it: when the discrete
+layer \emph{does not commit}, the smooth program inherits two competing basins of its own
+(Section~\ref{sec:landscape}); when it \emph{commits on poor information}, the MPC follows it faithfully
+into a dead end (Section~\ref{sec:localmin}).
 
-The price to pay for such delegation is that the choice is made before the MPC is consulted and the MPC has no way to
-revise it: it can only deform the trajectory within the class it has been given. The two ways this breaks
-are opposite to each other and both are measured in Section~\ref{sec:performance}. When the discrete layer
-\emph{does not commit} (an obstacle squarely on the line to the goal, two routes of equal cost), the
-smooth program inherits two competing basins of its own, and small perturbations flip the solution from one
-to the other (Section~\ref{sec:landscape}). When it \emph{commits on poor information}, the MPC follows it
-faithfully into a dead end, because questioning the reference is not its job
-(Section~\ref{sec:localmin}).
+A convex obstacle needs nothing further: the ray to the goal leaves the obstacle on one side or the other,
+\eqref{eq:astarcost} routes around it, and the next cycle finds the robot closer than the last. The
+remaining three components exist because concave obstacles break that guarantee, each in a different way.
+
+\paragraph{Memory: the accumulated map.} The LiDAR reports only what is in view, so a wall leaving the
+field of view is forgotten by the raw scan and the robot replans as if it had never seen it. Returns are
+therefore accumulated in world frame as a sparse set of cell indices at the resolution of the planning
+grid, each stamped with the time it was last confirmed; entries expire after $20$~s, so a moving obstacle
+is forgotten once it has moved. Stored cells inside the window are merged with the current scan before the
+grid of Section~\ref{sec:grid} is built, so~\eqref{eq:astarcost} plans against walls the sensor can no
+longer see.
+
+This is necessary and it is not sufficient. In the failure of Section~\ref{sec:localmin} the robot has
+already observed the closed end of the concavity and still drives back into it, which is the useful
+diagnosis: the information is in the map, and the rule that selects the target throws it away.
 
 \paragraph{Choosing the target inside the window.} The search of~\eqref{eq:astarcost} runs on the local
-grid, and the global goal is normally outside it, so a target on the window has to be selected first. This
+grid and the global goal is normally outside it, so a target on the window has to be selected first. This
 is a selection over the free cells of the window boundary,
 \begin{equation}
   x_{\mathrm{local}} \;=\;
@@ -883,16 +897,15 @@ is a selection over the free cells of the window boundary,
   \Big[\; d_k\big(c,\,x_g\big) \;+\; w_\tau\,\tau_k(c) \;\Big],
   \label{eq:localgoalargmin}
 \end{equation}
-where $\mathcal{F}_k$ are the free boundary cells, $d_k$ is a distance to the goal, and $\tau_k$ penalises
-cells the robot has already visited without making progress. Only boundary cells are candidates, because
-the boundary is where the direction of travel is decided; an interior cell would stop the robot half a
-window short of the edge for no reason. The substantive choice in~\eqref{eq:localgoalargmin} is the metric
-$d_k$. Two target rules were implemented and compared; only the second is an instance
-of~\eqref{eq:localgoalargmin} at all, and that is itself part of the story.
+where $\mathcal{F}_k$ are the free boundary cells, $d_k$ is a distance to the goal and $\tau_k$ penalises
+cells already visited without progress. Only boundary cells are candidates, because the boundary is where
+the direction of travel is decided; an interior cell would stop the robot half a window short of the edge
+for no reason. The lever is the \emph{target} and not the edge cost: raising
+$w_{\mathrm{obs}}$ in~\eqref{eq:astarcost} makes a concavity expensive to traverse, not unattractive to aim
+at.
 
-The first, which the stack shipped with, does not solve~\eqref{eq:localgoalargmin} at all. It takes the
-last free cell along the ray from the robot to the goal, which is a geometric shortcut rather than a
-minimisation,
+The rule the stack shipped with does not solve~\eqref{eq:localgoalargmin} at all. It takes the last free
+cell along the ray from the robot to the goal,
 \begin{equation}
   x_{\mathrm{local}} \;=\;
   \begin{cases}
@@ -901,38 +914,56 @@ minimisation,
   \end{cases}
   \label{eq:localgoal}
 \end{equation}
-and the robot advances one grid width at a time towards the goal; if the projected cell is occupied, a
-breadth-first search returns the nearest free one. The rule is cheap, needs no map at all, and is
-memoryless and purely directional: whatever the map contains, the target lies on the line to the goal.
-In front of a concave obstacle that line enters the concavity, so the target does too.
+which is cheap, needs no map, and is memoryless and purely directional: in front of a concavity the line
+to the goal enters it, so the target does too. Replacing the projection by the $\arg\min$ of the
+straight-line distance does not repair this. At the mouth of a horseshoe (Figure~\ref{fig:localtarget}) the
+projection selects a cell $\resFigProjGeo$~m of travel from the goal and the Euclidean $\arg\min$ a
+different cell $\resFigEuclGeo$~m away, equally wrong, because in a straight line both are close to the
+goal; where two candidates tie, the choice is settled by numerical noise and reverses at the next cycle.
 
-It would be convenient if the defect stopped there, because then~\eqref{eq:localgoalargmin} with a
-Euclidean $d_k$ would already repair it. It does not. Figure~\ref{fig:localtarget} shows the robot at the
-mouth of a horseshoe with the map it has actually observed: the ray projection selects a boundary cell
-$\resFigProjGeo$~m of travel from the goal, and the $\arg\min$ of $\|c-x_g\|_2$ over the same free
-boundary cells selects one $\resFigEuclGeo$~m away, a different cell, and just as wrong. Both are near
-the closed end, because in a straight line both are close to the goal. The straight-line distance rates a
-cell inside the concavity and one outside it almost equally, and where the two happen to tie exactly it
-separates them on numerical noise and reverses the choice at the next cycle.
-Section~\ref{sec:localmin} shows that this is enough, on its own, to trap the robot.
+\paragraph{The metric: geodesic distance.} The deployed rule keeps~\eqref{eq:localgoalargmin} and replaces
+$d_k$ with the \emph{geodesic} distance to the goal over the accumulated map. Write $\rho$ for the cell
+side, $\mathcal{B}_k$ for the cells lying within
+$d_{\mathrm{block}}=\sigma\,\Phi^{-1}(1-P_{\mathrm{thr}})$ of an accumulated obstacle point,
+$\mathcal{F}_k$ for the rest of the grid, and $c_g$ for the cell containing $x_g$. The field is the unique
+solution of the shortest-path fixed point
+\begin{equation}
+  d_k(c,x_g)=
+  \begin{cases}
+    0, & c=c_g,\\[3pt]
+    \displaystyle\min_{c'\in\mathcal{N}(c)\cap\mathcal{F}_k}
+      \Big\{\,d_k(c',x_g)+\rho\,\omega(c,c')\,\Big\}, & c\in\mathcal{F}_k\setminus\{c_g\},\\[5pt]
+    +\infty, & c\in\mathcal{B}_k,
+  \end{cases}
+  \label{eq:geodesic}
+\end{equation}
+with $\mathcal{N}(c)$ the eight-cell neighbourhood and $\omega=1$ on the four axial edges,
+$\omega=\sqrt{2}$ on the four diagonal ones. The weights are non-negative, so~\eqref{eq:geodesic} is solved
+exactly by one Dijkstra wavefront propagated \emph{from} $c_g$ in
+$\mathcal{O}(|\mathcal{F}_k|\log|\mathcal{F}_k|)$, and cells the wavefront never reaches keep
+$d_k=+\infty$. The eight-neighbour stencil overestimates the true shortest path by at most $8.2\%$, attained at
+$22.5^\circ$ to the axes, against margins of a factor of four in Figure~\ref{fig:localtarget}: the
+metrication error cannot change the outcome. Recomputing $d_{\mathrm{block}}$ from the occupancy threshold of
+Section~\ref{sec:grid}, instead of declaring it separately, is what keeps the field and \astar{} from
+developing diverging notions of what is blocked. One field is built per cycle, and no path is extracted
+from it.
 
-The second instance is the deployed one. It keeps~\eqref{eq:localgoalargmin} and replaces $d_k$ with the
-\emph{geodesic} distance to the goal over the free cells of the accumulated map: a wavefront propagated
-from $x_g$, one scalar field per replanning cycle, with no path extracted from it. Space that has not been
-observed yet counts as free. This is the optimistic assumption of frontier exploration, and it is what
-makes the field correct itself as the sensor discovers: while the far end of a corridor is unseen the
-wavefront runs through it and entering is the right decision, and as soon as that end is observed the same
-cell becomes distant and the target is dropped. A candidate the wavefront cannot reach at all is discarded
-rather than scored with a Euclidean fallback, which would readmit the metric at fault; if no candidate is
-reachable on the known map the planner falls back to~\eqref{eq:localgoal}, which at least moves the robot
-towards unknown ground. The memory term $w_\tau\tau_k$ is implemented but carries zero weight in the
-deployed profile, for the reason measured in Section~\ref{sec:memoryfix}. In the same scene the geodesic
-$\arg\min$ selects a cell $\resFigGeoGeo$~m from the goal, on the far side of the obstacle's arm, and
-\astar{} routes out of the concavity instead of further into it.
+Space not yet observed counts as free, which is why $\mathcal{B}_k$ is built from observed points alone.
+This is the optimistic assumption of frontier exploration, and it is what makes the field correct itself as
+the sensor discovers: while the far end of a corridor is unseen the wavefront runs through it and entering
+is the right decision; as soon as that end is observed the same cell becomes distant and the target is
+dropped. The robot does not avoid concavities on principle, it tries each one once. A candidate with
+$d_k=+\infty$ is discarded rather than scored with a Euclidean fallback, which would readmit the metric at
+fault; if no candidate is reachable the planner falls back to~\eqref{eq:localgoal}, which at least moves
+the robot towards unknown ground. In Figure~\ref{fig:localtarget} the geodesic $\arg\min$ selects a cell
+$\resFigGeoGeo$~m from the goal, on the far side of the obstacle's arm, and \astar{} routes out of the
+concavity instead of further into it. The memory term $w_\tau\tau_k$ of~\eqref{eq:localgoalargmin} is
+implemented but carries zero weight in the deployed profile, for the reason measured in
+Section~\ref{sec:memoryfix}.
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\textwidth]{fig_local_target.pdf}
+  \includegraphics[width=.94\textwidth]{fig_local_target.pdf}
   \caption{The same scene, the same window and the same observed map; only the metric of
   \eqref{eq:localgoalargmin} changes. The robot sits at the mouth of a horseshoe and the map is the one it
   has actually accumulated by driving in, not the full world (light grey), which is what makes the failure
@@ -944,19 +975,20 @@ $\arg\min$ selects a cell $\resFigGeoGeo$~m from the goal, on the far side of th
   \label{fig:localtarget}
 \end{figure}
 
-\paragraph{Commitment between replanning cycles.} Two boundary cells lying on opposite sides of an obstacle
-can carry almost the same geodesic cost while belonging to different homotopy classes. The $\arg\min$ then
-alternates between them from one cycle to the next, and the robot sways on the spot without ever
+\paragraph{Commitment between replanning cycles.} Two boundary cells on opposite sides of an obstacle can
+carry almost the same geodesic cost while belonging to different homotopy classes. The $\arg\min$ then
+alternates between them from one cycle to the next and the robot sways on the spot without ever
 committing. The deployed rule therefore retains the candidate that best continues the previous choice
-unless a competitor beats it by a margin of $2.0$~m of geodesic cost, and clears that memory whenever the
-global goal changes, since a target inherited from a previous mission is simply the wrong direction. This
-is the ambiguity of Section~\ref{sec:landscape} seen one layer higher up: where the smooth program resolves it by
-breaking symmetry numerically, the discrete layer resolves it by declining to switch without evidence.
+unless a competitor beats it by $2.0$~m of geodesic cost, and clears that memory whenever the global goal
+changes, since a target inherited from a previous mission is simply the wrong direction. It is a margin on
+the cost and not a lock: a genuinely better route still wins. Where the smooth program of Section~\ref{sec:landscape}
+resolves the same tie by breaking symmetry numerically, the discrete layer resolves it by declining to
+switch without evidence.
 
 The geodesic field is the one expensive part of the planning layer, because the wavefront covers the whole
 known map rather than the window alone: it measures a median of $0.11$ to $0.15$~s per replanning cycle
-depending on the world, with a worst case of $0.27$~s, which against the $1$~Hz replanning rate is between
-a tenth and a quarter of the period and leaves the $8$~Hz MPC untouched. The resulting grid path is finally
+depending on the world, with a worst case of $0.27$~s: between a tenth and a quarter of the
+$1$~Hz replanning period, and no load at all on the $8$~Hz MPC. The resulting grid path is finally
 resampled and smoothed with a moving average before it is handed to the MPC, to remove the zig-zag that the
 $8$-connected discretisation introduces.
 
@@ -1062,7 +1094,7 @@ price of one addition, not because it was measured to steer better.
 \subsubsection{Decision variables, cost, and the parametrisation of the program}
 \label{sec:shoot}
 
-The NLP is written in the \emph{simultaneous} form, also called direct multiple shooting: both the state and
+The NLP is written in the \emph{simultaneous} form, also called direct multiple shooting~\cite{bock1984multipleshooting}: both the state and
 the input sequences are decision variables and the dynamics enter as equality constraints,
 \begin{equation}
   z \;=\; \big(X,U\big),\qquad X=[x_0,\dots,x_N]\in\R^{6\times(N+1)},\quad U=[u_0,\dots,u_{N-1}]\in\R^{3\times N}.
@@ -1232,7 +1264,7 @@ with the slack penalised in the cost either linearly ($\rho_s\sum s$) or quadrat
 question this settles is the one Section~\ref{sec:barrier} could only raise: at what weight, if any, does the
 relaxation stop being a relaxation, so when the soft constraint becomes a hard one.
 
-Penalising the slack in $\ell^1$ makes the penalty \emph{exact}: above a finite threshold ($\mu^\star$,
+Penalising the slack in $\ell^1$ makes the penalty \emph{exact}~\cite{han1979exact,nocedal2006numopt}: above a finite threshold ($\mu^\star$,
 the norm of the multipliers of~\eqref{eq:slack} at the solution), the penalised and the constrained
 problem share their minimisers and the slack vanishes identically, so beyond that weight the relaxation is no longer one.
 On the deployed problem the slack is already identically zero at $\rho_s=\resRhoLoneZero$. Penalising in
@@ -1428,7 +1460,7 @@ proportional--predictive sense. For a nominal plant this is immaterial, but any 
 rather than being integrated away. The offset is therefore a property of the formulation and not of the
 tuning, and no choice of $Q$ removes it.
 Section~\ref{sec:discussion} discusses the standard remedy, state augmentation with an integrated tracking
-error as in the velocity-form MPC of \cite{rawlings2017mpc}.
+error as in the velocity-form MPC of \cite{rawlings2017mpc,pannocchia2003offsetfree}.
 
 %=============================================================================
 \section{Optimization procedure}
@@ -1508,12 +1540,12 @@ system
   \label{eq:kkt}
 \end{equation}
 and $\mu_b$ is driven to zero. Each iteration requires one factorisation of the sparse symmetric indefinite
-matrix in~\eqref{eq:kkt}, performed by MUMPS on the pattern of Section~\ref{sec:dims}.
+matrix in~\eqref{eq:kkt}, performed by MUMPS~\cite{amestoy2001mumps} on the pattern of Section~\ref{sec:dims}.
 The Newton step therefore needs exact first and second derivatives at every iteration: the gradient
 of $\phi$, the Jacobian $\nabla c$ and the Hessian of the Lagrangian $\nabla^2_{zz}\mathcal{L}$.
 None of them is coded by hand or approximated numerically. All three are produced by CasADi through
 algorithmic differentiation (AD), which walks the expression graph of Section~\ref{sec:dims} and
-composes the derivatives of the elementary operations exactly, to machine precision.
+composes the derivatives of the elementary operations exactly, to machine precision~\cite{griewank2008ad}.
 Section~\ref{sec:deriv} measures what this costs and what the alternatives would cost;
 Section~\ref{sec:solvercmp} asks whether the interior-point method assumed here is the right family
 of solver for this problem in the first place.
@@ -1559,7 +1591,7 @@ $\sim\!100~\mu$s timings and its second digit is not meaningful; what is stable,
 remains a small constant.
 
 \paragraph{Exact Hessian against BFGS.} Because AD supplies exact second derivatives at a cost
-comparable to the first, the full Newton system can be used rather than a quasi-Newton approximation.
+comparable to the first, the full Newton system can be used rather than a quasi-Newton approximation~\cite{nocedal2006numopt}.
 
 \begin{table}[htbp]
   \centering
@@ -1615,7 +1647,7 @@ active-set route returns one in half the cases.
 
 Two cautions, without which the numbers would be misleading. First, the real advantage of an active set in
 MPC is warm starting \emph{between consecutive solves}: the active set changes by a few rows per cycle and
-the factorisation is reused, which is the online active-set strategy the method was designed for. Both
+the factorisation is reused, which is the online active-set strategy the method was designed for~\cite{ferreau2014qpoases}. Both
 solvers are started cold here, deliberately, so as to favour neither, which removes from the active-set
 method precisely what makes it competitive in a receding-horizon loop. Second, the advice is stated for
 convex programs, and this one is not.
@@ -1638,7 +1670,7 @@ section verifies it on cycles extracted from a recorded mission rather than on a
   \restab{kkt}
 \end{table}
 
-At $\resKKTcycles$ sampled cycles, the linear independence constraint qualification (LICQ) holds at every one (\resLICQalways), the rank of the Jacobian of
+At $\resKKTcycles$ sampled cycles, the linear independence constraint qualification (LICQ)~\cite{nocedal2006numopt} holds at every one (\resLICQalways), the rank of the Jacobian of
 the active constraints equals their number; so the KKT multipliers exist and are \emph{unique}. Strict
 complementarity holds at every one (\resStrictAlways), which means the critical cone coincides with the null
 space of the active Jacobian and the second-order condition can be checked exactly rather than
@@ -1794,7 +1826,7 @@ radius interact, since a tall barrier is harmless when its radius is small. The 
 repaired by the next decision and verified a posteriori by evaluating the assembled vector.
 \emph{Sequential update and ordering.} The axes are swept in decreasing order of influence and each optimum
 is fixed before the next axis is visited, so later sweeps are conducted about an already improved operating
-point. This is coordinate descent with a GP line search, and it is what makes the scheme robust to the
+point. This is coordinate descent~\cite{wright2015coordinate} with a GP line search, and it is what makes the scheme robust to the
 interactions separability ignores: moving the dominant coordinate first takes the base point out of the
 region where the mission fails, so every subsequent sweep is measured where the objective discriminates.
 Influence is measured rather than assumed, and it costs no rollouts of its own, a GP fitted over all
@@ -1835,13 +1867,12 @@ LiDAR and the discrete model of Section~\ref{sec:discretization} as the plant. T
 Sections~\ref{sec:horizon} and~\ref{sec:nc} use. Two of these worlds recur: a narrow gap
 and a U-shaped trap.
 
-A third family is used only in Section~\ref{sec:nonconvex}, because it probes a different layer. The worlds
-\texttt{long\_wall}, \texttt{horseshoe} and \texttt{dead\_end} each place a \emph{non-convex} obstacle
-between the robot and the goal: a wall long enough that its ends leave the window, a horseshoe, and a
-corridor closed at the far end. They are run with \emph{limited perception}: the robot sees only out to the
-LiDAR range and only what is not occluded, and accumulates what it sees. That last detail is not a refinement
-but the whole experiment, because with the obstacle known in advance the discrete planner never enters the
-trap and the failure under study does not occur.
+A third family is used only in Section~\ref{sec:nonconvex}, because it probes a different layer: ten worlds,
+six of which place a \emph{non-convex} obstacle between the robot and the goal and four of which only look as
+though they do. They are run with \emph{limited perception}: the robot sees only out to the LiDAR range and
+only what is not occluded, and accumulates what it sees. That last detail is not a refinement but the whole
+experiment, because with the obstacle known in advance the discrete planner never enters the trap and the
+failure under study does not occur.
 
 A correction to an earlier reading of the second family, which the report would be weaker for omitting.
 Previous versions of this section reported that in the U-trap the minimum clearance came out at zero in
@@ -1920,7 +1951,7 @@ Fig.~\ref{fig:landscape} cannot.
   \caption{The objective in the decision space $\R^{\resNvar}$, on a plane constructed to contain both local
   minima of the recorded cycle. \textbf{(a)} the surface; \textbf{(b)} its level sets with the two minima
   ($\star$), the initial iterate ($\blacksquare$) and the IPOPT iterates joining them. What is plotted is not
-  the objective $f$ but the $\ell^1$ merit function $T_1(z)=f(z)+\sigma\|c(z)\|_1$: in the simultaneous
+  the objective $f$ but the $\ell^1$ merit function~\cite{nocedal2006numopt} $T_1(z)=f(z)+\sigma\|c(z)\|_1$: in the simultaneous
   parametrisation $X$ and $U$ are independent variables tied by the dynamic equalities, so a generic point of
   the plane is \emph{not} dynamically feasible and a plot of $f$ alone would show a landscape the solver never
   traverses. The merit function is what the line search actually decreases.}
@@ -2063,7 +2094,7 @@ look-ahead at $9.1$~s while blocking the inputs recovers the computation without
 What remains unmeasured is the regime where the look-ahead itself degrades the closed loop, since no horizon
 tested here does so once the clearance axis is read correctly.
 
-\paragraph{On move blocking.} Holding the input constant over blocks of increasing length is the standard way
+\paragraph{On move blocking.} Holding the input constant over blocks of increasing length is the standard way~\cite{cagienard2007moveblocking}
 to recover computation without shortening the horizon, and it is not used in the deployed profile. Earlier
 versions of this report defended that as a considered choice, on the grounds that the useful horizon was
 short and that computation was not the binding resource. The measurements above withdraw both grounds. The
@@ -2128,10 +2159,164 @@ strict complementarity hold for every $\Ninput$.
 % unlike the control horizon, which Section~\ref{sec:nc} shows to be leaving a factor of two in solve time on
 % the table.
 
+\subsection{Non-convex obstacles, and the target rule that fails on them}
+\label{sec:nonconvex}
+
+\subsubsection{What is being measured}
+\label{sec:localmin}
+
+The clearest illustration in this study of the difference between solving an optimization problem well and
+posing the right one does not involve the NLP at all. With the projection rule~\eqref{eq:localgoal} the stack
+livelocks in front of a non-convex obstacle: the ray to the goal enters the concavity, so the local target
+lands inside it, \astar{} correctly routes around the obstacle \emph{inside the window}, the MPC tracks that
+path faithfully, the robot leaves, and the moment it is out the ray points back in. Every NLP in that run is
+solved to optimality, and every one of them answers a question that should not have been asked. The mechanism
+and the repair are given in Section~\ref{sec:astar}; what is measured here is whether the repair works, and
+at what price.
+
+The design of the campaign matters as much as its outcome. A target rule that simply refused concavities
+would pass every trap and be useless, because most concave-looking scenes are traversable and the shortest
+route runs straight through them. The worlds are therefore in two groups. Six are genuine
+\emph{traps}: a corridor closed at the far end, a horseshoe, an L with two nested closures, and three
+variants of a wall too long for its ends to fit in the window, with the gap on the north side, on the south
+side, and apparently north but in fact a dead end. Four are \emph{controls} that look like traps to the
+sensor but are open: a corridor identical to the dead end but not closed, a wide corridor with three
+staggered baffles, a wall with a single $1.6$~m door, and the warehouse of scattered convex obstacles. On the
+traps the geodesic rule must turn the robot around; on the controls it must do nothing at all.
+
+\subsubsection{Results}
+\label{sec:memoryfix}
+
+Every world is run under the limited-perception model of Section~\ref{sec:setup} with the production planner,
+once under the projection rule~\eqref{eq:localgoal} and once under the deployed geodesic
+$\arg\min$~\eqref{eq:localgoalargmin}, with the per-world time budget of the simulator.
+Figure~\ref{fig:escapegallery} shows the geometry and both trajectories,
+Table~\ref{tab:escape} the numbers.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{fig_escape_gallery.pdf}
+  \caption{The ten worlds of the campaign, each with the trajectory produced by the baseline projection
+  rule~\eqref{eq:localgoal} (dashed) and by the deployed geodesic $\arg\min$~\eqref{eq:localgoalargmin}
+  (solid), under limited perception. Heavy frames are the six \emph{traps}, light frames the four
+  \emph{controls} that only look like traps. The controls are what make the result a result: a rule that
+  simply refused to enter concave-looking scenes would pass every trap and fail all four of these, where the
+  correct behaviour is to drive straight through. Read together with Table~\ref{tab:escape}, since a
+  trajectory that reaches the goal may have reached it through a wall.}
+  \label{fig:escapegallery}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{Escape from non-convex obstacles under limited perception: the baseline ray
+  projection~\eqref{eq:localgoal} against the deployed geodesic $\arg\min$~\eqref{eq:localgoalargmin}, one
+  run each, with the per-world time budget of the simulator. Above the double rule the six traps, below it
+  the four controls. \emph{Crossing} marks a run whose trajectory came within $0.15$~m of an obstacle: the
+  harness plant integrates the command with no collision response, so a rule that aims into a wall produces a
+  trajectory that goes through it, and a reached goal is only meaningful together with the clearance column.
+  Reversals are changes of sign of the longitudinal velocity, the signature of the limit cycle. Time is
+  reported only for runs that reached the goal.}
+  \label{tab:escape}
+  \begin{tabular}{llcrrrr}
+    \toprule
+    World & Target rule & Goal & Time [s] & Path [m] & Rev. & Clearance [m] \\
+    \midrule
+    \texttt{dead\_end}                 & projection & no              &    --- &  83.8 &  157 & 0.669 \\
+                                       & geodesic   & yes             &   81.5 &  31.8 &    2 & 0.669 \\
+    \midrule
+    \texttt{horseshoe}                 & projection & no              &    --- &  80.0 &  147 & 1.685 \\
+                                       & geodesic   & yes             &  100.8 &  37.2 &    2 & 0.723 \\
+    \midrule
+    \texttt{l\_corridor}               & projection & \emph{crossing} &   76.6 &  31.0 &    6 & 0.039 \\
+                                       & geodesic   & yes             &   66.8 &  26.7 &    2 & 0.852 \\
+    \midrule
+    \texttt{long\_wall}                & projection & \emph{crossing} &   71.0 &  28.9 &    6 & 0.049 \\
+                                       & geodesic   & yes             &   61.9 &  25.5 &    6 & 0.878 \\
+    \midrule
+    \texttt{long\_wall\_south}         & projection & \emph{crossing} &  246.0 &  98.8 &   28 & 0.042 \\
+                                       & geodesic   & \emph{crossing} &   58.4 &  24.0 &    4 & 0.058 \\
+    \midrule
+    \texttt{long\_wall\_false\_north}  & projection & yes             &   52.1 &  21.6 &   12 & 0.797 \\
+                                       & geodesic   & yes             &   51.4 &  21.2 &    6 & 0.765 \\
+    \midrule\midrule
+    \texttt{open\_corridor}            & projection & yes             &   47.2 &  18.7 &    0 & 0.850 \\
+                                       & geodesic   & yes             &   47.2 &  18.7 &    0 & 0.850 \\
+    \midrule
+    \texttt{zigzag}                    & projection & yes             &   63.3 &  25.4 &    0 & 0.817 \\
+                                       & geodesic   & yes             &  123.2 &  47.5 &    4 & 0.733 \\
+    \midrule
+    \texttt{door\_room}                & projection & yes             &   29.7 &  11.8 &    0 & 0.800 \\
+                                       & geodesic   & yes             &   29.7 &  11.8 &    0 & 0.800 \\
+    \midrule
+    \texttt{industrial}                & projection & yes             &   63.3 &  25.6 &    0 & 0.640 \\
+                                       & geodesic   & yes             &   63.3 &  25.6 &    0 & 0.640 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{The traps.} The projection rule reaches the goal safely on exactly one of the six. On
+\texttt{dead\_end} and \texttt{horseshoe} it exhausts the budget without escaping, and the signature is the
+one Section~\ref{sec:astar} predicts: $157$ and $147$ reversals over $84$ and $80$~m of travel that never
+leave the mouth of the obstacle. That is a limit cycle, measured, not a slow traversal. On
+\texttt{l\_corridor}, \texttt{long\_wall} and \texttt{long\_wall\_south} it reports the goal reached, and the
+clearance column says why those must not be counted: $0.039$, $0.049$ and $0.042$~m, i.e.\ it went through
+the wall. Only \texttt{long\_wall\_false\_north} is a genuine success, and it is the world where the ray
+happens to point at the side the gap is on.
+
+The geodesic rule resolves five of the six, with clearances between $0.67$ and $0.88$~m against a body
+radius of $0.35$~m, and with the reversal count collapsing from over a hundred to between two and six. On
+\texttt{dead\_end} and \texttt{horseshoe} the escape costs exactly two reversals: the robot enters, observes
+the closing wall, and leaves. That is the optimistic field correcting itself as the sensor discovers, and it
+is the direct measurement of the argument of Section~\ref{sec:astar}. The cost of the escape is bounded: the
+paths that succeed are $25$ to $37$~m against a straight-line distance of $12$ to $21$~m, so the detour is a
+factor of about two and not an exploration of the whole world.
+
+\paragraph{The one that still fails, and what it costs to fix.} On \texttt{long\_wall\_south} the geodesic
+rule also crosses, at $0.058$~m. The world is built to be adversarial in a specific way: the gap is on the
+south side while the goal is to the north, so the north side is the shorter route on everything observed so
+far and the robot commits to it. As it drives north along the wall it sees more wall, the estimate of the
+chosen side grows, and the other side stays optimistic precisely because it has not been explored. The
+$2.0$~m hysteresis margin cannot arbitrate this, because the gap between the two sides grows without bound
+as exploration proceeds; what is needed is a commitment that is released by \emph{evidence}, namely by the
+chosen side being shown closed, which is what a Bug-family algorithm does. That mechanism is implemented and
+disabled, because the side is currently measured against the robot-to-goal axis, which rotates as the robot
+advances: at the far end of the wall the committed half-plane no longer corresponds to the side of the
+obstacle, the commitment never releases, and on two other worlds the robot stops instead of turning back.
+Anchoring the side to the geometry of the wall rather than to the pose is the repair, and it is
+not attempted here.
+
+\paragraph{The controls.} On all four the geodesic rule reaches the goal, which is the half of the result
+that the traps cannot establish. On \texttt{open\_corridor}, \texttt{door\_room} and \texttt{industrial} the
+two rules produce \emph{identical} trajectories to three decimals: where the straight line is already right,
+the geodesic field agrees with it and the machinery costs nothing in behaviour. Only \texttt{zigzag}
+separates them, and against the deployed rule: $123$~s and $47$~m against $63$~s and $25$~m for the
+projection. The staggered baffles make each opening invisible until the robot is nearly upon it, so the
+optimistic field routes towards apertures that later close and the path is a sequence of committed detours.
+The rule is not free, and this is where it is paid for.
+
+\paragraph{The memory term, and a hypothesis the data refuted.} Equation~\eqref{eq:localgoalargmin} carries a
+second ingredient, a tabu penalty on cells already visited without progress, and it was expected to be the
+other half of the repair. It is not: with the geodesic metric the runs are identical with and without it on
+every world, and without the metric the tabu rescues no failure. The reason is visible once stated. The
+candidate targets lie on the boundary of the window, which is by construction the frontier of the region the
+robot has \emph{not} visited, so the penalty evaluates to zero on precisely the cells the rule is choosing
+between. The mechanism was never able to act. It is retained in the code, disabled, and the honest
+conclusion is that the metric was the whole repair and the memory was a hypothesis the data does not
+support.
+
+\paragraph{What the result costs.} The geodesic field is the one expensive part of the planning layer,
+because the wavefront covers the whole known map rather than the window alone. Over the ten worlds its
+median cost per replanning cycle ranges from $96$ to $260$~ms with a worst case of $344$~ms, against a
+replanning period of $1$~s. It is charged entirely to the $1$~Hz discrete layer and leaves the $8$~Hz MPC
+untouched, which is the reason the repair could be afforded at all: the same decision made inside the NLP
+would have had to fit in a $125$~ms cycle.
+
+
 \subsection{Weight tuning in closed loop: the per-axis sweep}
 \label{sec:ofat}
 
-The procedure of Section~\ref{sec:bo} was run in full, but on the Go2 and not on the humanoid this report
+The procedure of Section~\ref{sec:bo} was run in full~\cite{ortolani2026bo}, but on the Go2 and not on the humanoid this report
 deploys. The reason is availability rather than principle: the quadruped is no longer accessible, and the
 campaign is priced in rollouts ($11m+1$ closed-loop missions), which there has been neither the time nor
 the hardware window to repeat on the G1 alongside the horizon and kinematics studies of
@@ -2173,141 +2358,6 @@ same kind of quantity on both platforms. Re-running the campaign on the G1 befor
 horizons are settled would in any case tune a configuration that is about to change. The procedure is stated
 in Section~\ref{sec:bo}, and bounded in advance by the prediction it makes, so that the measurement, when
 it is made, is read against that prediction rather than on its own.
-
-
-\subsection{Non-convex obstacles, and the target rule that fails on them}
-\label{sec:nonconvex}
-
-\subsubsection{The limit cycle}
-\label{sec:localmin}
-
-The clearest illustration in this study of the difference between solving an optimization problem well and
-posing the right one does not involve the NLP at all. With the projection rule~\eqref{eq:localgoal} the
-stack livelocks in front of a non-convex obstacle. The ray to the goal enters the concavity, so the local
-target lands inside it; \astar{} correctly routes around the obstacle \emph{inside the window} and the MPC
-tracks that path faithfully; the robot leaves; and the moment it is out, the ray points back in. Every NLP in
-that run is solved to optimality, and every one of them answers a question that should not have been asked.
-
-The failure is not a coincidence of geometry, and this is the point that took the longest to see. It is
-\emph{deterministic}: the ray from the robot to the goal points into the concavity for as long as the robot
-is in front of it, whatever the map contains. Adding memory of the \emph{obstacles} therefore does not repair
-it (the robot may have mapped every cell of the wall and will still aim past it), because the defect is
-in how the target is chosen, not in what is remembered about the world. The diagnostic that settles it is the
-one in Section~\ref{sec:astar}: standing inside a dead end, the boundary cells that lead out and the boundary
-cells that lead further in are at almost the same Euclidean distance from the goal, so the rule declares them
-equivalent and picks between them arbitrarily, changing its mind at every replanning cycle. Under the
-geodesic distance on the free space already observed, the same cells differ by an order of magnitude.
-
-Three structural facts conspire, and all three are properties of the \emph{formulation} rather than of the
-tuning. The target rule is a projection and not a decision, in the sense made precise
-by~\eqref{eq:localgoalargmin}. The occupancy grid is volatile, so nothing survives one grid width of travel
-unless it is stored deliberately. And the input set of~\eqref{eq:cons-vx} makes backing out of a pocket
-expensive: reversing is admitted but bounded well below the forward speed, so the cheap escape is a wide
-forward arc, which is exactly the manoeuvre a concavity denies. The repair must live in the target rule,
-which is where the failure lives.
-
-\subsubsection{The two repairs, and what each of them fixes}
-\label{sec:memoryfix}
-
-Equation~\eqref{eq:localgoalargmin} has two ingredients that the projection rule~\eqref{eq:localgoal} does
-not use at all, and they were expected to repair different halves of the failure.
-
-\paragraph{The metric: a geodesic field.} Replacing the Euclidean $d_k$ with the geodesic distance to the
-goal over the free cells of the accumulated map costs one scalar field per replanning cycle (a wavefront
-propagated from the goal, with no path extracted), and it is what makes the rule use the evidence the robot
-has already collected. Unobserved space is treated as free, which is the optimistic assumption of frontier
-exploration, and the consequence is intended: while the far end of a corridor is unknown the field runs
-through it and entering is the correct decision, and the moment the end is observed the same target becomes
-distant and is discarded. The field corrects itself as the sensor discovers, rather than committing on the
-strength of what has not been seen.
-
-\paragraph{The memory: a tabu tied to progress.} The second ingredient penalises cells already visited
-without progress. Its erasure rule is the part that carries the argument: a tabu that decays on a clock does
-not remove the limit cycle, it lengthens its period, because the moment the penalty fades the ray points back
-into the trap. The penalty is therefore released by \emph{progress} (by the best distance to the goal ever
-achieved improving) and not by time. Note also why the tabu cannot be folded into the edge cost
-of~\eqref{eq:astarcost}: a cell cost changes the \emph{path} towards a fixed target, not the \emph{choice} of
-target, so making the dead end expensive merely makes traversing it expensive. The lever is the target.
-
-\paragraph{Memory that survives noise.} Both repairs read the same accumulated map, and its construction has
-to tolerate a sensor that lies occasionally. Every return is quantised to its cell in the \emph{world} frame
-and stored with the time it was last seen and the number of \emph{distinct scans} in which it has appeared; a
-cell is \emph{confirmed} once that count reaches two. A wall is re-hit by every scan that ranges it, while a
-spurious return lands in its cell exactly once and never becomes an obstacle. Contradicting evidence is
-allowed to win as well: every beam passing \emph{through} a remembered cell on its way to a farther return
-deletes it, stopping short of the endpoint so that a ray never carves the surface it terminates on. A real
-wall cannot be carved, because beams end on it; a phantom cell standing in an open passage is crossed, and
-erased, by every scan that ranges through it.
-
-\paragraph{Three hardening rules, each found by watching its absence fail.} Confirmed cells are
-\emph{removed from the search graph}, not merely inflated: under the soft cost~\eqref{eq:astarcost} a
-remembered wall is only a finite obstacle, and an early version dutifully tunnelled through it the moment the
-detour became more expensive than the wall. Inflation prices \emph{proximity}, memory records
-\emph{evidence}, and only the latter may veto an edge. One-cell pinholes among confirmed cells are sealed in
-the routing graph, because at sensor range the beam spacing exceeds the cell size and a remembered wall
-carries single-cell gaps that open and close as scans accumulate, each a phantom shortcut that flips the
-global route. And the local execution graph dilates confirmed cells by the robot radius, so that no executed
-path passes within a body radius of known structure. The two graphs are deliberately not treated alike:
-dilating the routing graph makes the committed route invalidate itself as the observed wall grows under the
-robot's own approach, while sealing the execution graph after dilation counts the body twice and closes every
-doorway the robot actually fits through. Stability lives in the routing graph, clearance in the execution
-graph.
-
-\paragraph{The measurement.} The closed-loop comparison of the three rules (the baseline projection, the
-geodesic metric and the tabu) has now been run over four worlds under the limited-perception model of
-Section~\ref{sec:setup}, with the production planner and a $300$~s budget per run. Table~\ref{tab:escape}
-reports it. The prediction stated above is confirmed on the first two counts and refuted on the third.
-
-\begin{table}[htbp]
-  \centering
-  \small
-  \caption{Escape from non-convex obstacles under limited perception: the baseline Euclidean projection
-  against the deployed geodesic metric, each with and without the tabu. Time is capped at $300$~s; a run that reaches
-  the cap did not reach the goal. \emph{Crossing} marks a run that reached the goal by passing through an
-  obstacle; the harness plant has no collision response, so a reached goal must always be read together
-  with the clearance.}
-  \label{tab:escape}
-  \begin{tabular}{llcrrr}
-    \toprule
-    World & Target rule & Goal & Time [s] & Path [m] & Clearance [m] \\
-    \midrule
-    \texttt{long\_wall}  & Euclidean          & \emph{crossing} & 71.4 & 28.9 & 0.027 \\
-                         & geodesic           & yes & 62.3 & 25.4 & 0.896 \\
-    \midrule
-    \texttt{horseshoe}   & Euclidean          & no  & --- & 93.4 & 1.919 \\
-                         & geodesic           & yes & 100.4 & 38.5 & 0.853 \\
-    \midrule
-    \texttt{dead\_end}   & Euclidean          & no  & --- & 79.4 & 0.659 \\
-                         & geodesic           & yes & 81.6 & 31.7 & 0.669 \\
-    \midrule
-    \texttt{l\_corridor} & Euclidean          & no  & --- & 79.7 & 0.801 \\
-                         & geodesic           & yes & 112.7 & 41.8 & 0.801 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-The projection rule fails on every world. On \texttt{horseshoe}, \texttt{dead\_end} and \texttt{l\_corridor} it
-exhausts the budget without reaching the goal, and the signature is the one the analysis predicts: $117$,
-$140$ and $137$ direction reversals respectively, over paths of $79$ to $93$~m that never leave the mouth of
-the obstacle, the furthest the robot ever gets is $2.4$ to $4.6$~m along the axis to the goal. That is a
-limit cycle, measured, not a slow traversal. On \texttt{long\_wall} it reports the goal reached, and the
-clearance column says why that must not be counted: $0.027$~m, i.e.\ it went through the wall. The harness
-plant integrates the model without collision response, so a target rule that aims into an obstacle produces a
-trajectory that passes through it, and only the clearance exposes the difference.
-
-The geodesic metric alone resolves all four, with clearances between $0.669$ and $0.896$~m (well clear of
-the $0.35$~m body radius), and with the reversal count collapsing from over a hundred to between two and
-eight. On \texttt{horseshoe} and \texttt{dead\_end} the escape takes two reversals: the robot enters, observes
-the closing wall, and leaves. This is the intended behaviour of an optimistic field that corrects itself as
-the sensor discovers, and it is the direct measurement of the argument made above.
-
-The third count is where the prediction fails. The tabu changes nothing: with the geodesic metric the runs
-are identical to the last decimal on every world, and without it the tabu does not rescue a single failure.
-The reason is visible once stated. The tabu penalises cells already visited, but the candidate targets are on
-the frontier of the known region, which by construction has not been visited, so the penalty evaluates to
-zero on precisely the cells the rule is choosing between. The mechanism was never able to act. It is retained
-in the code, disabled, and the honest conclusion is that the metric was the whole repair and the memory was a
-hypothesis the data does not support.
 
 % \subsection{Summary of design guidelines}
 % \label{sec:guidelines}

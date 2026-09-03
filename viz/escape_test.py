@@ -26,6 +26,7 @@ import sys
 import time
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
@@ -40,9 +41,26 @@ from a_star_mpc_planner.geodesic_field import (                     # noqa: E402
 
 R_GOAL = 0.35
 
+# Muro rigido dell'impianto. `closed_loop` integra il comando e basta, quindi
+# senza questo controllo il robot ATTRAVERSA i muri: il ramo proporzionale di
+# ripiego punta il waypoint e ignora la geometria, e la penalita' dell'MPC e'
+# morbida. Il risultato misurato era che tre run su venti raggiungevano il goal
+# con una clearance di 0.04 m, cioe' passando nella fessura di campionamento
+# (0.12 m) dove due geom si toccano. Un goal raggiunto cosi' non e' un
+# risultato, e' un artefatto dell'impianto.
+#
+# Il valore sta fra i due che contano: sopra il passo di campionamento degli
+# ostacoli (0.12 m) e sopra PENETRATION_EPS (0.15 m), cosi' che nessuna fessura
+# fittizia sia percorribile; sotto il canale libero piu' stretto fra quelli
+# legittimi (0.81 m nella porta, 1.2 m nello zigzag), cosi' che nessun passaggio
+# vero venga chiuso. Lo spostamento per passo e' al massimo ~0.18 m contro muri
+# spessi 0.30 m, quindi non c'e' tunneling.
+R_HARD = 0.25
+
 
 def corri(sc, cfg, raw, modo: str, t_max: float = 240.0,
-          tabu_weight: float = 3.0, traccia: bool = False) -> dict:
+          tabu_weight: float = 3.0, traccia: bool = False,
+          traccia_passo: int = 10, r_hard: float = R_HARD) -> dict:
     """Una missione. `modo` in {baseline, tabu, geodetica, geo+tabu}."""
     usa_tabu = modo in ("tabu", "geo+tabu")
     usa_geo = modo in ("geodetica", "geo+tabu")
@@ -62,6 +80,8 @@ def corri(sc, cfg, raw, modo: str, t_max: float = 240.0,
     geo = None
     geo_ms = []
     tracker = common.make_tracker(cfg)
+    albero = (cKDTree(sc.obstacles) if (r_hard > 0.0 and len(sc.obstacles))
+              else None)
 
     pose = sc.pose.astype(float).copy()
     ref = None
@@ -119,8 +139,23 @@ def corri(sc, cfg, raw, modo: str, t_max: float = 240.0,
         vx = np.clip(kp * ex, min(cfg.vx_min, 0.0), cfg.vx_max)
         vy = np.clip(kp * ey, -cfg.vy_max, cfg.vy_max)
         wz = np.clip(kp_yaw * eyaw, -cfg.omega_max, cfg.omega_max)
-        pose[0] += (vx * c - vy * s) * dt
-        pose[1] += (vx * s + vy * c) * dt
+        dx = (vx * c - vy * s) * dt
+        dy = (vx * s + vy * c) * dt
+        if albero is None:
+            pose[0] += dx
+            pose[1] += dy
+        else:
+            # risposta al contatto separata sugli assi: se il passo pieno entra
+            # nel muro si prova a scivolare lungo una sola componente, com'e'
+            # d'uso. Bloccare e basta impaccherebbe il robot contro una parete
+            # che nella realta' costeggerebbe, e penalizzerebbe la regola che
+            # sceglie di costeggiare invece di quella che attraversa.
+            for px, py in ((pose[0] + dx, pose[1] + dy),
+                           (pose[0] + dx, pose[1]),
+                           (pose[0], pose[1] + dy)):
+                if albero.query((px, py))[0] >= r_hard:
+                    pose[0], pose[1] = px, py
+                    break
         pose[2] = np.arctan2(np.sin(pose[2] + wz * dt), np.cos(pose[2] + wz * dt))
         if np.linalg.norm(pose[:2] - sc.goal) < R_GOAL:
             P.append(pose.copy())
@@ -143,7 +178,7 @@ def corri(sc, cfg, raw, modo: str, t_max: float = 240.0,
            "geo_ms_max": (float(np.max(geo_ms)) if geo_ms else 0.0)}
     if traccia:
         out["motivi_arm"] = motivi
-        out["traccia"] = P[::10, :2].round(2).tolist()
+        out["traccia"] = P[::max(1, int(traccia_passo)), :2].round(2).tolist()
     return out
 
 

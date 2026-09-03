@@ -2011,8 +2011,19 @@ term,
   +\sigma_n^2\delta(\theta_i,\theta_i'),
   \label{eq:kernel}
 \end{equation}
-is fitted to those observations by maximising the log marginal likelihood. The axis optimum is the minimiser
-of the posterior \emph{mean} over a fine grid,
+is fitted to those observations by maximising the log marginal likelihood. With
+$\Theta_i=(\theta_i^{(1)},\dots,\theta_i^{(m)})$ the design on axis $i$ and $y_i$ its $m$ scores, the
+posterior mean and variance at a query point are
+\begin{equation}
+  \mu_i(\theta_i)=\bar y_i+k_i(\theta_i)^{\!\top}K_i^{-1}\big(y_i-\bar y_i\mathbf{1}\big),
+  \qquad
+  \sigma_i^2(\theta_i)=k(\theta_i,\theta_i)-k_i(\theta_i)^{\!\top}K_i^{-1}k_i(\theta_i),
+  \label{eq:gppost}
+\end{equation}
+with $[k_i(\theta_i)]_a=k(\theta_i,\theta_i^{(a)})$, $[K_i]_{ab}=k(\theta_i^{(a)},\theta_i^{(b)})$ and
+$\bar y_i$ the sample mean removed before fitting. The white-noise term of~\eqref{eq:kernel} reaches only
+the diagonal of $K_i$, which is what makes $\mu_i$ smooth the scatter instead of interpolating it. The axis
+optimum is the minimiser of the posterior \emph{mean} over a fine grid,
 \begin{equation}
   \hat\theta_i \;=\; \arg\min_{\theta_i\in[\ell_i,u_i]}\; \mu_i(\theta_i),
   \label{eq:axisopt}
@@ -2029,26 +2040,59 @@ radius interact, since a tall barrier is harmless when its radius is small. The 
 repaired by the next decision and verified a posteriori by evaluating the assembled vector.
 \emph{Sequential update and ordering.} The axes are swept in decreasing order of influence and each optimum
 is fixed before the next axis is visited, so later sweeps are conducted about an already improved operating
-point. This is coordinate descent with a GP line search, and it is what makes the scheme robust to the
-interactions separability ignores: sweeping the dominant coordinate first moves the base point out of the
-region where the mission fails, so every subsequent sweep is measured where the objective discriminates.
+point. Influence is measured rather than assumed, and it costs no rollouts of its own: a GP fitted over all
+eleven coordinates at once, to the trials already on record, carries one length scale per coordinate, and
+the axes are ranked by the reciprocal of that length scale --- a short length scale is the statement that
+the objective changes appreciably over a small displacement of that weight, which is exactly what makes it
+worth visiting first. This is coordinate descent with a GP line search, and it is what makes the scheme
+robust to the interactions separability ignores: sweeping the dominant coordinate first moves the base point
+out of the region where the mission fails, so every subsequent sweep is measured where the objective
+discriminates. The budget of $11m+1$ rollouts settles the other half of the design, and it should be read as
+a restriction: each axis is visited exactly once, with no second pass to repair a choice made about a base
+point that the later sweeps have since moved. That is what gives the ordering its weight, and it is also
+where this decision meets the next one --- a minor axis swept while the mission still fails is scored
+entirely on the failure branch of~\eqref{eq:Jcl}, where its observations differ only through the fraction of
+the distance closed and by less than the run-to-run scatter, so the floor below discards it: not because the
+weight does not matter, but because it was visited before the operating point was good enough for it to
+show.
 \emph{Significance floor.} A $1$-D GP fitted to a handful of points returns an optimum on any axis, including
 one on which the objective does not move. An axis is accepted only if the spread of its observations exceeds
 the run-to-run scatter; otherwise the weight keeps its default. Without that floor the procedure reports
 eleven confident optima and several of them are noise.
 
-\paragraph{What this can be expected to buy.} The scalarisation sweep of Section~\ref{sec:pareto} already
-bounds the answer, and the bound is the reason to read the two sections together. Across the whole weight
-simplex the tracking accuracy moves by $\resParetoRelAcc\%$ while the time to goal moves by
-$\resParetoRelTime\%$ and the control effort by $\resParetoRelEffort\%$: on a mission the robot completes,
-the weights control how closely it follows the path and very little else, because the duration is set by the
-input bounds and not by the tuning. A tuning procedure can therefore be expected to buy accuracy and
+\paragraph{What this can be expected to buy.} A tuning procedure can therefore be expected to buy accuracy and
 smoothness, and any large gain it reports must come from the failure branch of~\eqref{eq:Jcl} --- from
 configurations that do not reach the goal at all --- rather than from trimming one that already works. That
 is a useful prediction to hold in advance of the campaign, because it says which number to distrust.
 
-The campaign itself has not yet been run on the deployed profile. It is priced in rollouts, and re-running it
-before the kinematics and the two horizons are settled would tune a configuration that is about to change;
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.8\textwidth]{fig_ofat_curves.pdf}
+  \caption{One-factor-at-a-time sweep: closed-loop score against each weight in turn, six rollouts and one
+  $1$-D GP per axis, with the band of~\eqref{eq:gppost}. Filled markers reach the goal, hollow ones do not;
+  solid line is the axis optimum~\eqref{eq:axisopt}, dashed the deployed value. $\Delta\mathcal{J}$, the
+  spread of the six observations, is the only quantity comparable across panels --- those containing a
+  failure use a log axis and the rest are zoomed, so the apparent amplitude is not.}
+  \label{fig:ofatcurves}
+\end{figure}
+
+Figure~\ref{fig:ofatcurves} is that sweep as it was run, entirely on the Go2: like the two time constants of
+Table~\ref{tab:platforms}, it is a measurement made on the quadruped and not repeated on the humanoid the
+report deploys. It therefore tests the prediction rather than supplying optima that are still current, and
+it is the weights --- not the identified dynamics --- that have the weaker claim to carrying over: the two
+axes that dominate below are $\robs$, a clearance radius in metres, and $\aobs$, the sharpness of the zone
+it centres, both tied by~\eqref{eq:barrier} to a footprint the two machines do not share.
+Two axes carry the whole result --- $\robs$ and
+$\aobs$, at $\Delta\mathcal{J}=13.0$ and $13.8$ against ${\le}\,0.10$ for the other nine --- and in both the
+spread is made of missions that never reach the goal: the failure branch of~\eqref{eq:Jcl}, as predicted,
+and not a gain wrung out of a configuration that already works. $R_\omega$ and $\rho_T$ move the score by
+$0.007$ and $0.004$, which is scatter, and the GP returns a confident $\hat\theta_i$ on both regardless ---
+the significance floor earning its place in one picture. Several of the remaining optima sit on an endpoint
+of their interval, so what the sweep located there is the bracket and not a minimum.
+
+The campaign itself has not yet been re-run on the G1 and its deployed profile. It is priced in rollouts, and
+re-running it before the kinematics and the two horizons are settled would tune a configuration that is about
+to change;
 the procedure above is stated here so that the measurement, when it is made, is read against a prediction
 rather than on its own.
 

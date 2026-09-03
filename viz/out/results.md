@@ -2,8 +2,8 @@
 
 > Non modificare a mano: rigenerare con `python3 viz/make_results.py`.
 
-- data: 2026-09-01T19:48:02+00:00
-- commit: `13b211c9bf` sul branch `main`  **(albero di lavoro sporco: numeri non riproducibili da questo commit)**
+- data: 2026-09-02T22:49:41+00:00
+- commit: `9466c8a615` sul branch `main`  **(albero di lavoro sporco: numeri non riproducibili da questo commit)**
 - profilo: `src/a_star_mpc_planner/config/planner_params_g1.yaml`
 - CasADi 3.7.2, numpy 1.26.4, Python 3.10.12
 
@@ -32,12 +32,12 @@ Al dt deployato (0.35) su 3 s: Euler 2.855e-02 m, punto medio 2.498e-04 m — gu
 |---|---|---|
 | differenze in avanti | 142 | 1.3e-07 |
 | differenze centrate | 282 | 9.8e-11 |
-| **AD inverso** | **2.4** (intervallo 1.7–3.5) | precisione macchina |
+| **AD inverso** | **1.5** (intervallo 1.1–2.1) | precisione macchina |
 
 *Il costo dell'AD è un micro-benchmark su tempi di ~100 μs: si riporta la mediana di più misure con il suo intervallo, perché una singola coppia oscilla sensibilmente. Quello che conta, ed è stabile, è che stia fra 1 e 3 come prevede il §5.3 — non la sua seconda cifra.*
 
 Passi ottimi misurati: avanti 1.49e-08 (teorico √eps = 1.49e-08), centrate 6.06e-06 (teorico eps^(1/3) = 6.06e-06).
-Le differenze centrate userebbero il 34% del budget di ciclo (125 ms).
+Le differenze centrate userebbero il 30% del budget di ciclo (125 ms).
 
 
 ### Hessiana esatta contro L-BFGS (§4.4.4)

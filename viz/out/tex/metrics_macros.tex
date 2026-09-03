@@ -4,7 +4,7 @@
 %   rigenerare con:  python3 viz/make_results.py
 %              o con: python3 viz/results_tex.py
 %
-%   commit 13b211c9bf on main   (2026-09-01T19:48:02+00:00)
+%   commit 9466c8a615 on main   (2026-09-02T22:49:41+00:00)
 %
 % CONVENZIONE
 %   - le macro NUMERICHE si espandono in contenuto da math mode:
@@ -28,10 +28,10 @@
 \providecommand{\restab}[1]{\input{\restabdir/#1}}
 
 % --- provenienza e profilo -----------------------------------------------
-\resdef{resCommit}{13b211c9bf} % commit corto
+\resdef{resCommit}{9466c8a615} % commit corto
 \resdef{resBranch}{main} % branch
 \resdef{resProfile}{\texttt{planner\_params\_g1.yaml}} % file YAML
-\resdef{resDate}{2026-09-01} % data della run
+\resdef{resDate}{2026-09-02} % data della run
 \resdef{resCasadi}{3.7.2}
 \resdef{resNumpy}{1.26.4}
 \resdef{resPython}{3.10.12}
@@ -116,17 +116,17 @@
 
 % --- derivate: AD contro differenze finite -------------------------------
 \resdef{resDerivNvar}{141}      % variabili del punto di prova
-\resdef{resTimeF}{149.0}        % una valutazione di f [us]
-\resdef{resTimeGrad}{398.6}     % un gradiente per AD [us]
-\resdef{resADratio}{2.41}       % AD in valutazioni di f
-\resdef{resADratioMin}{1.68}
-\resdef{resADratioMax}{3.54}
+\resdef{resTimeF}{132.4}        % una valutazione di f [us]
+\resdef{resTimeGrad}{193.7}     % un gradiente per AD [us]
+\resdef{resADratio}{1.46}       % AD in valutazioni di f
+\resdef{resADratioMin}{1.13}
+\resdef{resADratioMax}{2.13}
 \resdef{resFDforwardEvals}{142}
 \resdef{resFDcentralEvals}{282}
 \resdef{resFDforwardErr}{1.27\times 10^{-7}}
 \resdef{resFDcentralErr}{9.84\times 10^{-11}}
 \resdef{resCycleBudget}{125}    % budget di ciclo [ms]
-\resdef{resFDcentralBudget}{34} % quota del budget per FD centrate [%]
+\resdef{resFDcentralBudget}{30} % quota del budget per FD centrate [%]
 
 % --- hessiana esatta contro L-BFGS ---------------------------------------
 \resdef{resIterExactHess}{35}
@@ -165,6 +165,10 @@
 \resdef{resTermFeasible}{yes}
 \resdef{resTermCostMin}{1.2} % costo minimo [%]
 \resdef{resTermCostMax}{40.4} % costo massimo [%]
+\resdef{resTermAbsMin}{2.2}  % aumento assoluto minimo di J*
+\resdef{resTermAbsMax}{7.0}  % aumento assoluto massimo di J*
+\resdef{resTermJMin}{6.6}    % J* piu' piccolo fra i cicli
+\resdef{resTermJMax}{567.6}  % J* piu' grande fra i cicli
 \resdef{resLagDiscrete}{1.000000} % 1 - exp(-dt/tau) al profilo deployato
 
 % --- vincoli robusti (constraint tightening) -----------------------------

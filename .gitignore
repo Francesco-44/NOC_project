@@ -41,10 +41,11 @@ viz/bags/
 !/report_draft/build_integrated/Report_integrated_backup.tex
 !/report_draft/build_integrated/Images/
 !/report_draft/build_integrated/Report_integrated.pdf
-# Versione di Relo02 (commit dd93b8e, 2026-09-03): primi due capitoli riscritti
+# Report_integrated_old: la versione di Relo02 (commit dd93b8e, 2026-09-03),
+# rinominata da _Lori il 2026-09-03. Primi due capitoli riscritti
 # ma su una base precedente al passaggio alla sola piattaforma G1, quindi con Go2
 # e CHAMP ancora dentro. Tenuta accanto all'originale perche' quei due capitoli
 # vanno riconciliati e il diff serve; senza queste due righe la regola generale
 # la ingoierebbe.
-!/report_draft/build_integrated/Report_integrated_Lori.tex
-!/report_draft/build_integrated/Report_integrated_Lori.pdf
+!/report_draft/build_integrated/Report_integrated_old.tex
+!/report_draft/build_integrated/Report_integrated_old.pdf

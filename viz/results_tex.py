@@ -677,8 +677,8 @@ def sec_derivatives(res: dict, M: Macros) -> list[str]:
         f"algorithmic differentiation ${tg}~\\mu$s, i.e.\\ ${rat}$ objective evaluations "
         f"(median of repeated pairs, range ${lo}$--${hi}$), independently of the number "
         f"of variables. The same gradient by finite differences costs ${nf}$ evaluations "
-        f"one-sided and ${ncq}$ central, and is less accurate at every step size: the "
-        f"best relative error reachable is ${ef}$ one-sided and ${ecq}$ central "
+        f"forward and ${ncq}$ central, and is less accurate at every step size: the "
+        f"best relative error reachable is ${ef}$ forward and ${ecq}$ central "
         f"(Table~\\ref{{res:tab:fd}}), against machine precision for AD.",
         "",
         f"The cost is the argument that closes the question for a real-time loop: central "
@@ -692,11 +692,11 @@ def sec_derivatives(res: dict, M: Macros) -> list[str]:
         L += [r"\resNote{The AD/objective ratio came out below $1$ in at least one "
               r"repetition, which is physically impossible: re-run on an idle machine "
               r"before quoting it.}", ""]
-    L += table("rrr", ["step $h$", "rel.\\ error, one-sided", "rel.\\ error, central"],
+    L += table("rrr", ["step $h$", "rel.\\ error, forward", "rel.\\ error, central"],
                rows,
                "Accuracy of the finite-difference gradient against the step size, "
                "measured against the AD gradient. The optimum sits at "
-               f"$h={sci(d['h_ottimo_avanti'])}$ one-sided (theory: "
+               f"$h={sci(d['h_ottimo_avanti'])}$ forward (theory: "
                f"$\\sqrt{{\\varepsilon}}={sci(d['h_teorico_avanti'])}$) and "
                f"$h={sci(d['h_ottimo_centrate'])}$ central (theory: "
                f"$\\varepsilon^{{1/3}}={sci(d['h_teorico_centrate'])}$).",
@@ -1582,24 +1582,51 @@ def sec_solver_compare(extra: dict, M: Macros) -> list[str]:
         return []
 
     M.group("interior point contro active set")
-    lo, hi = rows_in[0], rows_in[-1]
-    M.add("resSolverIneqLow", str(lo["n_ineq"]), "disuguaglianze, regime piccolo")
-    M.add("resSolverIneqHigh", str(hi["n_ineq"]), "disuguaglianze, regime grande")
-    rlo = lo["sqp"]["ms"] / lo["ipopt"]["ms"]
-    rhi = hi["sqp"]["ms"] / hi["ipopt"]["ms"]
-    M.add("resSolverRatioLow", fx(rlo, 1), "vantaggio del punto interno, regime piccolo")
-    M.add("resSolverRatioHigh", fx(rhi, 1), "vantaggio del punto interno, regime grande")
-    all_same = all(r.get("stesso_minimo") for r in rows_in)
+    n_lo, n_hi = rows_in[0]["n_ineq"], rows_in[-1]["n_ineq"]
+    M.add("resSolverIneqLow", str(n_lo), "disuguaglianze, regime piccolo")
+    M.add("resSolverIneqHigh", str(n_hi), "disuguaglianze, regime grande")
+
+    # Un rapporto di tempi ha senso solo se ENTRAMBI i solutori tornano una
+    # soluzione: dove l'SQP fallisce, il "tempo" e' tempo speso prima di
+    # arrendersi e il rapporto non e' uno speed-up. Le righe fallite entrano
+    # nel conteggio dei fallimenti, non nelle medie.
+    def _ratios(n_ineq):
+        return [r["sqp"]["ms"] / r["ipopt"]["ms"] for r in rows_in
+                if r["n_ineq"] == n_ineq and r["ipopt"].get("ok") and r["sqp"].get("ok")]
+
+    r_lo, r_hi = _ratios(n_lo), _ratios(n_hi)
+    if r_lo:
+        M.add("resSolverRatioMin", fx(min(r_lo), 1),
+              "vantaggio minimo del punto interno, regime piccolo")
+        M.add("resSolverRatioLow", fx(max(r_lo), 1),
+              "vantaggio del punto interno, regime piccolo")
+    if r_hi:
+        M.add("resSolverRatioHigh", fx(max(r_hi), 1),
+              "vantaggio del punto interno, regime grande")
+    n_fail = sum(1 for r in rows_in if not r["sqp"].get("ok"))
+    M.add("resSolverSqpFail", str(n_fail), "run in cui l'SQP non risolve il QP")
+    M.add("resSolverRuns", str(len(rows_in)), "run del confronto")
+    all_same = all(r.get("stesso_minimo") for r in rows_in
+                   if r["ipopt"].get("ok") and r["sqp"].get("ok"))
     M.add("resSolverSameMinima", yesno(all_same))
 
     def _ms(v, vince):
         t = fx(v, 0)
         return r"\textbf{" + t + "}" if vince else t
-    rows = [[solver_regime(r["regime"]), str(r["n_ineq"]),
+    def _sqp_cell(r):
+        """Un run fallito non ha ne' iterazioni ne' tempo di soluzione: va
+        marcato come fallimento, non stampato come se fosse un confronto."""
+        if not r["sqp"].get("ok"):
+            ms = r["sqp"]["ms"]
+            t = f"{ms/1000:.1f} s" if ms >= 1000 else f"{fx(ms, 0)} ms"
+            return r"\emph{fail} (" + t + ")"
+        return f'{_ms(r["sqp"]["ms"], r["sqp"]["ms"] < r["ipopt"]["ms"])} / {r["sqp"]["iter"]}'
+
+    rows = [[solver_regime(r["regime"]), str(r.get("caso", "")), str(r["n_ineq"]),
              f'{_ms(r["ipopt"]["ms"], r["ipopt"]["ms"] <= r["sqp"]["ms"])} / {r["ipopt"]["iter"]}',
-             f'{_ms(r["sqp"]["ms"], r["sqp"]["ms"] < r["ipopt"]["ms"])} / {r["sqp"]["iter"]}',
-             m(fx(r["sqp"]["ms"] / r["ipopt"]["ms"], 1) + r"\times"),
-             yesno(r.get("stesso_minimo"))] for r in rows_in]
+             _sqp_cell(r),
+             m(fx(r["sqp"]["ms"] / r["ipopt"]["ms"], 1) + r"\times")
+             if r["sqp"].get("ok") else "---"] for r in rows_in]
 
     L = [
         r"\resSubsec{Interior point against active set}",
@@ -1642,9 +1669,9 @@ def sec_solver_compare(extra: dict, M: Macros) -> list[str]:
         L += [r"\resNote{At least one pair of solves converged to different objective "
               r"values. Comparing the time of two solves that ended in different minima "
               r"means nothing; that row is not evidence for either method.}", ""]
-    return L + table("lrrrrc",
-                     ["regime", "ineq.", "IPOPT ms / iter", "SQP ms / iter",
-                      "speed-up", "same min."], rows,
+    return L + table("llrrrr",
+                     ["regime", "instance", "ineq.", "IPOPT ms / iter",
+                      "SQP+qpOASES ms / iter", "speed-up"], rows,
                      "The same instance solved by a primal--dual interior-point method "
                      "and by an SQP with an active-set QP solver, in both obstacle "
                      "regimes. Both are started cold. Bold: the faster of the two.",

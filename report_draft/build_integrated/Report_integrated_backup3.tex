@@ -1462,8 +1462,8 @@ proportional--predictive sense. For a nominal plant this is immaterial, but any 
 (a mis-identified $\tau$, a lateral drift of the gait, a slope) produces a persistent offset from the path
 rather than being integrated away. The offset is therefore a property of the formulation and not of the
 tuning, and no choice of $Q$ removes it.
-The standard remedy is state augmentation with an integrated tracking error, as in the velocity-form MPC
-of \cite{rawlings2017mpc,pannocchia2003offsetfree}; it is not implemented in the deployed program.
+Section~\ref{sec:discussion} discusses the standard remedy, state augmentation with an integrated tracking
+error as in the velocity-form MPC of \cite{rawlings2017mpc,pannocchia2003offsetfree}.
 
 %=============================================================================
 \section{Optimization methodology}
@@ -1693,7 +1693,7 @@ travel, reversing forbidden) the same diagnostic showed the cone collapsing to $
 lateral and yaw limits saturated on essentially every step of the horizon: the controller was undergoing the
 trajectory rather than choosing it. Widening the envelope to $|v_y|\le\resVyMax$~m/s and
 $v_x\in[\resVxMin,\resVxMax]$~m/s was the recommendation that followed, and the table above is the run that
-acted on it.
+acted on it (Section~\ref{sec:discussion}).
 
 \subsection{Implementation and configuration}
 \label{sec:impl}
@@ -2217,16 +2217,13 @@ Figure~\ref{fig:escapegallery} shows the geometry and both trajectories, Table~\
   projection~\eqref{eq:localgoal}, the thin dark one the deployed geodesic
   $\arg\min$~\eqref{eq:localgoalargmin}, both under limited perception. Heavy frames are the six
   \emph{traps}, light frames the four \emph{controls} that only look like traps; the subtitle gives the
-  distance travelled by each rule. The baseline is drawn underneath and wider on purpose, because wherever the
-  two rules choose the same side the trajectories coincide and one drawn over the other would simply hide
-  it, and because on \emph{dead end}, \emph{horseshoe} and \emph{L-corridor} the $79$ to $153$~m it
-  travels are a limit cycle packed into a few metres at the mouth of the obstacle. In \emph{long wall, gap
-  north} both rules choose the open side and both arrive; in \emph{long wall, gap south} the goal offset
-  forces both onto the closed side and both stop there. The controls are what make the result a result: a rule that refused to enter
+  distance travelled by each rule. The baseline is drawn underneath and wider on purpose, because on the
+  four controls and on \texttt{long\_wall\_false\_north} the two trajectories coincide and one drawn over
+  the other would simply hide it, and because on \texttt{dead\_end}, \texttt{horseshoe} and
+  \texttt{l\_corridor} the $79$ to $153$~m it travels are a limit cycle packed into a few metres at the
+  mouth of the obstacle. The controls are what make the result a result: a rule that refused to enter
   concave-looking scenes would pass every trap and fail all four of these, where the correct behaviour is to
-  drive straight through. The dashed trace appears in the \emph{long wall, gap south} panel alone and is
-  the reachability fall-through discussed in Section~\ref{sec:memoryfix}; on the other nine worlds it
-  reproduces the deployed run exactly, so drawing it there would only thicken the line.}
+  drive straight through.}
   \label{fig:escapegallery}
 \end{figure}
 
@@ -2239,105 +2236,75 @@ Figure~\ref{fig:escapegallery} shows the geometry and both trajectories, Table~\
   the four controls. Reversals are changes of sign of the longitudinal velocity, the signature of the limit
   cycle. Clearance is the closest approach to an obstacle over the whole run, against a body radius of
   $0.35$~m; on the runs that fail it is the $0.25$~m at which the plant stops the robot against the wall.
-  Time is reported only for runs that reached the goal. The \emph{long wall, gap north} row is taken at a spawn
-  displaced $0.4$~m along the wall: with the goal on the axis the side is chosen by numerical noise, so a
-  single run there compares the two spawns and not the two rules, and the sweep that establishes this is
-  reported below.}
+  Time is reported only for runs that reached the goal.}
   \label{tab:escape}
   \begin{tabular}{llcrrrr}
     \toprule
     World & Target rule & Goal & Time [s] & Path [m] & Rev. & Clearance [m] \\
     \midrule
-    dead end                             & projection & no              &    --- &  79.4 &  140 & 0.659 \\
+    \texttt{dead\_end}                   & projection & no              &    --- &  79.4 &  140 & 0.659 \\
                                          & geodesic   & yes             &   81.5 &  31.7 &    2 & 0.669 \\
     \midrule
-    horseshoe                            & projection & no              &    --- &  93.4 &  117 & 1.919 \\
+    \texttt{horseshoe}                   & projection & no              &    --- &  93.4 &  117 & 1.919 \\
                                          & geodesic   & yes             &  100.4 &  38.5 &    2 & 0.853 \\
     \midrule
-    L-corridor                           & projection & no              &    --- & 153.1 &  300 & 0.801 \\
+    \texttt{l\_corridor}                 & projection & no              &    --- & 153.1 &  300 & 0.801 \\
                                          & geodesic   & yes             &  112.7 &  41.8 &    8 & 0.801 \\
     \midrule
-    long wall, gap north                 & projection & yes             &   64.8 &  26.2 &   10 & 0.919 \\
-                                         & geodesic   & yes             &   64.8 &  26.3 &   10 & 0.891 \\
+    \texttt{long\_wall}                  & projection & no              &    --- &  14.9 &    2 & 0.253 \\
+                                         & geodesic   & yes             &   62.3 &  25.4 &    6 & 0.896 \\
     \midrule
-    long wall, gap south                 & projection & no              &    --- &  13.6 &    6 & 0.268 \\
+    \texttt{long\_wall\_south}           & projection & no              &    --- &  13.6 &    6 & 0.268 \\
                                          & geodesic   & no              &    --- &  13.7 &    4 & 0.255 \\
     \midrule
-    long wall, false occlusion           & projection & yes             &   51.8 &  21.3 &    8 & 0.768 \\
+    \texttt{long\_wall\_false\_north}    & projection & yes             &   51.8 &  21.3 &    8 & 0.768 \\
                                          & geodesic   & yes             &   52.5 &  21.5 &    8 & 0.786 \\
     \midrule\midrule
-    open corridor                        & projection & yes             &   47.2 &  18.7 &    0 & 0.850 \\
+    \texttt{open\_corridor}              & projection & yes             &   47.2 &  18.7 &    0 & 0.850 \\
                                          & geodesic   & yes             &   47.2 &  18.7 &    0 & 0.850 \\
     \midrule
-    zigzag                               & projection & yes             &   63.0 &  25.4 &    0 & 0.800 \\
+    \texttt{zigzag}                      & projection & yes             &   63.0 &  25.4 &    0 & 0.800 \\
                                          & geodesic   & yes             &   63.0 &  25.4 &    0 & 0.813 \\
     \midrule
-    single door                          & projection & yes             &   29.7 &  11.8 &    0 & 0.800 \\
+    \texttt{door\_room}                  & projection & yes             &   29.7 &  11.8 &    0 & 0.800 \\
                                          & geodesic   & yes             &   29.7 &  11.8 &    0 & 0.800 \\
     \midrule
-    warehouse                            & projection & yes             &   62.6 &  25.4 &    0 & 0.543 \\
+    \texttt{industrial}                  & projection & yes             &   62.6 &  25.4 &    0 & 0.543 \\
                                          & geodesic   & yes             &   62.6 &  25.4 &    0 & 0.543 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\paragraph{The traps.} The projection rule reaches the goal on two of the six. On \emph{dead end},
-\emph{horseshoe} and \emph{L-corridor} it exhausts the budget without escaping, with the signature
-Section~\ref{sec:astar} predicts: $140$, $117$ and $300$ reversals over $79$, $93$ and $153$~m of travel
-that never leave the mouth of the obstacle. That is a limit cycle, measured, not a slow traversal. On
-\emph{long wall, gap south} it does not even oscillate; it drives into the wall and stays there, having
-travelled $14$~m in a budget of $480$~s.
+\paragraph{The traps.} The projection rule reaches the goal on one of the six, and it is the world where
+the ray happens to point at the side the gap is on. On \texttt{dead\_end}, \texttt{horseshoe} and
+\texttt{l\_corridor} it exhausts the budget without escaping, with the signature Section~\ref{sec:astar}
+predicts: $140$, $117$ and $300$ reversals over $79$, $93$ and $153$~m of travel that never leave the mouth
+of the obstacle. That is a limit cycle, measured, not a slow traversal. On \texttt{long\_wall} and
+\texttt{long\_wall\_south} it does not even oscillate; it drives into the wall and stays there, having
+travelled $15$ and $14$~m in budgets of $420$ and $480$~s.
 
-The geodesic rule resolves five of the six, failing only on \emph{long wall, gap south}. Clearances on those
-five run from $0.67$ to $0.89$~m against a body radius of $0.35$~m, and the reversal count collapses from up
-to $300$ to at most $10$. On \emph{dead end} and \emph{horseshoe} the escape costs exactly two
-reversals: the robot enters, observes the closing wall, and leaves. That is the optimistic field correcting
-itself as the sensor discovers, and it is the direct measurement of the argument of Section~\ref{sec:astar}.
-The cost is bounded: over the nine missions it completes, the path is a median of $1.7$ times the
-straight-line distance and at worst $2.6$ times, so the escape is a detour and not an exploration of the
-world.
+The geodesic rule resolves five of the six. Clearances on those five run from $0.67$ to $0.90$~m against a
+body radius of $0.35$~m, and the reversal count collapses from up to $300$ to at most $8$. On
+\texttt{dead\_end} and \texttt{horseshoe} the escape costs exactly two reversals: the robot enters, observes
+the closing wall, and leaves. That is the optimistic field correcting itself as the sensor discovers, and it
+is the direct measurement of the argument of Section~\ref{sec:astar}. The cost is bounded: over the nine
+missions it completes, the path is a median of $1.7$ times the straight-line distance and at worst $2.6$
+times, so the escape is a detour and not an exploration of the world.
 
-\paragraph{The two long walls are a pair, and the first of them decides nothing.} The wall of
-\emph{long wall, gap north} is longer than the LiDAR range, so from the start neither of its ends is observable and
-the robot cannot know which one is open. With the goal on the axis the two sides are symmetric, the choice
-falls to numerical noise, and the $2.0$~m hysteresis then holds whichever side came out. This is a property
-of the scene and not of the rule, so it was measured rather than argued: the spawn was displaced along the
-wall in seven steps within $\pm0.6$~m and both rules were run at each. The projection rule chose north in
-two cases of seven and the geodesic rule in four, and neither choice is monotone in the displacement, which
-is what a coin flip looks like. What the two rules do agree on is the consequence: all six runs that chose
-north reached the goal in $26$ to $27$~m, and all eight that chose south were still pinned against the
-closed end when the budget expired. The side decides the mission and the target rule does not, so the row of
-Table~\ref{tab:escape} for this world is reported at a displacement where both rules happen to choose north,
-and it should be read as an illustration of the lucky branch rather than as a comparison.
-
-The second world, \emph{long wall, gap south}, is the same wall with the coin flip removed. The gap is at the southern end and
-the goal is placed $4$~m north of the axis, which makes the north side shorter on everything that can be
-observed from the start, so both rules take it, and it is the closed one. This is the branch the first world
-cannot show, and both rules follow the wall to its northern end and stop there.
-
-\paragraph{What stops them there, and what unblocks it.} The failure is not the metric. Interrogated at the
-pose where the run stalls, the field is intact and every free cell is reachable; the selected target is the
-boundary cell at $(5.8,\,3.84)$, whose geodesic distance to the goal is $0.40$~m, which is the correct
-answer to the question the rule asks. The rule scores candidates by their distance \emph{to the goal} and
-never by whether the robot can reach \emph{them}: the chosen cell lies on the far side of a wall that spans
-the whole window, \astar{} finds no path to it, the historical fallback is the ray projection which points
-through the same wall, the planner publishes nothing, the previous reference stands, and the robot presses
+\paragraph{The one that still fails, and why.} On \texttt{long\_wall\_south} both rules stop against the
+wall. The world is adversarial in a specific way: the gap is on the south side while the goal is to the
+north, so the north side is the shorter route on everything observed so far, and the robot commits to it and
+follows the wall to its closed north end. What happens there is worth stating precisely, because it is not
+the failure of the metric. Interrogated at the pose where the run stalls, the field is intact and every free
+cell is reachable; the selected target is the boundary cell at $(5.8,\,3.84)$, whose geodesic distance to
+the goal is $0.40$~m, which is the correct answer to the question the rule
+asks. The rule scores candidates by their distance \emph{to the goal} and never by whether the robot can
+reach \emph{them}: the chosen cell lies on the far side of a wall that spans the whole window, \astar{}
+finds no path to it, the planner publishes nothing, the previous reference stands, and the robot presses
 into the wall for the remaining $470$~s. The geodesic field is global and \astar{} is windowed, and nothing
-in~\eqref{eq:localgoalargmin} reconciles the two.
-
-The repair is correspondingly narrow: when the discrete search returns no path to the chosen candidate, walk
-down the ranking and take the first one it can actually reach. It was implemented behind a flag, off in the
-deployed profile, and the ten worlds were run again with it on. Nine of the ten reproduce the deployed run
-to every reported digit, which is the property a repair of this kind must have: it fires only in the cycles
-where the first candidate is unreachable, and those do not occur when the target is already sound. On
-\emph{long wall, gap south} the robot now heads north as before, abandons that side as soon as the search
-cannot reach the target it has selected rather than after driving to the closed end, turns back and leaves
-through the southern gap, reaching the goal in $96.9$~s over $38.8$~m with $14$ reversals and a clearance of
-$0.908$~m. That is the dashed trace of Figure~\ref{fig:escapegallery}. Run on the three displacements of
-\emph{long wall, gap north} at which the geodesic rule had chosen the closed side, it recovers all three, in $92$ to
-$95$~s over $36$ to $37$~m at clearances of $0.89$ to $0.91$~m. The wrong guess stops being fatal, which is
-the property the wall family was built to test, and the traps go to six out of six. The numbers in
-Table~\ref{tab:escape} remain those of the deployed configuration.
+in~\eqref{eq:localgoalargmin} reconciles the two. The repair is correspondingly narrow, and is not attempted
+here: reject a candidate for which the discrete search returns no path and fall through to the next best,
+which on this world is the southward cell that the field already ranks second.
 
 \paragraph{The controls.} On all four the geodesic rule reaches the goal, which is the half of the result
 the traps cannot establish, and on all four it produces the \emph{same} trajectory as the projection rule to
@@ -2347,20 +2314,16 @@ single door the two runs agree to three decimals. Where the straight line is alr
 field agrees with it, and the machinery costs nothing in behaviour. This is the property that the traps
 alone could not have shown, and it is what distinguishes the rule from simply refusing concavities.
 
-\paragraph{The memory term, and a hypothesis the data refuted.} Equation~\eqref{eq:localgoalargmin} carries
-a second ingredient, a tabu penalty on cells already visited without progress, and it was expected to be the
-other half of the repair. It is not, and there are two measured reasons. The first is that its stall
-detector never fires at the deployed sampling time: the trail is trimmed of every sample older than the
-window, so at $\Delta t=0.35$~s it spans $9.80$~s against a $10$~s threshold and the comparison can only
-succeed when the window happens to be a multiple of the step. With that corrected the penalty arms once on
-\emph{long wall, gap south}, and the run is unchanged for every weight from $1$ to $10$: same trajectory,
-same length, same clearance. The second reason is why. The candidates lie on the boundary of the window,
-which is by construction the frontier of the region the robot has \emph{not} visited, so the penalty
-evaluates to zero on precisely the cells the rule is choosing between, and what actually blocks the robot is
-that \astar{} cannot reach the cell it chose, which no penalty on the target can repair. The mechanism is
-also not wired into the deployed node at all; it exists in the planner and in the offline harness. It is
-retained, disabled, and the honest conclusion is that the metric and the reachability check were the repair
-and the memory was a hypothesis the data does not support.
+\paragraph{The memory term, and a hypothesis the data refuted.} Equation~\eqref{eq:localgoalargmin} carries a
+second ingredient, a tabu penalty on cells already visited without progress, and it was expected to be the
+other half of the repair. It is not: with the geodesic metric the runs are identical with and without it on
+every world, and without the metric the tabu rescues no failure. The reason is visible once stated. The
+candidate targets lie on the boundary of the window, which is by construction the frontier of the region the
+robot has \emph{not} visited, so the penalty evaluates to zero on precisely the cells the rule is choosing
+between. The mechanism was never able to act. It is retained in the code, disabled, and the honest
+conclusion is that the metric was the whole repair and the memory was a hypothesis the data does not
+support.
+
 \paragraph{What the result costs.} The geodesic field is the one expensive part of the planning layer,
 because the wavefront covers the whole known map rather than the window alone. Over the ten worlds its
 median cost per replanning cycle ranges from $80$ to $121$~ms, with a worst case of $440$~ms, against a
@@ -2528,8 +2491,8 @@ would not be if the same sensor served both.
 One caveat closes the paragraph, so that the simulators are not read as the plant of
 Section~\ref{sec:performance}. The physics simulators are what the \emph{deployed} stack runs against; the
 counterfactual campaigns of that section deliberately do not use them, because with the prediction model
-equal to the simulation model those experiments measure the optimizer rather than the gait. The simulators
-answer the complementary question, whether the stack survives
+equal to the simulation model those experiments measure the optimizer rather than the gait
+(Section~\ref{sec:discussion}). The simulators answer the complementary question, whether the stack survives
 contact, latency and a real perception front-end, and it is in that role that they are reported here.
 
 \begin{figure}[htbp]
@@ -2582,9 +2545,48 @@ Section~\ref{sec:impl} are the ones analysed throughout this report.
 \section{Discussion and limitations}
 \label{sec:discussion}
 
-% SEGNAPOSTO. Il contenuto di questa sezione e' stato rimosso il 2026-09-04 e
-% va riscritto. Il titolo e la label restano perche' il resto del report vi si
-% riferisce; l'ultima versione del testo e' in Report_integrated_backup3.tex.
+\paragraph{What the formulation guarantees, and what it does not.} In its deployed configuration the NLP is
+always feasible, because the only constraints are the dynamics and the input box; for a real-time loop with
+no fallback trajectory this is a genuine robustness property, and it is why the penalty formulation was
+preferred to a constrained one. But there is no terminal set in that configuration and no Lyapunov argument,
+so nominal asymptotic stability and recursive feasibility in the standard sense
+\cite{mayne2000constrained} are not established. Section~\ref{sec:terminal} supplies the missing ingredient
+and prices it, and Section~\ref{sec:l1} supplies the exact relaxation that makes a constrained formulation
+survivable; assembling the two into a configuration that is simultaneously deployable and certified is the
+natural next step, and it is now cheaper than this report previously argued: Section~\ref{sec:nc} shows that
+the long prediction horizon a rigorous terminal ingredient would want can be carried at \emph{lower} solve
+cost than the present short one, by blocking the inputs rather than shortening the prediction. What such a
+configuration would still have to prove is that the terminal set remains reachable once the actuator lag is
+identified under physics, where the degenerate lag of Section~\ref{sec:terminal} no longer flatters it.
+
+\paragraph{The weakest link is not the optimizer.} Every campaign in Section~\ref{sec:performance} solved its
+NLP successfully, and Section~\ref{sec:kkt} certifies those solutions as strict local minima with unique
+multipliers. The systematic failures of the system are elsewhere. One is a \emph{modelling} failure: the
+prediction diverges from the plant by $\resPredDivergence$~m over a single horizon, and no amount of
+numerical care inside the program can repair a model that is a planar holonomic agent standing in for a
+walking humanoid. The other is a \emph{formulation} failure: the greedy rolling-horizon target rule of
+Section~\ref{sec:localmin} discards the topology of the free space, and the repair had to be posed in the
+target rule rather than in the NLP.
+
+\paragraph{The input set was the binding constraint, and widening it was the fix.} Two independent
+measurements converged on the diagnosis, both on the narrow envelope: the critical cone collapsed towards a
+single degree of freedom (\S\ref{sec:kkt}), and the $\ell^1$-relaxed obstacle constraint was infeasible at
+demanding clearances because lateral translation was bounded far below forward travel (\S\ref{sec:l1}). A
+controller whose admissible set has been reduced to essentially one degree of freedom is not being limited
+by its objective, and effort spent on weights is effort spent on the wrong object. The envelope was widened
+on that evidence, and the campaign reported here measures the result: the cone holds $\resConeLast$ of
+$\resNvar$ dimensions at the last sampled cycle and no longer collapses. The diagnosis was right, and it is
+the one recommendation of this report that has already been acted on.
+
+\paragraph{Scope of the numbers, stated plainly.} The plant used throughout is kinematic, and deliberately
+so: with the prediction model equal to the simulation model, the experiments measure the optimizer rather
+than the gait. The price is that every conclusion depending on the actuator pole is out of reach here,
+which is why the selection of the sampling time from the plant bandwidth, a standard piece of this analysis,
+is absent from this report and deferred until $\tau$ is identified under physics. Two further limits belong
+in the same paragraph. The closed-loop counterfactuals use synthetic worlds, one of which (the U-trap) grazes
+obstacles in every configuration and therefore cannot support any comparison of clearances. And the loop is
+closed through a look-ahead setpoint rather than by applying $u^\star_0$, which washes out fine differences
+between MPC solutions.
 
 %=============================================================================
 \section{Conclusions}
@@ -2618,6 +2620,33 @@ both the sampling-time analysis and an honest re-measurement of the terminal con
 directly instead of through a look-ahead setpoint, so that improvements provable in the plan become
 observable in the trajectory. Adopt the path-parametrised reference, whose cost is known and whose benefit is
 measured. And revisit the input envelope before the cost weights, because that is where the evidence points.
+
+%=============================================================================
+\phantomsection
+\section*{Reproducibility}
+\addcontentsline{toc}{section}{Reproducibility}
+
+Every number, table and figure in this report is generated from the deployed code by a single command and
+enters the document through macros and included files, not by transcription. The measurements were taken on
+commit \texttt{\resCommit} of branch \texttt{\resBranch} (\resDate), with the profile \resProfile{}, the
+recorded run \resBag, CasADi~\resCasadi{} and NumPy~\resNumpy. The generator verifies the LaTeX it produces
+before writing it (balanced environments, table rows matching their column specification, mathematical
+tokens inside math mode, macros used in the text but never defined, and cross-references without a target)
+and it refuses to emit a document that fails any of those checks. Assertions in the text are conditioned on
+the data: where a fitted exponent does not reach its predicted value, where a Pareto front is not
+informative, or where a sweep contains no case that exhibits the effect under discussion, the generated text
+says so instead of reporting the expected conclusion. Re-running the campaign and recompiling updates the
+report; a parameter changed in the code and not in the text cannot go unnoticed, because there is no text to
+change.
+
+\paragraph{Two traps in reading multipliers out of a modelling layer.} Both were met while producing
+Section~\ref{sec:kkt} and both would have produced quietly wrong numbers. CasADi's \texttt{Opti}
+canonicalises every constraint as $\mathrm{lbg}\le g(z)\le\mathrm{ubg}$ and \emph{absorbs into the bounds}
+any parametric right-hand side, so $X_{:,0}=\hat x$ becomes $g=X_{:,0}$ with
+$\mathrm{lbg}=\mathrm{ubg}=\hat x$: evaluating $|g|$ on those rows returns the state, not the residual, which
+is always $g-\mathrm{lbg}$. And two distinct rows can share the same expression with different bounds
+($u_{1,k}\ge0$ and $u_{1,k}\le v_{x,\max}$ are both the row $u_{1,k}$), so activity must be decided on the
+distance from the bound, not on $|g|\approx0$, or both sides of every box are counted active.
 
 %=============================================================================
 \newpage

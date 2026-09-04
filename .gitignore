@@ -49,3 +49,8 @@ viz/bags/
 # la ingoierebbe.
 !/report_draft/build_integrated/Report_integrated_old.tex
 !/report_draft/build_integrated/Report_integrated_old.pdf
+# Report_integrated_backup3: istantanea del sorgente del 2026-09-04, presa prima
+# di rimuovere Reproducibility e di svuotare Discussion and limitations. Stessa
+# ragione delle righe qui sopra: senza l'eccezione la regola generale la
+# ingoierebbe e il backup non esisterebbe in un clone nuovo.
+!/report_draft/build_integrated/Report_integrated_backup3.tex

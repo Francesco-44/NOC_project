@@ -78,6 +78,7 @@ class AStarPlanner:
         tabu_weight: float = 0.0,
         switch_margin: float = 0.0,
         commit_to_side: bool = False,
+        retry_reachable: bool = False,
     ):
         """
         Parameters
@@ -103,6 +104,19 @@ class AStarPlanner:
         self.switch_margin = float(switch_margin)
         # Impegno di lato (vedi _scored_local_goal). False = comportamento storico.
         self.commit_to_side = bool(commit_to_side)
+        # Ripiego sulla candidata successiva quando A* non raggiunge la prima.
+        # PERCHE'. _scored_local_goal ordina le candidate per distanza DAL GOAL e
+        # non guarda se il robot puo' arrivarci: davanti a un muro che attraversa
+        # tutta la finestra la migliore sta dall'altra parte, A* non trova
+        # percorso, e il ripiego storico (la proiezione lungo il raggio) punta
+        # anch'esso oltre il muro. Il nodo non pubblica nulla, resta il piano
+        # precedente e il robot spinge contro il muro. Misurato su
+        # long_wall_south: bersaglio (5.8, 3.84), geodetica 0.40 m, nessun
+        # percorso, robot fermo per 470 s dei 480 di budget.
+        # Con questo attivo si scorre la graduatoria e si prende la prima
+        # candidata che A* raggiunge davvero. False = comportamento storico.
+        self.retry_reachable = bool(retry_reachable)
+        self._last_scored = []         # graduatoria dell'ultimo ciclo
         self._side = 0             # -1 destra, +1 sinistra, 0 nessun impegno
         self._side_released = False
         self._prev_goal_xy = None      # ultima scelta, per l'isteresi
@@ -162,6 +176,16 @@ class AStarPlanner:
 
         # --- A* search ---
         path_grid = self._a_star(grid_map, six, siy, gix, giy)
+
+        if (path_grid is None and geodesic is not None
+                and self.retry_reachable and self._last_scored):
+            for _J, cix, ciy, _wx, _wy in self._last_scored:
+                if (cix, ciy) == (gix, giy):
+                    continue
+                path_grid = self._a_star(grid_map, six, siy, cix, ciy)
+                if path_grid is not None:
+                    self._prev_goal_xy = grid_map.index_to_world(cix, ciy)
+                    break
 
         if path_grid is None and geodesic is not None:
             # Il bersaglio geodetico puo' essere raggiungibile DAL GOAL ma non
@@ -397,6 +421,7 @@ class AStarPlanner:
 
         if best is not None:
             self._prev_goal_xy = grid_map.index_to_world(best[0], best[1])
+        self._last_scored = sorted(scored)
         return best
 
     def _ray_grid_boundary(

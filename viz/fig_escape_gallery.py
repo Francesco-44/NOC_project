@@ -56,14 +56,14 @@ TITOLI = {
     "l_corridor":            "L-corridor",
     "long_wall":             "long wall, gap north",
     "long_wall_south":       "long wall, gap south",
-    "long_wall_false_north": "long wall, false gap",
+    "long_wall_false_north": "long wall, false occlusion",
     "open_corridor":         "open corridor",
     "zigzag":                "zigzag",
     "door_room":             "single door",
     "industrial":            "warehouse",
 }
 
-C_BASE, C_GEO = "#d62728", "#1f77b4"
+C_BASE, C_GEO, C_FIX = "#d62728", "#1f77b4", "#2ca02c"
 
 
 def _riga(righe, mondo, piano):
@@ -97,7 +97,7 @@ def _barra_scala(ax, L):
     ax.plot([xa, xa + L], [ya, ya], "-", c="#222222", lw=1.4,
             solid_capstyle="butt", zorder=9)
     ax.text(xa + L / 2, ya + 0.02 * (y1 - y0), f"{L:g} m", ha="center",
-            va="bottom", fontsize=6, color="#222222", zorder=9,
+            va="bottom", fontsize=8.5, color="#222222", zorder=9,
             bbox=dict(fc="w", ec="none", pad=.8))
 
 
@@ -105,19 +105,28 @@ def main() -> int:
     src = os.path.join(_HERE, "out", "escape_all.json")
     righe = json.load(open(src))
 
+    # Terza traccia, disegnata SOLO dove cambia l'esito. E' la stessa regola
+    # geodetica con `retry_reachable` attivo: quando A* non raggiunge la
+    # candidata migliore si scorre la graduatoria invece di ripiegare sulla
+    # proiezione. Serve in un pannello solo, long_wall_south, e senza di essa
+    # quel pannello mostra due tracce che finiscono entrambe contro il muro,
+    # cioe' il sintomo senza la riparazione.
+    fix = os.path.join(_HERE, "out", "escape_all_retry.json")
+    righe_fix = json.load(open(fix)) if os.path.exists(fix) else []
+
     mondi = TRAPPOLE + CONTROLLI
     ncol = 5
     nrow = int(np.ceil(len(mondi) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(13.6, 6.0))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(9.8, 4.6))
     axes = np.atleast_2d(axes).ravel()
 
     for ax, m in zip(axes, mondi):
         sc = common.world_scenario(m)
-        ax.scatter(sc.obstacles[:, 0], sc.obstacles[:, 1], s=1.4, c="#909090",
+        ax.scatter(sc.obstacles[:, 0], sc.obstacles[:, 1], s=1.0, c="#909090",
                    zorder=1, linewidths=0)
 
-        for piano, col, lw, alpha, z in (("baseline", C_BASE, 3.4, .32, 2),
-                                         ("geodetica", C_GEO, 1.25, .95, 4)):
+        for piano, col, lw, alpha, z in (("baseline", C_BASE, 3.0, .32, 2),
+                                         ("geodetica", C_GEO, 1.1, .95, 4)):
             r = _riga(righe, m, piano)
             if r is None or "traccia" not in r:
                 continue
@@ -126,23 +135,31 @@ def main() -> int:
                     solid_capstyle="round", solid_joinstyle="round")
             if not r["goal"]:
                 ax.plot(P[-1, 0], P[-1, 1], "X", ms=8, c=col, mec="w", mew=1.1,
-                        zorder=7)
+                        zorder=10)
             elif r["attraversamento"]:
                 ax.plot(P[-1, 0], P[-1, 1], "P", ms=8, c=col, mec="w", mew=1.1,
-                        zorder=7)
+                        zorder=10)
 
         rg = _riga(righe, m, "geodetica")
+        rf = _riga(righe_fix, m, "geodetica+ripiego")
+        mostra_fix = rf is not None and rf["goal"] != rg["goal"]
+        if mostra_fix:
+            F = np.asarray(rf["traccia"], dtype=float)
+            ax.plot(F[:, 0], F[:, 1], "--", lw=1.15, c=C_FIX, alpha=.95,
+                    zorder=5)
         ax.plot(*rg["spawn"][:2], "o", ms=4.5, c="#222222", zorder=6)
         ax.plot(*rg["goal_xy"], "*", ms=10, c="#ff7f0e", mec="k", mew=.3,
                 zorder=6)
 
         trappola = m in TRAPPOLE
-        ax.set_title(TITOLI[m], fontsize=9,
+        ax.set_title(TITOLI[m], fontsize=12,
                      color="#111111" if trappola else "#555555", pad=13)
         sub = (f"{_esito(_riga(righe, m, 'baseline'))}"
                f"  →  {_esito(rg)}")
+        if mostra_fix:
+            sub += f"  →  {_esito(rf)}"
         ax.text(.5, 1.012, sub, transform=ax.transAxes, ha="center",
-                va="bottom", fontsize=7, color="#666666")
+                va="bottom", fontsize=9.5, color="#666666")
 
         ax.set_aspect("equal", adjustable="datalim")
         ax.set_xticks([])
@@ -158,16 +175,18 @@ def main() -> int:
 
     h = [plt.Line2D([], [], c=C_BASE, lw=3.4, alpha=.32),
          plt.Line2D([], [], c=C_GEO, lw=1.25),
+         plt.Line2D([], [], c=C_FIX, lw=1.15, ls="--"),
          plt.Line2D([], [], c="#222222", marker="o", ls="", ms=4.5),
          plt.Line2D([], [], c="#ff7f0e", marker="*", ls="", ms=10, mec="k",
                     mew=.3),
-         plt.Line2D([], [], c="#555555", marker="X", ls="", ms=8, mec="w",
+         plt.Line2D([], [], c=C_BASE, marker="X", ls="", ms=8, mec="w",
                     mew=1.1)]
     fig.legend(h, ["baseline: ray projection", "deployed: geodesic arg min",
+                   "with the reachability fall-through",
                    "start", "goal", "still trapped when the budget ran out"],
-               loc="lower center", ncol=5, fontsize=8.5, frameon=False,
-               bbox_to_anchor=(.5, -.012))
-    fig.tight_layout(rect=(0, .05, 1, 1))
+               loc="lower center", ncol=3, fontsize=11, frameon=False,
+               bbox_to_anchor=(.5, -.035))
+    fig.tight_layout(rect=(0, .12, 1, 1))
 
     dest = os.path.join(_HERE, "out", "fig_escape_gallery.pdf")
     fig.savefig(dest, bbox_inches="tight")

@@ -19,6 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 EXPECTED_WORLDS = ("indoor_office", "open_world", "warehouse")
 EXPECTED_METHODS = ("baseline", "bo_opti")
@@ -478,19 +480,13 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--input",
         type=Path,
-        default=Path(
-            "/media/lorenzo/writable/Go2_navigation/"
-            "bag_gp_tuning/metrics_from_bags/per_run_metrics.csv"
-        ),
+        default=REPO_ROOT / "bag_gp_tuning" / "metrics_from_bags" / "per_run_metrics.csv",
         help="CSV produced by extract_metrics_from_bags.py",
     )
     ap.add_argument(
         "--outdir",
         type=Path,
-        default=Path(
-            "/media/lorenzo/writable/Go2_navigation/"
-            "bag_gp_tuning/metrics_from_bags/regrouped_trials"
-        ),
+        default=REPO_ROOT / "bag_gp_tuning" / "metrics_from_bags" / "regrouped_trials",
         help="Output directory for regrouped CSV files",
     )
     return ap.parse_args()

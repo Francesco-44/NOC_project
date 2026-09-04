@@ -2,7 +2,7 @@
 """
 Plot the evolution of all diagnostic metrics across Bayesian optimisation trials.
 Usage: python3 plot_evolution.py [tuning_results_dir] [output_dir]
-Defaults: /media/lorenzo/writable/tuning_results   ~/trial_plots/evolution
+Defaults: <repo>/tuning_results   <repo>/tuning_results/evolution_results
 """
 
 import sys
@@ -512,8 +512,8 @@ def _save(fig, path: Path):
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
-        "/media/lorenzo/writable/tuning_results"
+    results_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else (
+        Path(__file__).resolve().parents[1] / "tuning_results"
     )
     # Resolve relative to this script so the path works inside Docker and on the host
     out_dir = Path(__file__).resolve().parent.parent / "tuning_results" / "evolution_results"

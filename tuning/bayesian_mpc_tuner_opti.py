@@ -111,7 +111,7 @@ log = logging.getLogger("mpc_tuner")
 REPO_ROOT    = Path(__file__).parent.parent.resolve()
 BASE_PARAMS  = REPO_ROOT / "src/a_star_mpc_planner/config/planner_params.yaml"
 RESULTS_DIR  = Path(os.environ.get("TUNING_RESULTS_DIR",
-                    "/media/lorenzo/writable/Go2_navigation/tuning_results"))
+                    REPO_ROOT / "tuning_results"))
 ROS_SETUP    = "/opt/ros/humble/setup.bash"
 PKG_SETUP    = REPO_ROOT / "install/setup.bash"
 

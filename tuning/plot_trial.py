@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Plot all useful data from a trial directory.
-Usage: python3 plot_trial.py /media/lorenzo/writable/tuning_results/trial_001
+Usage: python3 plot_trial.py tuning_results/trial_001
 """
 
+import os
 import sys
 import json
 import sqlite3
@@ -13,6 +14,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from pathlib import Path
+
+# Cartella dei risultati della campagna: sotto la root del repo, oppure
+# TUNING_RESULTS_DIR se i trial stanno su un altro disco.
+RESULTS_DIR = Path(os.environ.get("TUNING_RESULTS_DIR",
+                                  Path(__file__).resolve().parents[1] / "tuning_results"))
 
 from rclpy.serialization import deserialize_message
 from rosidl_runtime_py.utilities import get_message
@@ -228,7 +234,7 @@ def plot_summary(meta: dict, out_dir: Path):
     tbl.scale(1.1, 1.3)
     ax.set_title("MPC Parameters", pad=12)
 
-    out = out_dir + "summary_dashboard.png"
+    out = out_dir / "summary_dashboard.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {out}")
@@ -392,15 +398,15 @@ def plot_mpc_diagnostics(trial_dir: Path, meta: dict, out_dir: Path):
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    trial_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
-        "/media/lorenzo/writable/tuning_results/trial_001"
+    trial_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else (
+        RESULTS_DIR / "trial_001"
     )
     # Fall back to a writable local directory if trial_dir is not writable
     # default_out = Path.home() / "trial_plots" / trial_dir.name
     # out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else default_out
     # out_dir.mkdir(parents=True, exist_ok=True)
 
-    out_dir = "/media/lorenzo/writable/tuning_results/trial_002/"
+    out_dir = trial_dir
 
     print(f"Loading metadata from {trial_dir} …")
     meta = load_metadata(trial_dir)

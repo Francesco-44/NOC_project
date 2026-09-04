@@ -90,7 +90,7 @@ def generate_launch_description():
         DeclareLaunchArgument("mission_file", default_value=""),
         # Ritardo prima che la missione pubblichi il PRIMO goal. Il default del
         # nodo e' 3 s, troppo pochi: il goal partirebbe prima che si riesca ad
-        # avviare viz/record_run.sh, e /global_goal e' pubblicato UNA SOLA
+        # avviare metrics/record_run.sh, e /global_goal e' pubblicato UNA SOLA
         # volta — una bag che se lo perde e' inutilizzabile dagli strumenti
         # di analisi. 20 s bastano per lanciare il recorder con calma.
         DeclareLaunchArgument("mission_delay", default_value="20.0"),
@@ -201,7 +201,7 @@ def generate_launch_description():
 
         # ── missione a waypoint per prove ripetibili (opzionale) ────────
         # Serve agli esperimenti che richiedono scenari identici ripetuti:
-        # vedi guides/roadmap_teorica_noc.md §6.6 (fronte di Pareto).
+        # vedi metrics/pareto_front.py (fronte di Pareto).
         Node(
             package="robot_real_goal_manager", executable="mission_runner_node",
             name="mission_runner_node", output="screen",

@@ -2,7 +2,7 @@
 geodesic_field — distanza dal goal che RISPETTA gli ostacoli gia' visti.
 
 PERCHE'. AStarPlanner sceglie il bersaglio locale con una distanza EUCLIDEA dal
-goal globale. Misurato su viz/escape_test.py, con il robot 4 m dentro un vicolo
+goal globale. Misurato su metrics/escape_test.py, con il robot 4 m dentro un vicolo
 cieco lungo 12 m, le tre candidate sul bordo della finestra valgono:
 
     candidata                euclidea   geodetica

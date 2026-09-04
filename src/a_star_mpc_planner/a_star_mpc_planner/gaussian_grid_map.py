@@ -8,7 +8,7 @@ Key design:
   - Occupancy probability is computed via a Gaussian CDF of the distance from
     each cell centre to the nearest obstacle point.
 
-author: Lorenzo Ortolani
+Co-authored: Lorenzo Ortolani, Francesco Pedrini
 """
 
 import numpy as np

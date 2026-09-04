@@ -8,43 +8,40 @@
 # centrata sul robot. Se il goal cade fuori da quella finestra viene proiettato
 # sul bordo, e con un ostacolo concavo la proiezione punta dritta dentro la
 # trappola: il pianificatore non puo' aggirare cio' che non vede. Misurato su
-# viz/common.world_scenario, un solo piano dallo spawn:
+# metrics/common.world_scenario, un solo piano dallo spawn:
 #
-# Misurato in ANELLO CHIUSO (viz/common.closed_loop, un run per cella):
+# Misurato in ANELLO CHIUSO (metrics/common.closed_loop, un run per cella):
 #
 #   grid_half_width   long_wall          horseshoe    dead_end
 #   6.0 (default)     bloccato           bloccato     bloccato
 #   8.0               ATTRAVERSA il muro goal ok      bloccato
-#   10.0              goal ok            goal ok      goal ok
+#   10.0              goal ok            goal ok      goal ok   <- adottato
 #   14.0              goal ok            goal ok      goal ok
 #
-# 10.0 risolveva quei tre, ma NON basta con il piede lungo di l_corridor:
-# arrivato in cima al piede (6.5, 11) il robot ha l'imbocco del corridoio a
-# (-2, 0), cioe' 8.5 m in x e 11 m in y — fuori da una finestra di mezza
-# larghezza 10. A* non trova percorso, a_star_node logga "No path found" e non
-# pubblica nulla, l'MPC prosegue sull'ultimo piano e il robot RESTA FERMO in
-# fondo al piede. Misurato:
+# 10.0 e' il valore adottato, ed e' quello con cui gira l'intera campagna di
+# metrics/escape_test.py. Il caso che decide e' l_corridor, il mondo con il piede
+# piu' lungo: dalla cima del piede (6.5, 11) l'imbocco del corridoio sta a
+# (-2, 0), cioe' 8.5 m in x e 11 m in y, e la sola proiezione radiale del goal
+# sul bordo della finestra non ne esce. Con la metrica geodetica sul target
+# locale il piano esiste comunque: goal raggiunto in 112.7 s, clearance minima
+# 0.80 m (escape_all_hw10.json, riga l_corridor/geodetica).
 #
-#   grid_half_width   A* dalla cima del piede
-#   10.0              nessun percorso  -> bloccato
-#   12.0              249 wp, esce      (minimo, nessun margine)
-#   14.0              249 wp, esce      <- scelto
-#
-# COSTO, e perche' grid_reso sale con la finestra. A reso 0.20 la griglia a
-# hw=14 e' 140x140 e un piano costa 1.4-3.1 s: PIU' del periodo di
-# ripianificazione (replan_rate_hz 1.0). Non e' l'A* in se', e' l'aggiornamento
-# della griglia gaussiana su ~2000 punti di ostacolo. Misurato sul caso peggiore
-# (l_corridor dalla cima del piede):
+# COSTO, e perche' non si sale oltre. grid_reso resta quello del profilo (0.20),
+# quindi a hw=10 la griglia e' 100x100 e un piano costa ~140 ms contro i ~50 ms
+# del default: dentro il periodo di ripianificazione (replan_rate_hz 1.0), ma non
+# gratis. Salire ancora costa molto in fretta, perche' il peso non e' l'A* in se'
+# ma l'aggiornamento della griglia gaussiana su ~2000 punti di ostacolo. Misurato
+# sul caso peggiore (l_corridor dalla cima del piede):
 #
 #   hw   reso   celle     ms
-#   14   0.20   140x140   1838
+#   14   0.20   140x140   1838   PIU' del periodo di ripianificazione
 #   14   0.25   112x112   1031
-#   14   0.30    93x93     645   <- scelto: 65% del periodo, e reso ancora fine
-#   14   0.35    80x80     504        abbastanza da rappresentare le strettoie
+#   14   0.30    93x93     645
+#   14   0.35    80x80     504
 #
-# reso 0.30 e' il compromesso: 0.35 sarebbe piu' veloce ma un canale libero di
-# 0.9 m (la strettoia di long_wall_false_north) scenderebbe a ~2.6 celle, troppo
-# poche perche' A* lo tratti in modo affidabile.
+# A hw=14 la finestra tornerebbe utilizzabile solo diradando la griglia, e a reso
+# 0.35 un canale libero di 0.9 m (la strettoia di long_wall_false_north)
+# scenderebbe a ~2.6 celle, troppo poche perche' A* lo tratti in modo affidabile.
 #
 # Allargare la finestra NON indebolisce le trappole: da quando c'e' la
 # percezione limitata, la trappola dipende dalla PORTATA DEL LIDAR (8 m) e non
@@ -54,16 +51,15 @@
 # cella "ATTRAVERSA il muro" e' un FALSO successo: l'impianto dell'harness non
 # ha collisioni, il ripiego proporzionale ha puntato l'ultimo waypoint di A*
 # oltre il muro e ci e' passato dentro (clearance 0.033 m). Vedi
-# viz/common.check_collisions — un goal raggiunto va sempre letto insieme alla
+# metrics/common.check_collisions — un goal raggiunto va sempre letto insieme alla
 # clearance.
 #
 # La soglia non e' universale: dipende da quanto e' grande l'ostacolo concavo
 # rispetto alla finestra. La regola pratica e' che la finestra deve contenere
 # l'ostacolo INTERO piu' la via d'uscita, non solo la faccia che il robot vede.
 #
-# COSTO. Il piano passa da ~50 ms a ~140 ms (griglia 100x100 invece di 60x60);
-# a 14.0 sarebbero ~300 ms. Con replan_rate_hz = 1.0 c'e' margine, ma non e'
-# gratis, ed e' la ragione per cui questo non e' il default.
+# E' la ragione per cui la finestra larga non e' il default del profilo: si paga
+# su ogni ciclo, anche nei mondi convessi che non ne hanno bisogno.
 #
 # ALTERNATIVA DA PROVARE PRIMA: nav_graph:=true. La memoria topologica globale
 # esiste proprio per ricordare la struttura oltre la finestra, e questi tre

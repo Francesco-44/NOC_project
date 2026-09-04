@@ -114,7 +114,7 @@ def global_error_table(v, T=3.0, dts=(0.2, 0.1, 0.05, 0.025, 0.0125)):
 # che serve per stimare un ordine (che e' una proprieta' asintotica e richiede
 # uno sweep su dt) ma NON e' il regime dell'MPC, che applica un ingresso diverso
 # a ogni nodo. Quelle che seguono ripetono la misura sulla sequenza di ingressi
-# ottima di un orizzonte vero, letta da viz/integrator_bag.py.
+# ottima di un orizzonte vero, letta da metrics/integrator_bag.py.
 #
 # COSA VIENE ISOLATO. Il canale di velocita' e' ZOH esatto a qualunque passo, e
 # sul profilo deployato (tau = 1 ms << dt) satura: v_{k+1} = u_k. La sequenza di

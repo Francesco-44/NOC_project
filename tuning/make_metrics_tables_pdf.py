@@ -18,9 +18,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 
-DEFAULT_REGROUPED_DIR = Path(
-    "/media/lorenzo/writable/Go2_navigation/"
-    "bag_gp_tuning/metrics_from_bags/regrouped_trials"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_REGROUPED_DIR = (
+    REPO_ROOT / "bag_gp_tuning" / "metrics_from_bags" / "regrouped_trials"
 )
 
 

@@ -7,9 +7,9 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-REPO_ROOT = Path('/media/lorenzo/writable/Go2_navigation')
+REPO_ROOT = Path(__file__).resolve().parents[1]
 HISTORY_FILE = REPO_ROOT / 'bag_gp_tuning' / 'gp_bag_tuning_history.json'
-OUT_DIR = REPO_ROOT / 'documentation' / 'assets'
+OUT_DIR = REPO_ROOT / 'bag_gp_tuning'
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Matches gp_bag_mpc_cost_optimization notebook bounds

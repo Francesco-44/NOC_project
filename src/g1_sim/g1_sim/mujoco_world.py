@@ -36,19 +36,19 @@ def _yaw_quat(yaw):
 def _box(x, y, z, sx, sy, sz, rgba, yaw=0.0, group=None):
     """SDF box (full sizes) → MuJoCo box dict (half sizes).
 
-    `group` a None significa LIDAR_GROUP, cioe' un ostacolo vero. Passando 0 si
-    ottiene una geometria di SOLA DECORAZIONE: visibile nel viewer ma esclusa
-    dal ray-cast, quindi invisibile al pianificatore. Serve per i marcatori di
-    goal, che altrimenti sarebbero ostacoli piazzati esattamente dove il robot
-    deve arrivare.
+    `group` left at None means LIDAR_GROUP, i.e. a real obstacle. Passing 0
+    gives a DECORATION-ONLY geometry: visible in the viewer but excluded from
+    the ray-cast, hence invisible to the planner. It is what the goal markers
+    need, since otherwise they would be obstacles placed exactly where the
+    robot is supposed to arrive.
     """
     return dict(shape="box", pos=[x, y, z], size=[sx / 2, sy / 2, sz / 2],
                 rgba=rgba, yaw=yaw, group=group)
 
 
 def _marker(x, y, rgba):
-    """Disco piatto a terra che segna un punto notevole. Decorazione pura:
-    group 0, e comunque sotto z_min del filtro (0.15 m)."""
+    """Flat disc on the ground marking a point of interest. Pure decoration:
+    group 0, and below the filter's z_min (0.15 m) anyway."""
     return dict(shape="cyl", pos=[x, y, 0.01], size=[0.35, 0.01],
                 rgba=rgba, yaw=0.0, group=0)
 
@@ -73,15 +73,15 @@ _FORK = [0.85, 0.7, 0.1, 1]
 
 
 def _seg(x1, y1, x2, y2, height=2.5, thick=0.25, rgba=None):
-    """Muro fra due punti del piano: e' il modo naturale di disegnare
-    geometrie non convesse (una U e' tre segmenti, un corridoio quattro).
+    """Wall between two points of the plane: the natural way to draw
+    non-convex geometry (a U is three segments, a corridor four).
 
-    Restituisce un box centrato a meta' segmento, lungo quanto il segmento e
-    ruotato per allinearvisi. Altezza e quota sono scelte perche' il muro cada
-    dentro la fascia che il filtro LiDAR tiene (z_min 0.15, z_max 1.60 nel
-    frame odom, vedi config/lidar_filter_g1.yaml): un ostacolo tutto sopra o
-    tutto sotto quella fascia verrebbe scartato e il pianificatore non lo
-    vedrebbe mai.
+    Returns a box centred on the segment midpoint, as long as the segment and
+    rotated to align with it. Height and elevation are chosen so that the wall
+    falls inside the band the LiDAR filter keeps (z_min 0.15, z_max 1.60 in the
+    odom frame, see config/lidar_filter_g1.yaml): an obstacle entirely above or
+    entirely below that band would be discarded and the planner would never see
+    it.
     """
     dx, dy = x2 - x1, y2 - y1
     length = math.hypot(dx, dy)
@@ -94,16 +94,16 @@ def _seg(x1, y1, x2, y2, height=2.5, thick=0.25, rgba=None):
 def _arena_box(minx, maxx, miny, maxy, height=3.0, thick=0.2):
     """Perimetro rettangolare qualsiasi.
 
-    Serve perche' nei mondi con muro il bordo va messo VICINO alle spalle del
-    robot — entro max_lidar_range — e LONTANO davanti, dove ci deve stare il
-    goal. Con un'arena centrata non si puo' avere entrambe le cose.
+    Needed because in the wall worlds the border must sit CLOSE behind the
+    robot — within max_lidar_range — and FAR ahead, where the goal has to fit.
+    A centred arena cannot have both.
 
-    Il perche' e' di comportamento, non estetico: se il muro perimetrale dietro
-    al robot e' fuori portata, quando il G1 costeggia il muro lungo e trova il
-    lato sbarrato non ha modo di sapere che neppure aggirare il mondo da quella
-    parte funziona, quindi continua a provarci. Vedendolo, invece, torna subito
-    indietro verso l'altro capo — che e' la decisione giusta e quella che si
-    vuole osservare.
+    The reason is behavioural, not cosmetic: if the perimeter wall behind the
+    robot is out of range, the G1 following the long wall towards the blocked
+    side has no way of knowing that going around the world on that side does
+    not work either, so it keeps trying. Seeing it, it turns back towards the
+    other end straight away — which is the right decision, and the one the
+    experiment is meant to observe.
     """
     return [_seg(minx, maxy, maxx, maxy, height, thick),
             _seg(minx, miny, maxx, miny, height, thick),
@@ -112,8 +112,8 @@ def _arena_box(minx, maxx, miny, maxy, height=3.0, thick=0.2):
 
 
 def _arena(hx, hy, height=3.0, thick=0.2):
-    """Quattro muri perimetrali: il robot non puo' uscire dal mondo e la
-    scappatoia attorno a un ostacolo resta una scelta, non una fuga."""
+    """Four perimeter walls: the robot cannot leave the world, and going around
+    an obstacle stays a choice rather than an escape."""
     return [_seg(-hx, hy, hx, hy, height, thick),
             _seg(-hx, -hy, hx, -hy, height, thick),
             _seg(-hx, -hy, -hx, hy, height, thick),
@@ -121,32 +121,32 @@ def _arena(hx, hy, height=3.0, thick=0.2):
 
 
 def warehouse_geoms():
-    """Magazzino industriale, ridisposto come SEQUENZA DI VARCHI SFALSATI.
+    """Industrial warehouse, laid out as a SEQUENCE OF STAGGERED GAPS.
 
-    La disposizione originale (replica di industrial.sdf) lasciava un corridoio
-    centrale largo e sgombro: andando da (-12, 0) a (10, 0) il G1 incontrava
-    pochissimi ostacoli, le metriche uscivano piatte e i pannelli del costo non
-    mostravano quasi struttura. Non era un errore della scena — era una scena
-    pensata per apparire realistica, non per sollecitare il pianificatore.
+    The original layout (a replica of industrial.sdf) left a wide, clear central
+    corridor: going from (-12, 0) to (10, 0) the G1 met very few obstacles, the
+    metrics came out flat and the cost panels showed almost no structure. That
+    was not a mistake in the scene — it was a scene built to look realistic,
+    not to stress the planner.
 
-    Qui gli stessi blocchi (scaffalature alte, scaffali bassi, nastri, pallet,
-    celle robotizzate, casse, muletto, colonne) sono ridisposti in SEI cancelli
-    lungo la rotta, ciascuno con i varchi spostati rispetto al precedente. Il
-    robot non puo' mai puntare dritto al goal: a ogni cancello deve scegliere
-    un'apertura, e quella scelta lo disallinea per il cancello successivo.
+    Here the same blocks (tall racks, low shelves, conveyors, pallets, robot
+    cells, crates, forklift, columns) are rearranged into SIX gates along the
+    route, each with its opening offset from the previous one. The robot can
+    never head straight for the goal: at every gate it has to pick an opening,
+    and that choice misaligns it for the gate after.
 
-    CRITERIO DIMENSIONALE. Ogni varco e' largo almeno 2.0 m: con grid_std 0.31 e
-    obstacle_threshold 0.10 il raggio di blocco e' 0.397 m per lato, quindi
-    restano >= 1.2 m di canale libero. Sono strettoie vere ma percorribili — lo
-    scopo e' far LAVORARE il pianificatore, non farlo fallire; per il fallimento
-    ci sono i mondi non convessi dedicati.
+    SIZING CRITERION. Every gap is at least 2.0 m wide: with grid_std 0.31 and
+    obstacle_threshold 0.10 the blocking radius is 0.397 m per side, so at least
+    1.2 m of free channel is left. They are genuine narrow passages, but
+    passable — the point is to make the planner WORK, not to make it fail; for
+    failure there are the dedicated non-convex worlds.
 
-    Le concavita' qui sono piccole di proposito (la nicchia di casse a (0, -6) e
-    l'angolo di nastri a (6, 6), entrambe ~2 m): danno varieta' al paesaggio di
-    costo senza duplicare i test che l_corridor e horseshoe fanno meglio.
+    The concavities here are deliberately small (the crate niche at (0, -6) and
+    the conveyor corner at (6, 6), both ~2 m): they give the cost landscape some
+    variety without duplicating the tests l_corridor and horseshoe do better.
     """
     g = []
-    # ── perimetro (invariato: 30 x 20 m) ───────────────────────────────
+    # ── perimeter (unchanged: 30 x 20 m) ──────────────────────
     g += [_box(0, 10, 1.5, 30, 0.2, 3, _WALL), _box(0, -10, 1.5, 30, 0.2, 3, _WALL),
           _box(15, 0, 1.5, 0.2, 20, 3, _WALL), _box(-15, 0, 1.5, 0.2, 20, 3, _WALL)]
 
@@ -154,27 +154,27 @@ def warehouse_geoms():
     # Scaffalatura = 6 m: ruotata di 90 gradi copre 6 m in y.
     g += [_box(-10, 5.5, 1.25, 6, 0.6, 2.5, _RACK, yaw=math.pi / 2),   # y 2.5..8.5
           _box(-10, -5.5, 1.25, 6, 0.6, 2.5, _RACK, yaw=math.pi / 2)]  # y -8.5..-2.5
-    # varchi: y in [-2.5, 2.5] centrale, piu' due da 1.5 m ai bordi
+    # gaps: y in [-2.5, 2.5] in the middle, plus two 1.5 m ones at the edges
 
-    # ── cancello 2, x = -6: scaffali bassi, varco spostato a NORD ──────
+    # ── gate 2, x = -6: low shelves, gap shifted NORTH ─────────────────
     g += [_box(-6, -2.25, 1.3, 0.6, 6.5, 2.6, _SHELF),   # y -5.5..1.0
           _box(-6, -8.0, 1.3, 0.6, 4, 2.6, _SHELF)]      # y -10..-6
-    g += [_box(-6, 4.0, 0.075, 1.2, 0.8, 0.15, _PALLET), # pallet basso: sotto z_min,
-          _box(-6, 4.0, 0.55, 0.9, 0.7, 0.8, _BOXC)]     # la cassa sopra invece si vede
-    # UNICO varco: y > 1.0, cioe' a NORD. Lo scaffale scavalca y=0 di proposito:
-    # se ogni cancello lasciasse un'apertura vicino all'asse, il robot passerebbe
-    # dritto e la scena tornerebbe piatta — e' cio' che succedeva alla prima
-    # stesura (escursione laterale totale 2.4 m su 22 m di rotta).
+    g += [_box(-6, 4.0, 0.075, 1.2, 0.8, 0.15, _PALLET), # low pallet: below z_min,
+          _box(-6, 4.0, 0.55, 0.9, 0.7, 0.8, _BOXC)]     # the crate on top is seen
+    # THE ONLY gap: y > 1.0, i.e. NORTH. The shelf crosses y=0 on purpose: if
+    # every gate left an opening near the axis, the robot would go straight
+    # through and the scene would be flat again — which is what happened in the
+    # first draft (total lateral excursion 2.4 m over a 22 m route).
 
-    # ── cancello 3, x = -2: nastri trasportatori, varco a SUD ──────────
-    # Nastro = 8 m, alto 0.7: dentro la fascia del filtro (0.15..1.60).
+    # ── gate 3, x = -2: conveyors, gap SOUTH ───────────────────────────
+    # Conveyor = 8 m, 0.7 high: inside the filter band (0.15..1.60).
     g += [_box(-2, 3.0, 0.35, 8, 0.7, 0.7, _CONV, yaw=math.pi / 2),    # y -1..7
           _box(-2, -7.5, 0.35, 5, 0.7, 0.7, _CONV, yaw=math.pi / 2)]   # y -10..-5
-    # UNICO varco: y in [-5, -1], cioe' a SUD. Insieme al cancello 2 (solo nord)
-    # forza un'oscillazione vera da y>1 a y<-1 in 4 m di avanzamento.
+    # THE ONLY gap: y in [-5, -1], i.e. SOUTH. Together with gate 2 (north only)
+    # it forces a real swing from y>1 to y<-1 within 4 m of forward travel.
 
-    # ── cancello 4, x = 1..3: campo di celle robotizzate e colonne ─────
-    # Ostacoli piccoli e sparsi: qui non c'e' un varco unico, c'e' da slalomare.
+    # ── gate 4, x = 1..3: field of robot cells and columns ─────────────
+    # Small scattered obstacles: no single gap here, this one is a slalom.
     for (ax, ay) in [(1.5, 3.0), (2.5, -0.5), (1.5, -4.0)]:
         g += [_cyl(ax, ay, 0.25, 0.30, 0.5, _DARK),
               _cyl(ax, ay, 1.05, 0.12, 1.1, _ARM),
@@ -182,29 +182,29 @@ def warehouse_geoms():
     for (cx, cy) in [(0.0, 6.5), (3.0, 6.0), (0.5, -7.5)]:
         g.append(_cyl(cx, cy, 1.5, 0.15, 3.0, _COL))
 
-    # ── cancello 5, x = 6: scaffalature, varco CENTRALE stretto ────────
+    # ── gate 5, x = 6: racks, narrow CENTRAL gap ───────────────────────
     g += [_box(6, 4.5, 1.25, 6, 0.6, 2.5, _RACK, yaw=math.pi / 2),     # y 1.5..7.5
           _box(6, -4.5, 1.25, 6, 0.6, 2.5, _RACK, yaw=math.pi / 2)]    # y -7.5..-1.5
-    # varco: y in [-1.5, 1.5] = 3 m
+    # gap: y in [-1.5, 1.5] = 3 m
 
-    # ── cancello 6, x = 9: scaffali bassi + muletto, varco a NORD ──────
+    # ── gate 6, x = 9: low shelves + forklift, gap NORTH ───────────────
     g += [_box(9, -3.5, 1.3, 0.6, 5, 2.6, _SHELF),       # y -6..-1
           _box(9, -8.0, 1.3, 0.6, 4, 2.6, _SHELF)]       # y -10..-6
     g += [_box(9.0, 3.0, 0.35, 1.1, 0.7, 0.7, _FORK, yaw=1.2),
           _box(9.0, 3.0, 1.05, 0.6, 0.6, 0.7, _FORK, yaw=1.2),
           _box(9.0, 3.0, 1.0, 0.1, 0.6, 2.0, _DARK, yaw=1.2)]
-    # varchi: y in [-1, 2.4] e y in [3.6, 10]
+    # gaps: y in [-1, 2.4] and y in [3.6, 10]
 
-    # ── due piccole concavita', per dare struttura al paesaggio ────────
-    # Nicchia di casse (~2 m di bocca), aperta verso ovest.
+    # ── two small concavities, to give the landscape some structure ────
+    # Crate niche (~2 m mouth), open towards the west.
     g += [_box(0.0, -6.0, 0.3, 0.6, 2.4, 0.6, _BOXC),
           _box(-1.0, -5.0, 0.3, 2.0, 0.6, 0.6, _BOXC),
           _box(-1.0, -7.0, 0.3, 2.0, 0.6, 0.6, _GREEN)]
-    # Angolo di nastri, aperto verso sud-ovest.
+    # Conveyor corner, open towards the south-west.
     g += [_box(6.5, 7.0, 0.35, 3, 0.7, 0.7, _CONV),
           _box(8.0, 8.0, 0.35, 0.7, 3, 0.7, _CONV)]
 
-    # ── arredo sparso: pallet e casse fra un cancello e l'altro ────────
+    # ── scattered props: pallets and crates between one gate and the next ──
     for (px, py, yw) in [(-8.5, 0.5, 0.0), (-4.0, -2.0, 0.4), (4.0, 2.0, 0.9),
                          (7.5, -0.5, 0.2), (-11.0, -3.0, 0.0)]:
         g += [_box(px, py, 0.075, 1.2, 0.8, 0.15, _PALLET, yaw=yw),
@@ -220,52 +220,52 @@ def warehouse_geoms():
 
 
 # ---------------------------------------------------------------------------
-# Mondi con ostacoli NON CONVESSI
+# Worlds with NON-CONVEX obstacles
 # ---------------------------------------------------------------------------
-# Il magazzino industriale e' fatto di ostacoli convessi e sparsi: A* ne esce
-# sempre con una deviazione locale, e il pianificatore non viene mai messo
-# davanti a un minimo locale vero. Questi tre mondi servono a quello.
+# The industrial warehouse is made of convex, scattered obstacles: A* always
+# gets out of them with a local detour, and the planner is never put in front
+# of a genuine local minimum. These worlds are there for that.
 #
-# La misura che li rende non banali e' la FINESTRA DI A*: grid_half_width = 6.0
-# significa 12x12 m centrati sul robot, e il LiDAR arriva a 8 m. Un ostacolo
-# concavo piu' PICCOLO della finestra non e' una trappola — A* ne vede subito
-# il contorno completo e lo aggira. Diventa una trappola solo quando la via
-# d'uscita cade FUORI dalla finestra, cioe' quando il pianificatore deve
-# decidere sapendo di non vedere abbastanza. Le quote qui sotto sono scelte
-# per stare da quel lato.
+# What makes them non-trivial is the A* WINDOW: grid_half_width = 6.0 means
+# 12x12 m centred on the robot, while the LiDAR reaches 8 m. A concave obstacle
+# SMALLER than the window is not a trap — A* sees its whole outline at once and
+# goes around it. It becomes a trap only when the way out falls OUTSIDE the
+# window, that is when the planner has to decide knowing it cannot see enough.
+# The dimensions below are chosen to sit on that side.
 #
-# Tutti i muri sono alti 2.5 m: la fascia utile del filtro e' z in [0.15, 1.60]
-# in frame odom, quindi la geometria e' vista per intero a ogni quota di
-# scansione, senza dipendere dal beccheggio del busto.
+#
+# Every wall is 2.5 m tall: the filter's useful band is z in [0.15, 1.60] in the
+# odom frame, so the geometry is seen in full at every scan elevation, without
+# depending on how the torso pitches.
 
 
 def long_wall_geoms():
-    """Muro MOLTO lungo, varco a NORD, goal esattamente dietro.
+    """VERY long wall, gap to the NORTH, goal exactly behind it.
 
-    [FIX] La versione precedente era troppo corta: arrivando davanti al centro
-    del muro il robot vedeva gia' l'estremita' nord a 7.6 m, dentro la portata
-    del LiDAR, quindi non doveva scommettere su nulla. Non era il problema che
-    si voleva porre.
+    DESIGN NOTE. An earlier, shorter version was not enough: arriving in front
+    of the middle of the wall the robot already saw the north end at 7.6 m,
+    inside LiDAR range, so it had nothing to gamble on. That was not the
+    problem this world is meant to pose.
 
-    REGOLA DI PROGETTO. Nessuna estremita' del muro deve cadere entro
-    max_lidar_range (8 m) NEMMENO quando il robot e' arrivato addosso al centro.
-    Con lo spawn a y=0 e il muro a x=0, l'estremita' nord sta a y=+9: da (-0.5,0)
-    dista 9.0 m, da (-6,0) dista 10.8 m. In nessun momento il robot sa se e dove
-    ci sia un'apertura. Sa solo che al centro non si passa.
+    DESIGN RULE. No end of the wall may fall within max_lidar_range (8 m), NOT
+    EVEN when the robot has come right up to the middle. With the spawn at y=0
+    and the wall at x=0, the north end sits at y=+9: 9.0 m away from (-0.5, 0),
+    10.8 m from (-6, 0). At no point does the robot know whether or where an
+    opening is. All it knows is that the middle is blocked.
 
-    Deve quindi SCOMMETTERE su un lato e costeggiare finche' non trova sbocco —
-    che e' il comportamento degli algoritmi Bug, e l'unica strategia completa
-    quando l'ostacolo eccede il campo visivo.
+    So it has to BET on one side and follow the wall until it finds a way out —
+    which is what Bug algorithms do, and the only complete strategy when the
+    obstacle exceeds the field of view.
 
-    A nord il varco c'e' (y da 9 a 12). A sud il muro arriva al perimetro: chi
-    sceglie sud percorre 12 m, scopre che e' chiuso e deve tornare. Il mondo
-    speculare long_wall_south sposta il varco dall'altra parte, cosi' la coppia
-    distingue "ha ragionato" da "gira sempre dalla stessa parte".
+    North there is a gap (y from 9 to 12). South the wall reaches the perimeter:
+    whoever picks south walks 12 m, finds it closed and has to come back. The
+    mirrored world long_wall_south puts the gap on the other side, so the pair
+    tells "it reasoned" apart from "it always turns the same way".
     """
-    # Perimetro ovest a x=-10, cioe' 4 m dietro lo spawn: DENTRO la portata del
-    # LiDAR. Cosi' il robot che costeggia il muro verso il lato sbarrato sa gia'
-    # che non puo' aggirare il mondo da quella parte, e torna indietro invece di
-    # insistere. Con il bordo fuori portata quell'informazione non ce l'ha.
+    # West perimeter at x=-10, i.e. 4 m behind the spawn: INSIDE LiDAR range. A
+    # robot following the wall towards the blocked side then already knows it
+    # cannot get around the world that way, and turns back instead of insisting.
+    # With the border out of range it does not have that information.
     g = _arena_box(-8.0, 10.0, -12.0, 12.0)
     g += [_seg(0.0, -12.0, 0.0, 9.0, 2.5, 0.30)]
     g += [_marker(-6.0, 0.0, [0.2, 0.4, 0.9, 1]),
@@ -274,54 +274,54 @@ def long_wall_geoms():
 
 
 def horseshoe_geoms():
-    """Trappola a U (ferro di cavallo) aperta verso il robot, goal oltre il fondo.
+    """U-shaped (horseshoe) trap opening towards the robot, goal past its back.
 
-    [FIX] La U era profonda 5 m: il fondo cadeva dentro max_lidar_range (8 m)
-    gia' dall'imboccatura, quindi il robot lo vedeva PRIMA di entrare e passava
-    di lato subito. Non era una trappola, era un ostacolo convesso visto per
-    intero. Ora la profondita' e' 12 m (bracci da x=-2 a x=10): dall'imbocco il
-    fondo e' a 12 m, fuori portata, e compare solo quando il robot e' a x >= 2,
-    cioe' 4 m DENTRO. E' la regola generale di questi mondi — una concavita' e'
-    una trappola solo se e' PIU' PROFONDA della portata del sensore.
+    DESIGN NOTE. A 5 m deep U was not enough: the back fell inside
+    max_lidar_range (8 m) already from the mouth, so the robot saw it BEFORE
+    entering and simply went around. That was not a trap, it was a convex
+    obstacle seen in full. The depth is now 12 m (arms from x=-2 to x=10): from
+    the mouth the back is 12 m away, out of range, and it only appears once the
+    robot is at x >= 2, i.e. 4 m INSIDE. This is the general rule of these
+    worlds — a concavity is a trap only if it is DEEPER than the sensor range.
 
-    Larghezza 7 m (y da -3.5 a 3.5): entrando, i bracci si vedono (sono a 3.5 m)
-    ma il fondo no, quindi la U e' indistinguibile da un corridoio largo aperto.
+    Width 7 m (y from -3.5 to 3.5): on entering, the arms are visible (they are
+    3.5 m away) but the back is not, so the U is indistinguishable from a wide
+    open corridor.
     """
     g = _arena(18.0, 10.0)
-    g += [_seg(10.0, -3.5, 10.0, 3.5, 2.5, 0.30),     # fondo
-          _seg(-2.0, 3.5, 10.0, 3.5, 2.5, 0.30),      # braccio nord
-          _seg(-2.0, -3.5, 10.0, -3.5, 2.5, 0.30)]    # braccio sud
+    g += [_seg(10.0, -3.5, 10.0, 3.5, 2.5, 0.30),     # back
+          _seg(-2.0, 3.5, 10.0, 3.5, 2.5, 0.30),      # north arm
+          _seg(-2.0, -3.5, 10.0, -3.5, 2.5, 0.30)]    # south arm
     g += [_marker(-7.0, 0.0, [0.2, 0.4, 0.9, 1]),
           _marker(14.0, 0.0, [0.2, 0.8, 0.3, 1])]
     return g
 
 
 def dead_end_geoms():
-    """Corridoio stretto e lungo, CHIUSO in fondo, con il goal appena oltre.
+    """Narrow, long corridor, CLOSED at the far end, with the goal just beyond.
 
-    Il corridoio e' largo 2.0 m e lungo 12 m, imboccatura a x=-2 e fondo chiuso
-    a x=+10. Il goal sta a (13, 0), cioe' subito dietro il fondo: la direzione
-    del corridoio punta al goal, ed e' questo che lo rende una trappola
-    convincente invece che un ostacolo qualunque.
+    The corridor is 2.0 m wide and 12 m long, mouth at x=-2 and closed end at
+    x=+10. The goal is at (13, 0), i.e. right behind that end: the corridor
+    points at the goal, and that is what makes it a convincing trap rather than
+    just another obstacle.
 
-    [FIX] La lunghezza dev'essere MAGGIORE di max_lidar_range (8.0 m), non
-    uguale. Con 8 m il fondo era visibile gia' dall'imboccatura e il robot non
-    entrava mai davvero: si osservava un dondolio nord/sud all'imbocco (A* che
-    cambia lato a ogni ripianificazione) invece del rimpallo dentro-fuori che
-    si vede in MuJoCo. Con 12 m il fondo compare solo quando il robot e' a
-    x >= 2, cioe' 4 m DENTRO: a quel punto e' gia' impegnato, ed e' il caso in
-    cui la retromarcia (mpc_vx_min = -0.15) serve davvero.
+    DESIGN NOTE. The length must be GREATER than max_lidar_range (8.0 m), not
+    equal to it. At 8 m the end was visible from the mouth and the robot never
+    really went in: what one saw was a north/south wobble at the entrance (A*
+    switching side at every replan) instead of the in-and-out bouncing MuJoCo
+    shows. At 12 m the end only appears once the robot is at x >= 2, i.e. 4 m
+    INSIDE: by then it is committed, and this is the case where reversing
+    (mpc_vx_min = -0.15) genuinely matters.
 
-    Larghezza 2.0 m scelta di proposito: con grid_std 0.31 e obstacle_threshold
-    0.10 il raggio di blocco implicato e' 0.397 m, quindi restano 1.2 m di
-    canale libero. Il corridoio e' percorribile, e il test riguarda il vicolo
-    cieco, non la strettoia.
+    Width 2.0 m on purpose: with grid_std 0.31 and obstacle_threshold 0.10 the
+    implied blocking radius is 0.397 m, so 1.2 m of free channel is left. The
+    corridor is passable, and the test is about the dead end, not the squeeze.
     """
     g = _arena(16.0, 8.0)
-    g += [_seg(-2.0, 1.0, 10.0, 1.0, 2.5, 0.30),      # parete nord
-          _seg(-2.0, -1.0, 10.0, -1.0, 2.5, 0.30),    # parete sud
-          _seg(10.0, -1.0, 10.0, 1.0, 2.5, 0.30)]     # FONDO CHIUSO
-    # Il giro largo e' libero: la soluzione esiste, e passa a nord o a sud.
+    g += [_seg(-2.0, 1.0, 10.0, 1.0, 2.5, 0.30),      # north wall
+          _seg(-2.0, -1.0, 10.0, -1.0, 2.5, 0.30),    # south wall
+          _seg(10.0, -1.0, 10.0, 1.0, 2.5, 0.30)]     # CLOSED END
+    # The long way round is free: a solution exists, north or south.
     g += [_marker(-6.0, 0.0, [0.2, 0.4, 0.9, 1]),
           _marker(13.0, 0.0, [0.2, 0.8, 0.3, 1])]
     return g

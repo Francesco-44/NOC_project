@@ -29,7 +29,7 @@ quindi nullo per costruzione.
 
 È una scelta deliberata, non un ripiego: rende gli esperimenti di ottimizzazione
 (iterazioni IPOPT, condizionamento, warm start, penalità esatta, active-set vs
-interior-point — vedi [`guides/roadmap_teorica_noc.md`](../../guides/roadmap_teorica_noc.md))
+interior-point, vedi [`metrics/`](../../metrics/))
 misure del **solutore**, non del rumore dell'andatura.
 
 La modalità `physics:=true` (camminata sotto fisica con la policy RL AMO sul bus

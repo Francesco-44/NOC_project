@@ -768,10 +768,10 @@ class MPCNode(Node):
             float(self._adaptive_vx_max),   # [6] current adaptive vx limit
             # [7..12] stato iniziale x0 dell'NLP, cioe' ESATTAMENTE cio' che e'
             # stato passato al solutore. Serve a poter ri-risolvere lo stesso
-            # problema offline da una bag (viz/): posizione e yaw si potrebbero
+            # problema offline da una bag (metrics/): posizione e yaw si potrebbero
             # dedurre da /mpc/predicted_path[0], ma le velocita' sono stimate
             # qui dentro (EMA sulle differenze di posa) e senza queste non
-            # uscirebbero mai. Vedi guides/visualizzazione_ottimizzazione.md.
+            # uscirebbero mai.
             float(state[0]), float(state[1]), float(state[2]),
             float(state[3]), float(state[4]), float(state[5]),
             # [13] iterazioni di IPOPT dell'ultimo solve (-1 se non disponibili)

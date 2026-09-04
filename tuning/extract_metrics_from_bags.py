@@ -245,7 +245,7 @@ def _print_table(rows, title):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--repo-root', type=Path, default=Path('/media/lorenzo/writable/Go2_navigation'))
+    ap.add_argument('--repo-root', type=Path, default=Path(__file__).resolve().parents[1])
     ap.add_argument('--goal-tol', type=float, default=0.5)
     ap.add_argument('--outdir', type=Path, default=None)
     args = ap.parse_args()

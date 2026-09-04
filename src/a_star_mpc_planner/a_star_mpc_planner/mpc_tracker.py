@@ -118,7 +118,7 @@ class MPCConfig:
     #   'l2'      : stesso vincolo ma  + rho * sum(s^2). NON esatta: lascia un
     #               residuo s* ~ mu*/(2 rho) per ogni rho finito.
     # Il confronto l1/l2 al variare di rho e' la verifica sperimentale del
-    # Thm 6.3.1; vedi viz/exact_penalty.py.
+    # Thm 6.3.1; vedi metrics/exact_penalty.py.
     obstacle_mode: str = 'penalty'
     obs_d_safe:    float = 0.40   # distanza di sicurezza del vincolo [m]
     obs_rho:       float = 5.0e3  # peso della penalita' sullo slack
@@ -135,7 +135,7 @@ class MPCConfig:
     #     ||p_k - o_j|| >= d_safe + beta(k) - s_jk
     # Il vincolo e' imposto sulla traiettoria PREDETTA, che diverge da quella
     # vera; beta(k) e' il margine che copre quella divergenza. Va MISURATO
-    # (viz/robust_constraints.py lo ricava dal quantile dell'errore di
+    # (metrics/robust_constraints.py lo ricava dal quantile dell'errore di
     # predizione registrato nelle bag), non scelto a occhio.
     # None = nessun irrigidimento. Ha effetto solo con obstacle_mode l1/l2,
     # dove l'ostacolo e' un vincolo vero e non una penalita'.
@@ -147,7 +147,7 @@ class MPCConfig:
     #                    oltre, u resta COSTANTE all'ultimo valore libero.
     # Disaccoppia il numero di gradi di liberta' dall'orizzonte di predizione:
     # si puo' guardare lontano (utile agli ingredienti terminali) pagando poche
-    # variabili. Vedi viz/control_horizon.py.
+    # variabili. Vedi metrics/control_horizon.py.
     N_c: Optional[int] = None
 
     # Parametrizzazione della traiettoria (dispense §7.2.2, eq. 7.3 vs 7.4)
@@ -158,11 +158,11 @@ class MPCConfig:
     #   'single'   : X eliminata per sostituzione ricorsiva a partire da x0.
     #                Meno variabili e nessun vincolo di dinamica, ma Jacobiana
     #                DENSA e integrazione in anello aperto su tutto l'orizzonte.
-    # Vedi viz/shooting_compare.py.
+    # Vedi metrics/shooting_compare.py.
     shooting: str = 'multiple'
 
     # Hessiana usata da IPOPT: 'exact' (da AD) oppure 'limited-memory' (L-BFGS).
-    # Vedi guides/roadmap_teorica_noc.md §4.1 e viz/ad_vs_fd.py.
+    # Vedi metrics/ad_vs_fd.py.
     hessian: str = 'exact'
 
     # Ingredienti terminali (dispense §7.2.5, eq. 3.11f)
@@ -197,7 +197,7 @@ class MPCConfig:
     print_level: int = 0
 
     # Diagnostica: registra il percorso degli iterati di IPOPT (x^0 -> x*) per
-    # la visualizzazione dello spazio delle decisioni (viz/decision_plane.py).
+    # la visualizzazione dello spazio delle decisioni (metrics/decision_plane.py).
     # Spento in esercizio: costa una copia del vettore delle variabili per
     # iterazione e non serve al controllo.
     record_iterates: bool = False
@@ -393,7 +393,7 @@ class MPCTracker:
         opti   = ca.Opti()
         # In multiple shooting X va dichiarata PRIMA di U: Opti impila le
         # variabili nell'ordine di creazione, e il layout [X; U] di opti.x e'
-        # assunto da viz/test_fidelity.py e viz/decision_plane.py. In single
+        # assunto da metrics/test_fidelity.py e metrics/decision_plane.py. In single
         # shooting X non e' una variabile, quindi l'ordine non si pone.
         # beta(k) del constraint tightening: 0 se non richiesto.
         _bo = cfg.robust_backoff

@@ -2757,6 +2757,20 @@ has stopped being one: widened to $|v_y|\le\resVyMax$~m/s and $v_x\in[\resVxMin,
 the critical cone at $\resConeLast$ of $\resNvar$ dimensions at the last sampled cycle, and the controller
 is cost-driven to the end.
 
+Three properties of the stack matter beyond the numbers above, because they say what it is good for rather
+than how well it performs. It is multi-robot by construction, not by retrofit: the same planner, NLP, and
+LiDAR-inertial estimator ran unmodified on the Go2 quadruped and the G1 humanoid, differing only in the
+deployed profile of Section~\ref{sec:impl}, because both platforms expose nothing to the controller but the
+body-frame twist $u$ of Section~\ref{sec:platforms}. It closes the same graph in simulation and on hardware:
+the Isaac Sim pipeline of Figure~\ref{fig:sim-isaac} drives the identical ROS~2 nodes of
+Section~\ref{sec:overview} that the Jetson runs onboard, so nothing about the controller changes between a
+run that is replayed and one that is not. And none of it depends on an a priori map or a SLAM back end: the
+planner searches a rolling occupancy grid built from the live LiDAR or stereo return, and the pose it plans
+against is instantaneous odometry rather than a correction against stored geometry. That last property is
+what makes the stack worth deploying outside a benchmark course: it is a candidate wherever building and
+keeping a map is the actual obstacle, planetary and other exploration settings where no prior map exists to
+build against, and general outdoor navigation where the terrain changes faster than a map of it stays valid.
+
 The natural continuations follow directly. Identify the actuator time constant under physics, which unblocks
 both the sampling-time analysis and an honest re-measurement of the terminal constraint. Apply $u^\star_0$
 directly instead of through a look-ahead setpoint, so that improvements provable in the plan become

@@ -1,34 +1,34 @@
 #!/usr/bin/env python3
 """
-PANNELLO — il minimo locale dentro le trappole, e come sparisce.
+PANEL — the local minimum inside the traps, and how it disappears.
 
-Disegna, per un mondo di g1_sim, DUE paesaggi di navigazione sul piano:
+For a world of g1_sim it draws TWO navigation landscapes on the plane:
 
   SINISTRA   d_eucl(p) = ||p - goal||          mascherata sullo spazio libero
-  DESTRA     d_geo(p)  = distanza GEODETICA dal goal, aggirando gli ostacoli
+  RIGHT      d_geo(p)  = GEODESIC distance from the goal, around the obstacles
 
-Sono i due modi di rispondere alla domanda "quanto sono lontano dal goal", e la
-differenza fra loro e' tutta la storia di questi mondi.
+They are the two ways of answering the question "how far am I from the goal",
+and the difference between them is the whole story of these worlds.
 
-PERCHE' PROPRIO QUESTE DUE. Il pianificatore non minimizza un potenziale: A*
-sceglie un BERSAGLIO e ci pianifica dentro. Ma il bersaglio lo sceglie per
-distanza dal goal, quindi il robot in pratica DISCENDE quel campo, vincolato a
-restare nello spazio libero. Un minimo locale in senso vincolato — una cella
-libera nessuno dei cui vicini liberi ha valore minore — e' allora una posizione
-da cui ogni mossa ammissibile ALLONTANA dal goal. E' esattamente il fondo del
-vicolo cieco, l'interno del ferro di cavallo, il punto medio davanti al muro.
+WHY THESE TWO. The planner does not minimise a potential: A* picks a TARGET and
+plans inside it. But it picks the target by distance from the goal, so in
+practice the robot DESCENDS that field, constrained to stay in free space. A
+local minimum in the constrained sense — a free cell none of whose free
+neighbours has a smaller value — is then a position from which every admissible
+move takes it FURTHER from the goal. That is exactly the bottom of the dead end,
+the inside of the horseshoe, the midpoint in front of the wall.
 
-Il campo geodetico, per costruzione, NON PUO' averne: e' l'uscita di un
-Dijkstra, quindi ogni cella libera ha per forza un vicino a valore strettamente
-minore lungo la catena che la collega al goal. Non e' un fatto empirico da
-verificare mondo per mondo, e' una proprieta' dell'algoritmo — ed e' la ragione
-per cui sostituirlo alla distanza euclidea elimina la classe di fallimento
-invece di attenuarla.
+The geodesic field, by construction, canNOT have any: it is the output of a
+Dijkstra, so every free cell necessarily has a neighbour with a strictly smaller
+value along the chain that connects it to the goal. It is not an empirical fact
+to be checked world by world, it is a property of the algorithm — and it is why
+replacing the euclidean distance with it removes the failure class instead of
+mitigating it.
 
-I MONDI DI CONTROLLO servono a mostrare il rovescio: in open_corridor o zigzag
-il campo euclideo NON ha minimi locali interni, il livello scende in modo
-monotono fino al goal, e infatti li' si passa. La differenza fra trappola e non
-trappola e' visibile prima ancora di far muovere il robot.
+THE CONTROL WORLDS show the flip side: in open_corridor or zigzag the euclidean
+field has NO interior local minima, the level drops monotonically to the goal,
+and indeed they are passable. The difference between a trap and a non-trap is
+visible before the robot is even set in motion.
 
 Uso:
     python3 metrics/trap_landscape.py --mondi horseshoe dead_end long_wall open_corridor
@@ -46,7 +46,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import common  # noqa: E402
 
-# Oltre questo scarto fra geodetica ed euclidea un minimo locale e' una vera
+# Beyond this gap between geodesic and euclidean a local minimum is a real
 # trappola: sotto, e' un semplice appoggio a un muro senza giro da fare.
 SOGLIA_TRAPPOLA = 2.0
 
@@ -67,16 +67,16 @@ def campi(sc, raw, reso=0.15):
 
 
 def minimi_locali(F, goal_ij, tol=1e-9):
-    """Celle libere il cui valore e' <= a quello di OGNI vicino libero (8-vicini).
+    """Free cells whose value is <= that of EVERY free neighbour (8-neighbourhood).
 
-    Il goal e' escluso: e' il minimo globale, non una trappola. Si usa <= e non
-    < perche' su un reticolo un fondo piatto e' comunque un minimo: da li'
+    The goal is excluded: it is the global minimum, not a trap. <= is used and
+    not < because on a lattice a flat bottom is a minimum all the same: from
     nessuna mossa migliora.
     """
     nx, ny = F.shape
-    # Vettorizzato: il minimo sugli 8 vicini si ottiene con np.fmin su 8 copie
-    # traslate (fmin ignora i NaN, cioe' le celle occupate, che e' proprio il
-    # comportamento voluto — un vicino dentro un muro non e' una via d'uscita).
+    # Vectorised: the minimum over the 8 neighbours is obtained with np.fmin on 8
+    # shifted copies (fmin ignores NaN, i.e. the occupied cells, which is exactly
+    # the intended behaviour — a neighbour inside a wall is not a way out).
     P = np.full((nx + 2, ny + 2), np.nan)
     P[1:-1, 1:-1] = F
     vic = np.full_like(F, np.nan)
@@ -89,14 +89,14 @@ def minimi_locali(F, goal_ij, tol=1e-9):
     mask[0, :] = mask[-1, :] = mask[:, 0] = mask[:, -1] = False
     if goal_ij is not None:
         gi, gj = goal_ij
-        # si esclude un intorno del goal: e' il minimo GLOBALE, non una trappola
+        # a neighbourhood of the goal is excluded: it is the GLOBAL minimum, not a trap
         r = 3
         mask[max(0, gi - r):gi + r + 1, max(0, gj - r):gj + r + 1] = False
     return list(zip(*np.nonzero(mask)))
 
 
 def raggruppa(pts, reso, raggio=1.0):
-    """Un minimo locale occupa piu' celle: si tengono i centri dei gruppi."""
+    """A local minimum spans several cells: the centres of the groups are kept."""
     centri = []
     for p in pts:
         for c in centri:
@@ -114,7 +114,7 @@ def main() -> int:
                     default=["horseshoe", "dead_end", "long_wall", "open_corridor"])
     ap.add_argument("--reso", type=float, default=0.15)
     ap.add_argument("--traiettoria", action="store_true",
-                    help="sovrappone la traiettoria in anello chiuso (lento)")
+                    help="overlay the closed-loop trajectory (slow)")
     ap.add_argument("--hw", type=float, default=10.0)
     ap.add_argument("--no-show", action="store_true")
     args = ap.parse_args()
@@ -135,13 +135,13 @@ def main() -> int:
         me = raggruppa(minimi_locali(eucl, gij), gf.reso)
         mg = raggruppa(minimi_locali(geo, gij), gf.reso)
 
-        # PROFONDITA' DELLA TRAPPOLA = d_geo - d_eucl nel punto di minimo.
-        # Separa una trappola vera da un minimo innocuo: contro un muro
-        # perimetrale il campo euclideo ha comunque minimi locali (ci si appoggia
-        # e ogni mossa allontana), ma li' la geodetica vale quanto l'euclidea,
-        # quindi la profondita' e' ~0 e non c'e' nessun giro da fare. Dentro un
-        # vicolo cieco invece la geodetica esplode: e' il cammino in piu' che il
-        # robot dovrebbe percorrere, cioe' il costo REALE di esserci finito.
+        # DEPTH OF THE TRAP = d_geo - d_eucl at the minimum.
+        # It tells a real trap from an innocuous minimum: against a perimeter wall
+        # the euclidean field has local minima all the same (one leans on it and
+        # every move takes you away), but there the geodesic equals the euclidean,
+        # so the depth is ~0 and there is no detour to make. Inside a dead end the
+        # geodesic instead explodes: it is the extra path the robot would have to
+        # walk, i.e. the REAL cost of having ended up there.
         prof = []
         for (i, j) in me:
             wx, wy = gf.minx + i * gf.reso, gf.miny + j * gf.reso
@@ -187,15 +187,15 @@ def main() -> int:
                          f"(trappole: {len([1 for (i,j) in mins if float(geo[i,j])-float(eucl[i,j]) > SOGLIA_TRAPPOLA])})",
                          fontsize=10)
             ax.set_aspect("equal"); ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
-            fig.colorbar(im, ax=ax, shrink=.85, label="distanza dal goal [m]")
+            fig.colorbar(im, ax=ax, shrink=.85, label="distance from the goal [m]")
         axes[0].legend(loc="upper left", fontsize=8)
-        fig.suptitle(f"{nome} — la trappola e' un minimo locale della metrica "
-                     f"euclidea, non della geodetica", fontsize=12)
+        fig.suptitle(f"{nome} — the trap is a local minimum of the euclidean "
+                     f"metric, not of the geodesic one", fontsize=12)
         fig.tight_layout()
         out = os.path.join(_HERE, "out", f"paesaggio_{nome}.png")
         salvati += common.save_figure(fig, out, 130)
         verdetto = "TRAPPOLA" if trappole else "PASSANTE"
-        print(f"{nome:16s} min. euclidei {len(me):2d} (di cui trappole "
+        print(f"{nome:16s} euclidean minima {len(me):2d} (of which traps "
               f"{len(trappole)})  min. geodetici {len(mg):2d}   [{verdetto}]")
         for (d, wx, wy, de, dg) in trappole:
             print(f"                  ({wx:6.2f},{wy:6.2f})  eucl {de:5.2f} m -> "

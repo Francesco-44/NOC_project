@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
 """
-FIGURA §3.1 — la stessa scena, due metriche, due bersagli.
+FIGURE §3.1 — the same scene, two metrics, two targets.
 
-Il capitolo sulla generazione del riferimento dice che la scelta sostanziale
-nella regola di selezione del bersaglio locale e' la METRICA, non la memoria.
-Questa figura lo mostra invece di affermarlo: robot fermo nella stessa posa,
-stessa mappa parziale, stessa finestra, e i due argmin che cadono da parti
-opposte dell'ostacolo.
+The chapter on reference generation says that the substantive choice in the
+local-target selection rule is the METRIC, not the memory. This figure shows it
+instead of asserting it: the robot standing in the same pose, the same partial
+map, the same window, and the two argmins falling on opposite sides of the
+obstacle.
 
-SINISTRA  la PROIEZIONE lungo il raggio robot->goal (la baseline)
-DESTRA    l'argmin della geodetica sulla mappa gia' osservata (la deployata)
+LEFT   the PROJECTION along the robot->goal ray (the baseline)
+RIGHT  the argmin of the geodesic on the map already observed (the deployed rule)
 
-E una terza cosa, che il pannello destro annota: la proiezione non e' l'argmin
-della distanza euclidea, sono due regole diverse. L'argmin euclideo qui sarebbe
-gia' meglio della proiezione — ma non basta, perche' PAREGGIA due candidate
-simmetriche di cui una e' irraggiungibile, e rompe il pareggio a caso.
+And a third thing, which the right-hand panel annotates: the projection is not
+the argmin of the euclidean distance, they are two different rules. The euclidean
+argmin would already be better than the projection here — but it is not enough,
+because it TIES two symmetric candidates one of which is unreachable, and breaks
+the tie at random.
 
-Sotto ciascun pannello c'e' il percorso A* verso il bersaglio scelto: a sinistra
-entra nella concavita', a destra la aggira. La mappa e' PARZIALE, costruita
-facendo avvicinare il robot come farebbe davvero, perche' con gli ostacoli noti
-in anticipo il fallimento non si riproduce.
+Under each panel is the A* path to the chosen target: on the left it enters the
+concavity, on the right it goes around it. The map is PARTIAL, built by letting
+the robot approach as it really would, because with the obstacles known in
+advance the failure does not reproduce.
 
     python3 metrics/fig_local_target.py --mondo horseshoe
 """
@@ -44,19 +45,19 @@ from a_star_mpc_planner.geodesic_field import GeodesicField, block_radius  # noq
 
 
 def scena(mondo: str, cfg, raw, frazione: float = 0.55):
-    """Mappa parziale e posa: il robot avanza verso il goal e guarda.
+    """Partial map and pose: the robot moves towards the goal and looks.
 
-    `frazione` e' quanto del segmento spawn->goal ha percorso quando la figura
-    viene scattata. Serve una posa DAVANTI alla concavita', non dentro: e' li'
-    che le due metriche divergono e la regola euclidea sbaglia.
+    `frazione` is how much of the spawn->goal segment has been covered when the
+    figure is taken. A pose IN FRONT OF the concavity is needed, not inside it:
+    that is where the two metrics diverge and the euclidean rule gets it wrong.
     """
     sc = common.world_scenario(mondo)
     reso = float(raw["grid_reso"])
     pw = perception.PerceivedWorld(sc.obstacles, grid_reso=reso,
                                    max_range=float(raw.get("max_lidar_range", 8.0)))
     p0, g = sc.pose[:2].astype(float), sc.goal.astype(float)
-    # avvicinamento in linea retta, osservando: e' la storia di percezione che
-    # il robot avrebbe davvero, non la mappa completa
+    # straight-line approach, observing: it is the perception history the robot
+    # would really have, not the complete map
     for i, t in enumerate(np.linspace(0.0, frazione, 40)):
         pw.observe(p0 + t * (g - p0), i * cfg.dt)
     pose = p0 + frazione * (g - p0)
@@ -64,7 +65,7 @@ def scena(mondo: str, cfg, raw, frazione: float = 0.55):
 
 
 def candidate(grid, pl, pose, goal, geo):
-    """Celle libere del bordo con la loro euclidea e la loro geodetica."""
+    """Free border cells with their euclidean and their geodesic distance."""
     cells = grid.cells
     ring = {(i, 0) for i in range(cells)} | {(i, cells - 1) for i in range(cells)}
     ring |= {(0, i) for i in range(cells)} | {(cells - 1, i) for i in range(cells)}
@@ -79,7 +80,7 @@ def candidate(grid, pl, pose, goal, geo):
 
 
 def bersaglio(grid, pose, goal, geo=None, raw=None):
-    """Bersaglio locale e percorso A*, con o senza campo geodetico."""
+    """Local target and A* path, with or without the geodesic field."""
     planner = AStarPlanner(
         obstacle_threshold=float(raw["obstacle_threshold"]),
         obstacle_cost_weight=float(raw["obstacle_cost_weight"]),
@@ -125,10 +126,10 @@ def _contesto(cfg, raw, mondo: str, frazione: float) -> dict:
 
 
 def measure(cfg, raw, mondo: str = MONDO_DEF, frazione: float = FRAZIONE_DEF) -> dict:
-    """I tre numeri che la figura annota, senza disegnare nulla.
+    """The three numbers the figure annotates, without drawing anything.
 
-    Serve a make_results: figura e testo del report devono citare le stesse
-    cifre, e l'unico modo di garantirlo e' calcolarle una volta sola.
+    Needed by make_results: figure and report text must quote the same figures,
+    and the only way to guarantee that is to compute them once.
     """
     c = _contesto(cfg, raw, mondo, frazione)
     return {"mondo": mondo, "frazione": frazione,
@@ -156,7 +157,7 @@ def main() -> int:
     print(f"mondo {args.mondo}: copertura {pw.coverage:.0%}, "
           f"{len(known)} punti noti")
     if pari:
-        print("  due candidate piu' vicine in linea d'aria:")
+        print("  two candidates closest as the crow flies:")
         for de, dg, x, y in pari:
             g = "inf" if not np.isfinite(dg) else f"{dg:6.2f}"
             print(f"    ({x:6.2f}, {y:6.2f})  euclidea {de:5.2f} m  geodetica {g} m")
@@ -176,8 +177,8 @@ def main() -> int:
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 
-    # Riquadro: la finestra locale piu' un margine, non tutto il mondo. Sui mondi
-    # lunghi il resto e' spazio vuoto che schiaccia la parte che conta.
+    # Bounding box: the local window plus a margin, not the whole world. On the
+    # long worlds the rest is empty space that squashes the part that matters.
     mrg = 3.0
     lim_x = (min(pose[0] - hw, sc.goal[0]) - mrg, max(pose[0] + hw, sc.goal[0]) + mrg)
     lim_y = (pose[1] - hw - mrg, pose[1] + hw + mrg)
@@ -206,8 +207,8 @@ def main() -> int:
             ax.plot(*tgt, "s", ms=9, c="#2ca02c", mec="k", mew=.5, zorder=6,
                     label="local target")
             dg = geo.distance(tgt[0], tgt[1])
-            # l'etichetta va tenuta DENTRO il pannello: sul bordo destro della
-            # finestra un offset positivo la manda fuori asse e sparisce
+            # the label has to stay INSIDE the panel: on the right edge of the
+            # window a positive offset pushes it off-axis and it disappears
             destra = tgt[0] > 0.5 * (lim_x[0] + lim_x[1])
             ax.annotate(("geodesic to goal: "
                          + (r"$\infty$" if not np.isfinite(dg) else f"{dg:.1f} m")),
@@ -219,10 +220,10 @@ def main() -> int:
         ax.set_xlim(*lim_x); ax.set_ylim(*lim_y)
         ax.set_aspect("equal", adjustable="box")
         ax.grid(alpha=.25)
-    # L'argmin EUCLIDEO, sul pannello di sinistra. La proiezione lungo il raggio
-    # e' una regola diversa dall'argmin euclideo, e vale la pena mostrarle
-    # entrambe: cadono nello stesso posto sbagliato, quindi il difetto non e'
-    # nella proiezione ma nella metrica, che e' la tesi della sezione.
+    # The EUCLIDEAN argmin, on the left-hand panel. The projection along the ray
+    # is a different rule from the euclidean argmin, and both are worth showing:
+    # they fall in the same wrong place, so the flaw is not in the projection but
+    # in the metric, which is the claim of the section.
     if pari:
         de, dg, x, y = pari[0]
         g = r"$\infty$" if not np.isfinite(dg) else f"{dg:.1f} m"

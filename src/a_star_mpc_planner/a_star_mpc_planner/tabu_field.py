@@ -1,37 +1,39 @@
 """
-tabu_field — memoria delle zone gia' visitate senza progredire.
+tabu_field — memory of the areas already visited without making progress.
 
-PROBLEMA. AStarPlanner._local_goal sceglie il bersaglio proiettando il goal
-globale sul bordo della finestra lungo il raggio robot->goal. E' una regola
-memoryless e puramente direzionale: davanti a un ostacolo concavo il raggio
-punta DENTRO la concavita', quindi il goal locale ci finisce dentro. Il robot
-entra, A* si accorge che e' chiuso e lo fa uscire, ma appena uscito il raggio
-ripunta dentro e si rientra. Il ciclo limite non e' un caso sfortunato: e'
-deterministico, e nessuna quantita' di memoria sugli OSTACOLI lo evita, perche'
-il problema non e' dimenticare il muro, e' come si sceglie il bersaglio.
+THE PROBLEM. AStarPlanner._local_goal picks the target by projecting the global
+goal onto the window border along the robot->goal ray. That is a memoryless,
+purely directional rule: in front of a concave obstacle the ray points INSIDE the
+concavity, so the local goal ends up in there. The robot enters, A* realises it
+is closed and takes it out, but as soon as it is out the ray points in again and
+in it goes. The limit cycle is not bad luck: it is deterministic, and no amount
+of memory about OBSTACLES avoids it, because the problem is not forgetting the
+wall, it is how the target is chosen.
 
-IDEA. Si penalizzano le celle gia' percorse senza progredire e si rende la
-scelta del goal locale un argmin invece di una proiezione:
+THE IDEA. Cells already travelled without progress are penalised, and the choice
+of the local goal becomes an argmin instead of a projection:
 
-    goal_locale = argmin_{c in bordo libero} [ ||c - goal|| + w * tabu(c) ]
+    local_goal = argmin_{c in free border} [ ||c - goal|| + w * tabu(c) ]
 
-Con tabu identicamente nullo si ricade nel comportamento attuale, quindi il
-meccanismo e' disattivabile e non invalida le campagne gia' registrate.
+With tabu identically zero one falls back to the previous behaviour, so the
+mechanism can be switched off and does not invalidate the campaigns already
+recorded.
 
-PERCHE' NON UN COSTO DI CELLA. Il costo di cella di A* (1 + w*(p/soglia)^2)
-influenza il PERCORSO verso un bersaglio fisso, non la SCELTA del bersaglio:
-rendere caro il vicolo lo fa percorrere piu' caro, non evitare. La leva giusta
-e' il bersaglio.
+WHY NOT A CELL COST. The A* cell cost (1 + w*(p/threshold)^2) influences the PATH
+towards a fixed target, not the CHOICE of the target: making the dead end
+expensive means walking it at a higher price, not avoiding it. The right lever is
+the target.
 
-CANCELLAZIONE LEGATA AL PROGRESSO, NON AL TEMPO. Un tabu che decade nel tempo
-rimette il ciclo, solo con periodo piu' lungo: appena svanisce, il raggio
-ripunta nella trappola. Qui si tiene d_best (minima distanza dal goal mai
-raggiunta con QUESTO goal) e si azzera solo quando d_best migliora oltre il
-valore che aveva all'accensione, cioe' quando c'e' la PROVA di essere usciti.
+CLEARING TIED TO PROGRESS, NOT TO TIME. A tabu that decays with time brings the
+cycle back, only with a longer period: as soon as it fades, the ray points into
+the trap again. Here d_best is kept (the smallest distance from the goal ever
+reached with THIS goal) and it is cleared only when d_best improves beyond the
+value it had when the tabu was switched on, i.e. when there is PROOF of having
+got out.
 
-Riferimenti: la famiglia Bug (Bug1/Bug2/TangentBug) per il caso "muro lungo
-trasversale" — il wall-following qui non e' programmato, emerge dal fatto che
-non si puo' tornare dove si e' gia' stati; e la tabu search per il resto.
+References: the Bug family (Bug1/Bug2/TangentBug) for the "long transversal
+wall" case — wall following is not programmed here, it emerges from the fact that
+one cannot go back where one has already been; and tabu search for the rest.
 """
 
 from __future__ import annotations
@@ -43,24 +45,24 @@ import numpy as np
 
 class TabuField:
     """
-    Conteggio visite in frame mondo, con rilevamento di stallo.
+    Visit count in the world frame, with stall detection.
 
     Parameters
     ----------
-    reso            : lato cella [m]; conviene coincida con grid_reso di A*.
-    visit_radius    : raggio [m] entro cui una visita incrementa le celle. Non
-                      si marca la sola cella del robot: il campo dev'essere
-                      abbastanza largo da coprire un corridoio, altrimenti
-                      l'argmin trova sempre una cella di bordo libera a fianco
-                      e il tabu non morde.
-    revisit_trigger : quante visite della STESSA cella fanno scattare lo stallo
-                      da oscillazione. E' la firma del rimpallo osservato: nel
-                      vicolo il robot non e' fermo, quindi un rilevatore basato
-                      sullo spostamento non lo vedrebbe.
-    stuck_window_sec/stuck_disp_m : stallo da incastro — spostamento netto sotto
-                      soglia nella finestra temporale. E' il caso del muro
-                      trasversale, dove il robot si pianta davanti senza oscillare.
-    improve_margin  : quanto deve migliorare d_best perche' si consideri uscita.
+    reso            : cell side [m]; best kept equal to grid_reso of A*.
+    visit_radius    : radius [m] within which a visit increments the cells. It is
+                      not just the robot cell that is marked: the field has to be
+                      wide enough to cover a corridor, otherwise the argmin always
+                      finds a free border cell alongside and the tabu does not
+                      bite.
+    revisit_trigger : how many visits to the SAME cell trigger the oscillation
+                      stall. It is the signature of the observed bouncing: in the
+                      dead end the robot is not still, so a detector based on
+                      displacement would not see it.
+    stall_window    : the other stall: net displacement below a threshold within
+                      the time window. That is the transversal wall case, where
+                      the robot gets stuck in front of it without oscillating.
+    improve_margin  : how much d_best has to improve to consider it a way out.
     """
 
     def __init__(
@@ -92,9 +94,9 @@ class TabuField:
     # ------------------------------------------------------------------
 
     def reset(self) -> None:
-        """Azzeramento totale. Da chiamare al CAMBIO DI GOAL: un tabu ereditato
-        da una missione precedente penalizzerebbe celle che per il nuovo goal
-        sono la strada giusta."""
+        """Full reset. To be called when the GOAL CHANGES: a tabu inherited from
+        a previous mission would penalise cells that are the right way for the new
+        goal."""
         self._counts.clear()
         self._last_cell = None
         self._trail.clear()
@@ -109,25 +111,25 @@ class TabuField:
     # ------------------------------------------------------------------
 
     def update(self, pose_xy, goal_xy, now: float) -> bool:
-        """Registra una posa e aggiorna lo stato. Ritorna True se il tabu e' attivo.
+        """Record a pose and update the state. Returns True if the tabu is active.
 
-        Va chiamata a ogni ciclo di ripianificazione, PRIMA di pianificare.
+        To be called at every replanning cycle, BEFORE planning.
         """
         x, y = float(pose_xy[0]), float(pose_xy[1])
         d = float(np.hypot(x - goal_xy[0], y - goal_xy[1]))
 
-        # d_best e la prova di uscita
+        # d_best and the proof of getting out
         if d < self.d_best:
             self.d_best = d
         if self.active and self.d_best < self._d_best_at_arm - self.improve_margin:
-            # Uscita dimostrata: si spegne e si ricomincia con la lavagna pulita,
-            # altrimenti la scia lasciata durante la fuga penalizzerebbe il
-            # percorso buono appena trovato.
+            # Way out proven: it switches off and starts again with a clean slate,
+            # otherwise the trail left during the escape would penalise the good
+            # path just found.
             self._counts.clear()
             self.active = False
             self._armed_reason = ""
 
-        # conteggio visite, su un disco e non sulla singola cella
+        # visit count, over a disc and not on the single cell
         cell = self._key(x, y)
         if cell != self._last_cell:
             self._last_cell = cell
@@ -137,7 +139,7 @@ class TabuField:
                     if math.hypot(di, dj) * self.reso > self.visit_radius:
                         continue
                     k = (cell[0] + di, cell[1] + dj)
-                    # peso a cono: massimo al centro, nullo al bordo del disco
+                    # cone weight: maximum at the centre, zero at the disc border
                     w = 1.0 - math.hypot(di, dj) * self.reso / self.visit_radius
                     self._counts[k] = self._counts.get(k, 0.0) + w
 
@@ -156,7 +158,7 @@ class TabuField:
         return self.active
 
     def _stuck_reason(self, now: float) -> str:
-        # (1) oscillazione: una cella rivisitata piu' volte
+        # (1) oscillation: a cell visited several times
         if self._last_cell is not None:
             if self._counts.get(self._last_cell, 0.0) >= self.revisit_trigger:
                 return "oscillazione"
@@ -171,7 +173,7 @@ class TabuField:
     # ------------------------------------------------------------------
 
     def penalty(self, xs, ys):
-        """Penalita' tabu nei punti dati (array). Zero se il tabu e' spento."""
+        """Tabu penalty at the given points (array). Zero if the tabu is off."""
         xs = np.atleast_1d(np.asarray(xs, dtype=float))
         ys = np.atleast_1d(np.asarray(ys, dtype=float))
         out = np.zeros(xs.shape, dtype=float)
@@ -184,11 +186,11 @@ class TabuField:
         return out
 
     def panic_reset(self) -> None:
-        """Ripiego di completezza: quando il tabu penalizza OGNI direzione il
-        robot resterebbe fermo per sempre. Si azzera il conteggio tenendo il
-        tabu acceso, cosi' riparte esplorando e — non avendo piu' la scia —
-        puo' scegliere il lato opposto del muro. Senza questo, il caso 'muro
-        lungo con il varco dal lato sbagliato' non termina."""
+        """Completeness fallback: when the tabu penalises EVERY direction the robot
+        would stand still forever. The count is cleared while the tabu stays on, so
+        it starts exploring again and — no longer having its own trail — can pick
+        the opposite side of the wall. Without this, the case 'long wall with the
+        gap on the wrong side' does not terminate."""
         self._counts.clear()
         self._last_cell = None
 

@@ -1,40 +1,39 @@
 #!/usr/bin/env python3
 """
-PANNELLO 1 — il paesaggio di navigazione c(x, y).
+PANEL 1 — the navigation landscape c(x, y).
 
-Disegna, sul piano del mondo, il costo di STARE in un punto:
+On the world plane it draws the cost of BEING at a point:
 
-    c(p) = costo di inseguimento del riferimento  +  barriera degli ostacoli
+    c(p) = cost of tracking the reference  +  obstacle barrier
 
-con la quota z della superficie che e' il costo, esattamente come le figure del
-corso (Fig. 1.1, 4.9, 4.16). Sopra ci vanno:
+with the z height of the surface being the cost, exactly like the figures of the
+course (Fig. 1.1, 4.9, 4.16). On top of it go:
 
-  * il pallino della posizione reale del robot, che si sposta nel tempo;
-  * la traiettoria predetta dall'MPC sull'orizzonte, disegnata SULLA superficie;
-  * il confine dell'insieme raggiungibile in un orizzonte.
+  * the marker of the real robot position, which moves in time;
+  * the trajectory predicted by the MPC over the horizon, drawn ON the surface;
+  * the boundary of the set reachable within one horizon.
 
-Che cosa e' e che cosa NON e'
+What it is and what it is NOT
 -----------------------------
     J(U) = sum_k c(p_k) + termini sull'ingresso
 
-`c` e' il costo di STARE in un punto; `J` e' il costo di UNA TRAIETTORIA, cioe'
-la somma di `c` lungo di essa. L'MPC minimizza J, non c. Conseguenza visibile:
-il pallino NON segue la massima pendenza, e puo' SALIRE localmente se questo
-abbassa la somma sull'orizzonte. E' esattamente la differenza fra MPC e campo di
-potenziale artificiale, ed e' il motivo per cui l'MPC esce da una trappola a U
-dove un APF si incastra.
+`c` is the cost of BEING at a point; `J` is the cost of A TRAJECTORY, i.e. the
+sum of `c` along it. The MPC minimises J, not c. Visible consequence: the marker
+does NOT follow the steepest descent, and can locally CLIMB if that lowers the
+sum over the horizon. It is exactly the difference between MPC and an artificial
+potential field, and it is why the MPC gets out of a U-trap where an APF sticks.
 
-Il terzo termine che verrebbe naturale aggiungere — il costo della manovra
-necessaria per arrivare in p — NON viene sommato: cresce con il quadrato della
-distanza, domina gli altri due e sposta il minimo globale addosso al robot.
-Viene invece usato per cio' che significa davvero: definisce l'insieme
-RAGGIUNGIBILE, cioe' U_Sigma, disegnato come regione.
+The third term one would naturally add — the cost of the manoeuvre needed to get
+to p — is NOT summed: it grows with the square of the distance, dominates the
+other two and moves the global minimum onto the robot. It is used instead for
+what it really means: it defines the REACHABLE set, i.e. U_Sigma, drawn as a
+region.
 
 Uso
 ---
     python3 metrics/cost_field.py                        # scenario u_trap, figura statica
     python3 metrics/cost_field.py --scenario corridor
-    python3 metrics/cost_field.py --animate              # GIF dell'anello chiuso
+    python3 metrics/cost_field.py --animate              # closed-loop GIF
     python3 metrics/cost_field.py --profile src/a_star_mpc_planner/config/planner_params_g1.yaml
 """
 from __future__ import annotations
@@ -113,7 +112,7 @@ def figure(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, show=True):
     ax.legend(loc="upper left", fontsize=7)
     ax.view_init(elev=52, azim=-125)
 
-    # ---- (b) curve di livello dall'alto ------------------------------------
+    # ---- (b) contour lines from above --------------------------------------
     ax2 = fig.add_subplot(1, 3, 2)
     cs = ax2.contourf(X, Y, Z, levels=40, cmap=cm.viridis, rasterized=True)
     ax2.contour(X, Y, Z, levels=18, colors="k", linewidths=0.3, alpha=0.35)
@@ -145,7 +144,7 @@ def figure(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, show=True):
     ax2.set_title("(b) level sets  $\\triangledown$ local minima  --- reachable set", pad=6)
     ax2.legend(loc="upper right", fontsize=7)
 
-    # ---- (c) il costo VERO lungo il tempo ---------------------------------
+    # ---- (c) the REAL cost along time --------------------------------------
     ax3 = fig.add_subplot(1, 3, 3)
     t = np.arange(len(hist["cost"])) * cfg.dt
     ax3.plot(t, hist["cost"], color="navy", lw=1.8)
@@ -221,9 +220,9 @@ def animate(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, fps=8, stride=1)
         ln2.set_data(tr[:, 0], tr[:, 1]); dot2.set_data([p[0]], [p[1]])
         pr2.set_data(pred[:, 0], pred[:, 1])
         if reach_art[0] is not None:
-            # matplotlib >= 3.10: ContourSet e' un Artist e .collections non
-            # esiste piu'; si rimuove direttamente. Il ramo vecchio resta per
-            # compatibilita' con la 3.5 di sistema.
+            # matplotlib >= 3.10: ContourSet is an Artist and .collections no
+            # longer exists; it is removed directly. The old branch stays for
+            # compatibility with the system 3.5.
             try:
                 reach_art[0].remove()
             except (AttributeError, NotImplementedError):
@@ -250,27 +249,27 @@ def main() -> int:
     ap.add_argument("--scenario", default="u_trap",
                     choices=sorted(common.SCENARIOS))
     ap.add_argument("--bag", default=None,
-                    help="rosbag di un run vero: sostituisce lo scenario sintetico "
-                         "e usa la traiettoria REALMENTE percorsa dal G1")
+                    help="rosbag of a real run: it replaces the synthetic scenario "
+                         "and uses the trajectory the G1 ACTUALLY travelled")
     ap.add_argument("--frame", type=int, default=None,
-                    help="con --bag: indice del ciclo su cui centrare il campo "
-                         "(default: quello a costo massimo, il piu' interessante)")
+                    help="with --bag: index of the cycle to centre the field on "
+                         "(default: the one with maximum cost, the most interesting)")
     ap.add_argument("--profile", default=common.DEFAULT_PROFILE)
     ap.add_argument("--reference", default="path", choices=["path", "goal"],
                     help="path: errore rispetto al riferimento A* (fedele all'MPC); "
-                         "goal: attrazione verso il goal")
+                         "goal: attraction towards the goal")
     ap.add_argument("--res", type=float, default=0.04, help="risoluzione griglia [m]")
     ap.add_argument("--steps", type=int, default=250,
-                    help="massimo; si esce prima al raggiungimento del goal")
+                    help="maximum; it exits earlier when the goal is reached")
     ap.add_argument("--replan-every", type=int, default=5,
-                    help="ogni quanti cicli si rilancia A* (orizzonte mobile)")
-    ap.add_argument("--linear", action="store_true", help="quota lineare invece di log")
+                    help="how many cycles between A* re-runs (rolling horizon)")
+    ap.add_argument("--linear", action="store_true", help="linear height instead of log")
     ap.add_argument("--animate", action="store_true")
     ap.add_argument("--anim-stride", type=int, default=3,
-                    help="salva un frame ogni N cicli (il rendering 3-D e' lento)")
+                    help="save one frame every N cycles (3-D rendering is slow)")
     ap.add_argument("--set", dest="overrides", action="append", default=[],
                     metavar="CHIAVE=VALORE",
-                    help="sovrascrive un parametro del profilo, ripetibile")
+                    help="override a parameter of the profile, repeatable")
     ap.add_argument("--no-show", action="store_true")
     args = ap.parse_args()
 
@@ -289,7 +288,7 @@ def main() -> int:
         k = int(np.clip(k, 0, len(frs) - 1))
         sc = bag_source.to_scenario(frs[k], name=os.path.basename(args.bag.rstrip("/")))
         ref_xy = frs[k].path
-        print(f"bag: {len(frs)} cicli · campo centrato sul ciclo {k} "
+        print(f"bag: {len(frs)} cycles · field centred on cycle {k} "
               f"(t={frs[k].t:.1f} s, J*={frs[k].cost:.0f})")
         hist_bag = {
             "pose": np.array([f.x0[:3] for f in frs], dtype=float),
@@ -305,7 +304,7 @@ def main() -> int:
         sc = common.get_scenario(args.scenario)
         ref_xy = common.plan_astar(sc.pose, sc.goal, sc.obstacles, raw)
         if ref_xy is None:
-            print("A* non ha trovato un percorso: uso la retta verso il goal")
+            print("A* found no path: using the straight line to the goal")
     xs, ys, X, Y, C = build_field(sc, cfg, args.res, args.reference, ref_xy)
 
     print(f"scenario '{sc.name}' · profilo N={cfg.N} dt={cfg.dt} "
@@ -313,7 +312,7 @@ def main() -> int:
     print(f"griglia {X.shape[0]}x{X.shape[1]} a {args.res} m · "
           f"c in [{C.min():.1f}, {C.max():.1f}]")
     mins = local_minima(C, xs, ys)
-    print(f"minimi locali di c(x,y): {len(mins)}")
+    print(f"local minima of c(x,y): {len(mins)}")
     ref_for_tag = ref_xy if (ref_xy is not None and args.reference == "path") else None
     for (mx, my, mc) in mins:
         m = np.array([mx, my])
@@ -321,9 +320,9 @@ def main() -> int:
             tag = "GOAL"
         elif ref_for_tag is not None and \
                 np.linalg.norm(ref_for_tag - m, axis=1).min() < 3 * args.res:
-            # con reference=path l'intero riferimento e' una valle a costo ~0:
-            # un minimo che ci sta sopra e' atteso, non una trappola
-            tag = "sulla valle del riferimento A* (atteso)"
+            # with reference=path the whole reference is a valley of cost ~0:
+            # a minimum sitting on it is expected, not a trap
+            tag = "on the valley of the A* reference (expected)"
         else:
             tag = "*** minimo locale spurio (trappola) ***"
         print(f"   ({mx:+.2f}, {my:+.2f})  c={mc:9.1f}   {tag}")
@@ -342,32 +341,32 @@ def main() -> int:
                                   replan_every=args.replan_every)
     reached = np.linalg.norm(hist["pose"][-1, :2] - sc.goal) < 0.35
     print(f"\nanello chiuso: {len(hist['pose'])} cicli · "
-          f"goal {'RAGGIUNTO' if reached else 'NON raggiunto'} "
+          f"goal {'REACHED' if reached else 'NOT reached'} "
           f"(distanza finale {np.linalg.norm(hist['pose'][-1,:2]-sc.goal):.2f} m)")
     print(f"J*: min {hist['cost'].min():.0f}  max {hist['cost'].max():.0f} · "
           f"solve medio {hist['solve_ms'].mean():.1f} ms "
           f"(budget {cfg.dt*1000:.0f} ms) · successi "
           f"{100*hist['success'].mean():.0f}%")
     cl = common.clearance(hist["pose"][:, :2], sc.obstacles)
-    body = 0.35   # raggio di ingombro del G1
+    body = 0.35   # footprint radius of the G1
     if cl < 0.10:
         verdict = "*** ATTRAVERSA gli ostacoli ***"
     elif cl < body:
-        verdict = f"COLLISIONE: sotto il raggio di ingombro {body:g} m"
+        verdict = f"COLLISION: below the footprint radius {body:g} m"
     elif cl < cfg.obs_r + 0.05:
-        verdict = f"al limite: la barriera tiene a obs_r={cfg.obs_r:g} m"
+        verdict = f"borderline: the barrier holds at obs_r={cfg.obs_r:g} m"
     else:
         verdict = "OK"
     print(f"clearance minima percorsa: {cl:.3f} m   ->   {verdict}")
 
-    # biforcazioni: quante volte A* ha cambiato classe di omotopia
+    # bifurcations: how many times A* changed homotopy class
     side = np.array([0 if r is None else (1 if r[:, 1].max() > abs(r[:, 1].min()) else -1)
                      for r in hist["ref"]])
     nz = side[side != 0]
     flips = int((np.diff(nz) != 0).sum()) if len(nz) > 1 else 0
     if len(nz):
         print(f"riferimento A*: parte {'sopra' if nz[0] > 0 else 'sotto'} · "
-              f"cambi di lato (biforcazioni): {flips}")
+              f"side changes (bifurcations): {flips}")
 
     tag = f"{sc.name}_{os.path.basename(args.profile).replace('.yaml','')}"
     if args.bag:

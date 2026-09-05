@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 """
-Fronte di Pareto sui tre obiettivi del path following — dispense §7.4.
+Pareto front over the three path-following objectives — lecture notes §7.4.
 
-Il corso prescrive una procedura precisa per il multi-obiettivo a posteriori:
+The course prescribes a precise a-posteriori multi-objective procedure:
 
-  (I)   normalizzare gli obiettivi allo stesso ordine di grandezza
-  (II)  risolvere ripetutamente campionando i pesi sul simplesso
+  (I)   normalise the objectives to the same order of magnitude
+  (II)  solve repeatedly, sampling the weights on the simplex
         A = {alpha >= 0, sum alpha_i = 1}, includendo i VERTICI
-  (III) post-processare: punti non dominati, punto Utopico, scelta come punto
-        piu' vicino all'Utopico in norma 2
+  (III) post-process: non-dominated points, Utopia point, choice as the point
+        closest to Utopia in 2-norm
 
-E avverte che la somma pesata recupera il fronte completo solo se questo e'
-CONVESSO — cosa che va verificata, non assunta.
+And it warns that the weighted sum recovers the complete front only if the front
+is CONVEX — something to be checked, not assumed.
 
-Qui i tre obiettivi sono quelli che la eq. (7.5) introduce naturalmente:
+Here the three objectives are the ones eq. (7.5) introduces naturally:
 
-  alpha_1  accuratezza geometrica   (pesi Q sul tracking)
-  alpha_2  sforzo di controllo      (pesi R sull'ingresso)
-  alpha_3  avanzamento sul percorso (peso su (1 - theta)^2)
+  alpha_1  geometric accuracy    (Q weights on the tracking)
+  alpha_2  control effort         (R weights on the input)
+  alpha_3  progress along the path (weight on (1 - theta)^2)
 
-I pesi vengono scalati per 3 cosi' che il baricentro (1/3, 1/3, 1/3) riproduca
-esattamente la taratura di partenza.
+The weights are scaled by 3 so that the barycentre (1/3, 1/3, 1/3) reproduces
+exactly the starting tuning.
 
-ATTENZIONE METODOLOGICA. Le METRICHE con cui si valutano le soluzioni usano
-pesi FISSI, non quelli campionati: altrimenti ogni punto del simplesso sarebbe
-giudicato con un metro diverso e il confronto non avrebbe senso.
+METHODOLOGICAL NOTE. The METRICS the solutions are evaluated with use FIXED
+weights, not the sampled ones: otherwise every point of the simplex would be
+judged by a different yardstick and the comparison would be meaningless.
 
 Uso:
     python3 metrics/pareto_front.py
@@ -51,7 +51,7 @@ NOMI = ("accuratezza", "sforzo", "tempo")
 
 
 def simplesso(n: int):
-    """Griglia sul simplesso a 3 componenti, VERTICI INCLUSI (punto II)."""
+    """Grid on the 3-component simplex, VERTICES INCLUDED (point II)."""
     pts = []
     for i, j in itertools.product(range(n + 1), repeat=2):
         k = n - i - j
@@ -62,7 +62,7 @@ def simplesso(n: int):
 
 
 def valuta(cfg, raw, sc, alpha) -> dict:
-    """Una missione con i pesi alpha; le metriche usano pesi FISSI."""
+    """One mission with the alpha weights; the metrics use FIXED weights."""
     a1, a2, a3 = alpha
     c = dataclasses.replace(
         cfg,
@@ -79,13 +79,14 @@ def valuta(cfg, raw, sc, alpha) -> dict:
     raggiunto = bool(len(P) < steps)
 
     # --- metriche a pesi FISSI ------------------------------------------
-    # accuratezza: distanza media dal riferimento geometrico (il path), non dal
-    # riferimento temporale — e' la grandezza che il path following dovrebbe
-    # migliorare, e non dipende da come e' parametrizzato il tempo.
+    # accuracy: mean distance from the geometric reference (the path), not from
+    # the time reference — it is the quantity path following should improve, and
+    # it does not depend on how time is parametrised.
     ref = sc.reference()
     d = np.linalg.norm(P[:, None, :2] - ref[None, :, :2], axis=2).min(axis=1)
     acc = float(d.mean())
-    # sforzo: velocita' comandate ricostruite dal moto, con i pesi NOMINALI
+    # effort: commanded velocities reconstructed from the motion, with the
+    # NOMINAL weights
     dP = np.diff(P[:, :2], axis=0) / cfg.dt
     dW = np.diff(np.unwrap(P[:, 2])) / cfg.dt
     sforzo = float((cfg.R_vx * (dP ** 2).sum(1) + cfg.R_omega * dW ** 2).mean())
@@ -98,7 +99,7 @@ def valuta(cfg, raw, sc, alpha) -> dict:
 
 
 def non_dominati(F: np.ndarray) -> np.ndarray:
-    """Maschera dei punti non dominati (tutti gli obiettivi da MINIMIZZARE)."""
+    """Mask of the non-dominated points (all objectives to be MINIMISED)."""
     m = np.ones(len(F), dtype=bool)
     for i in range(len(F)):
         if not m[i]:
@@ -115,7 +116,7 @@ def main() -> int:
     ap.add_argument("--profile", default=common.DEFAULT_PROFILE)
     ap.add_argument("--scenari", nargs="*", default=["narrow_gap"])
     ap.add_argument("--risoluzione", type=int, default=4,
-                    help="passi per lato del simplesso (4 -> 15 punti)")
+                    help="steps per side of the simplex (4 -> 15 points)")
     ap.add_argument("--no-show", action="store_true")
     args = ap.parse_args()
 
@@ -123,7 +124,7 @@ def main() -> int:
     pts = simplesso(args.risoluzione)
     print(f"simplesso a {len(pts)} punti (vertici inclusi) su "
           f"{len(args.scenari)} scenari · path_mode = theta")
-    print(f"baricentro (1/3,1/3,1/3) = taratura di partenza "
+    print(f"barycentre (1/3,1/3,1/3) = starting tuning "
           f"(Q={cfg.Q_x:g}, R={cfg.R_vx:g}, w_theta={cfg.theta_progress_weight:g})")
     print()
 
@@ -137,10 +138,10 @@ def main() -> int:
             righe.append(r)
             print(f"  α=({al[0]:.2f},{al[1]:.2f},{al[2]:.2f}) "
                   f"acc={r['accuratezza']:.4f} sforzo={r['sforzo']:.4f} "
-                  f"t={r['tempo']:5.1f} goal={'si' if r['goal'] else 'NO'}", flush=True)
+                  f"t={r['tempo']:5.1f} goal={'yes' if r['goal'] else 'NO'}", flush=True)
     print(f"\ndurata {time.perf_counter()-t0:.0f} s")
 
-    # aggregazione sugli scenari, solo missioni riuscite
+    # aggregation over the scenarios, successful missions only
     agg = {}
     for al in pts:
         sel = [r for r in righe if tuple(r["alpha"]) == tuple(al)]
@@ -149,28 +150,28 @@ def main() -> int:
         agg[tuple(al)] = {k: float(np.mean([r[k] for r in sel]))
                           for k in ("accuratezza", "sforzo", "tempo", "clearance")}
     if len(agg) < 3:
-        raise SystemExit("troppe poche missioni riuscite per costruire un fronte")
+        raise SystemExit("too few successful missions to build a front")
 
     A = np.array(list(agg.keys()))
     F = np.array([[v["accuratezza"], v["sforzo"], v["tempo"]] for v in agg.values()])
 
-    # (I) normalizzazione: senza, il tempo (~10) schiaccerebbe l'accuratezza (~0.1)
+    # (I) normalisation: without it, time (~10) would swamp accuracy (~0.1)
     lo, hi = F.min(0), F.max(0)
     Fn = (F - lo) / np.where(hi - lo < 1e-12, 1.0, hi - lo)
 
-    # (III) non dominati, Utopico, scelta
+    # (III) non-dominated, Utopia, choice
     nd = non_dominati(Fn)
-    utop = Fn.min(0)                      # punto Utopico: migliore su ogni obiettivo
+    utop = Fn.min(0)                      # Utopia point: best on every objective
     dist = np.linalg.norm(Fn - utop, axis=1)
     best = int(np.argmin(np.where(nd, dist, np.inf)))
 
     print()
     print("=" * 78)
-    print("FRONTE DI PARETO  (§7.4)")
+    print("PARETO FRONT  (§7.4)")
     print("=" * 78)
-    print(f"missioni riuscite: {len(agg)}/{len(pts)} · non dominate: {int(nd.sum())}")
-    print(f"punto Utopico (normalizzato): {np.round(utop,3)} — per costruzione non")
-    print("e' realizzabile: e' il migliore su OGNI obiettivo preso separatamente.")
+    print(f"successful missions: {len(agg)}/{len(pts)} · non-dominated: {int(nd.sum())}")
+    print(f"Utopia point (normalised): {np.round(utop,3)} — by construction it is not")
+    print("achievable: it is the best on EVERY objective taken separately.")
     print()
     print("| α (acc, sforzo, tempo) | accuratezza [m] | sforzo | tempo [s] | "
           "clearance [m] | dist. da Utopico |")
@@ -180,61 +181,61 @@ def main() -> int:
         if not nd[i]:
             continue
         v = list(agg.values())[i]
-        mark = "  ← **scelto**" if i == best else ""
+        mark = "  ← **chosen**" if i == best else ""
         print(f"| ({A[i,0]:.2f}, {A[i,1]:.2f}, {A[i,2]:.2f}) | {v['accuratezza']:.4f} | "
               f"{v['sforzo']:.4f} | {v['tempo']:.1f} | {v['clearance']:.3f} | "
               f"{dist[i]:.3f}{mark} |")
 
     print()
     ab = A[best]
-    print(f"Scelta: α = ({ab[0]:.2f}, {ab[1]:.2f}, {ab[2]:.2f}), il punto non dominato")
-    print("piu' vicino all'Utopico in norma 2 (procedura del §7.4).")
-    # confronto col baricentro, cioe' la taratura di partenza
+    print(f"Choice: α = ({ab[0]:.2f}, {ab[1]:.2f}, {ab[2]:.2f}), the non-dominated point")
+    print("closest to Utopia in 2-norm (procedure of §7.4).")
+    # comparison with the barycentre, i.e. the starting tuning
     j = int(np.argmin(np.linalg.norm(A - 1.0 / 3.0, axis=1)))
-    print(f"Per confronto, il baricentro α≈(0.33,0.33,0.33) — la taratura attuale — "
-          f"dista {dist[j]:.3f} ed e' {'non dominato' if nd[j] else 'DOMINATO'}.")
+    print(f"For comparison, the barycentre α≈(0.33,0.33,0.33) — the current tuning — "
+          f"is {dist[j]:.3f} away and is {'non-dominated' if nd[j] else 'DOMINATED'}.")
 
-    # convessita' del fronte: si verifica se i punti non dominati stanno sul
-    # guscio convesso inferiore. Se non lo sono, la somma pesata NON puo'
-    # raggiungerli, e il corso avverte esattamente di questo.
+    # convexity of the front: it is checked whether the non-dominated points lie
+    # on the lower convex hull. If they do not, the weighted sum canNOT reach
+    # them, and the course warns about exactly this.
     P2 = Fn[nd][:, [0, 2]]                     # coppia accuratezza-tempo
     conv = True
     if len(P2) >= 3:
         o = np.argsort(P2[:, 0]); Q = P2[o]
         for a, b, c in zip(Q, Q[1:], Q[2:]):
-            # cross product: se cambia segno la frontiera non e' convessa
+            # cross product: if the sign changes the frontier is not convex
             if np.cross(b - a, c - b) > 1e-9:
                 conv = False
                 break
-    # Un fronte esiste sempre; la domanda e' se sia INFORMATIVO. Se gli
-    # obiettivi variano di pochi punti percentuali non sono in vero conflitto,
-    # e "non dominato" smette di essere una distinzione utile.
+    # A front always exists; the question is whether it is INFORMATIVE. If the
+    # objectives vary by a few per cent they are not in real conflict, and
+    # "non-dominated" stops being a useful distinction.
     spread = (F.max(0) - F.min(0)) / np.maximum(np.abs(F.mean(0)), 1e-12)
     print()
-    print("Escursione relativa degli obiettivi sul simplesso:")
+    print("Relative excursion of the objectives over the simplex:")
     for nm, sp in zip(NOMI, spread):
         print(f"  {nm:12s} {sp*100:5.1f}%")
     if spread.max() < 0.15:
         print()
-        print("  Il fronte e' SOTTILE: nessun obiettivo varia piu' del "
-              f"{spread.max()*100:.0f}% al variare dei pesi.")
-        print("  I tre obiettivi non sono in vero conflitto in questa")
-        print("  configurazione, per due ragioni identificabili:")
-        print("   1. in modo theta il robot satura vx_max quasi sempre (§10.8),")
-        print("      quindi il tempo di percorrenza e' fissato dalla cinematica")
-        print("      e non dai pesi;")
-        print("   2. l'anello chiuso insegue un setpoint a distanza di lookahead")
-        print("      con un controllore proporzionale, che smorza le differenze")
-        print("      fini fra le soluzioni dell'MPC.")
-        print("  Conclusione onesta: la taratura non e' il collo di bottiglia.")
-        print("  Un fronte informativo richiederebbe obiettivi che confliggano")
-        print("  davvero — per esempio clearance contro tempo con vx libera.")
+        print("  The front is THIN: no objective varies by more than "
+              f"{spread.max()*100:.0f}% as the weights vary.")
+        print("  The three objectives are not in real conflict in this")
+        print("  configuration, for two identifiable reasons:")
+        print("   1. in theta mode the robot saturates vx_max almost always,")
+        print("      so the travel time is fixed by the kinematics")
+        print("      and not by the weights;")
+        print("   2. the closed loop tracks a setpoint at the lookahead distance")
+        print("      with a proportional controller, which damps the fine")
+        print("      differences between the MPC solutions.")
+        print("  Honest conclusion: the tuning is not the bottleneck.")
+        print("  An informative front would require objectives that genuinely")
+        print("  conflict — for instance clearance against time with vx free.")
 
     print()
     print(f"Fronte (accuratezza vs tempo) convesso: **{conv}**.")
     if not conv:
-        print("  La somma pesata NON puo' raggiungere le porzioni non convesse:")
-        print("  i punti mancanti richiederebbero la strategia a vincoli (eq. 7.8).")
+        print("  The weighted sum canNOT reach the non-convex portions:")
+        print("  the missing points would need the constraint strategy (eq. 7.8).")
 
     out_dir = os.path.join(_HERE, "out")
     os.makedirs(out_dir, exist_ok=True)
@@ -281,7 +282,7 @@ def main() -> int:
     idx_nd = np.nonzero(nd)[0]
     scelti = list(idx_nd[np.argsort(dist[idx_nd])][:3])
     for i in scelti:
-        # nello spider chart 1 = migliore, cosi' "piu' grande e' meglio"
+        # in the spider chart 1 = best, so "bigger is better"
         v = (1.0 - Fn[i]).tolist(); v += v[:1]
         lbl = f"α=({A[i,0]:.2f},{A[i,1]:.2f},{A[i,2]:.2f})"
         ax3.plot(ang, v, lw=2, label=lbl + (" ←" if i == best else ""))

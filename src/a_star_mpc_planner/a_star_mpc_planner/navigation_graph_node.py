@@ -85,8 +85,8 @@ class NavGraphNode(Node):
         )
 
         # ── Subscribers ───────────────────────────────────────────────
-        # Nome del topic della posa: parametrico, e' l'unico punto in cui
-        # il robot entra in questo nodo. Il G1 pubblica su /robot_pose.
+        # Name of the pose topic: parametric, it is the only point where the robot
+        # enters this node. The G1 publishes on /robot_pose.
         self.declare_parameter('pose_topic', '/robot_pose')
         _pose_topic = self.get_parameter('pose_topic').value
 

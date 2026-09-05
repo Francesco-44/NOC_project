@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Ordine di troncamento dello schema di integrazione del canale di posizione.
+Truncation order of the integration scheme of the position channel.
 
-Riferimento: dispense §2.1.3, eq. (2.9) Euler in avanti ed eq. (2.10) regola del
-punto medio (RK2). Errore globale atteso: O(dt) per Euler, O(dt^2) per il punto
-medio. Il test misura l'ordine con un fit log-log e verifica che sia quello.
+Reference: lecture notes §2.1.3, eq. (2.9) forward Euler and eq. (2.10) midpoint
+rule (RK2). Expected global error: O(dt) for Euler, O(dt^2) for the midpoint. The
+test measures the order with a log-log fit and checks that it is the expected
+one.
 
-La soluzione esatta e' disponibile in forma chiusa: con (vx, vy, omega) costanti
-nel riferimento solidale, la posa evolve lungo un arco di circonferenza.
+The exact solution is available in closed form: with (vx, vy, omega) constant in
+the body frame, the pose evolves along a circular arc.
 
     python3 tests/test_integrators.py
 """
@@ -25,12 +26,12 @@ sys.path.insert(0, os.path.join(_ROOT, "src", "a_star_mpc_planner"))
 
 def exact_step(pose, v, dt):
     """
-    Posa esatta dopo dt con velocita' costanti nel corpo.
+    Exact pose after dt with constant body velocities.
 
     pose = (px, py, yaw), v = (vx, vy, omega).
-    Per omega != 0 lo spostamento nel mondo e'
+    For omega != 0 the displacement in the world is
         d = (1/w) R(yaw) [[sin a, cos a - 1], [1 - cos a, sin a]] [vx, vy]^T
-    con a = w*dt; per w -> 0 degenera nella traslazione rigida R(yaw) v dt.
+    with a = w*dt; as w -> 0 it degenerates into the rigid translation R(yaw) v dt.
     """
     px, py, yaw = pose
     vx, vy, w = v
@@ -69,17 +70,17 @@ def midpoint_step(pose, v, dt):
 
 def integrate(step, pose0, v, dt, T):
     """
-    Integra per un tempo T con passo dt e restituisce la posa finale.
+    Integrates for a time T with step dt and returns the final pose.
 
-    dt DEVE dividere T: con un numero non intero di passi si finirebbe a un
-    istante diverso da quello del riferimento esatto, e l'errore misurato
-    sarebbe dominato dal disallineamento dell'orizzonte invece che dall'ordine
-    dello schema (con dt=0.4 e T=3.0 i due schemi davano lo stesso errore).
+    dt MUST divide T: with a non-integer number of steps one would end at an
+    instant different from that of the exact reference, and the measured error
+    would be dominated by the horizon misalignment instead of by the order of the
+    scheme (with dt=0.4 and T=3.0 the two schemes gave the same error).
     """
     n_exact = T / dt
     n = int(round(n_exact))
     if abs(n_exact - n) > 1e-9:
-        raise ValueError(f"dt={dt} non divide T={T}: {n_exact} passi")
+        raise ValueError(f"dt={dt} does not divide T={T}: {n_exact} steps")
     pose = pose0
     for _ in range(n):
         pose = step(pose, v, dt)
@@ -87,12 +88,12 @@ def integrate(step, pose0, v, dt, T):
 
 
 def fit_order(dts, errs):
-    """Pendenza della retta log(err) vs log(dt): e' l'ordine globale."""
+    """Slope of the line log(err) vs log(dt): it is the global order."""
     return float(np.polyfit(np.log(np.asarray(dts)), np.log(np.asarray(errs)), 1)[0])
 
 
 def global_error_table(v, T=3.0, dts=(0.2, 0.1, 0.05, 0.025, 0.0125)):
-    """Errore di posizione a orizzonte fisso, per i due schemi."""
+    """Position error at a fixed horizon, for the two schemes."""
     pose0 = (0.0, 0.0, 0.0)
     ref = exact_step(pose0, v, T)
     rows = []
@@ -108,25 +109,25 @@ def global_error_table(v, T=3.0, dts=(0.2, 0.1, 0.05, 0.025, 0.0125)):
 
 
 # ---------------------------------------------------------------------------
-# Sequenze di ingressi REALI (orizzonti risolti da una bag)
+# REAL input sequences (horizons solved from a bag)
 # ---------------------------------------------------------------------------
-# Le funzioni sopra misurano l'ordine su un arco a velocita' costante: e' cio'
-# che serve per stimare un ordine (che e' una proprieta' asintotica e richiede
-# uno sweep su dt) ma NON e' il regime dell'MPC, che applica un ingresso diverso
-# a ogni nodo. Quelle che seguono ripetono la misura sulla sequenza di ingressi
-# ottima di un orizzonte vero, letta da metrics/integrator_bag.py.
+# The functions above measure the order on a constant-velocity arc: that is what
+# is needed to estimate an order (which is an asymptotic property and requires a
+# sweep over dt) but it is NOT the regime of the MPC, which applies a different
+# input at every node. The ones that follow repeat the measurement on the optimal
+# input sequence of a real horizon, read by metrics/integrator_bag.py.
 #
-# COSA VIENE ISOLATO. Il canale di velocita' e' ZOH esatto a qualunque passo, e
-# sul profilo deployato (tau = 1 ms << dt) satura: v_{k+1} = u_k. La sequenza di
-# velocita' post-lag e' quindi calcolata UNA volta al passo deployato e tenuta
-# costante su ciascun intervallo, per tutti gli schemi e per il riferimento.
-# Cosi' l'unica differenza fra le tre traiettorie e' COME si valuta R(psi), che
-# e' esattamente la domanda posta. Includere il transitorio del lag nel
+# WHAT IS ISOLATED. The velocity channel is exact ZOH at any step, and on the
+# deployed profile (tau = 1 ms << dt) it saturates: v_{k+1} = u_k. The post-lag
+# velocity sequence is therefore computed ONCE at the deployed step and held
+# constant over each interval, for all the schemes and for the reference. This way
+# the only difference between the three trajectories is HOW R(psi) is evaluated,
+# which is exactly the question being asked. Including the lag transient in the
 # riferimento misurerebbe un'altra cosa (vedi lag_displacement).
 
 
 def lag_coeffs(dt, tau_v, tau_w):
-    """1 - exp(-dt/tau) per i due canali: gli stessi di mpc_tracker._passo."""
+    """1 - exp(-dt/tau) for the two channels: the same as mpc_tracker._passo."""
     return (1.0 - math.exp(-dt / max(tau_v, 1e-9)),
             1.0 - math.exp(-dt / max(tau_w, 1e-9)))
 
@@ -145,12 +146,12 @@ def velocity_sequence(x0, U, dt, tau_v, tau_w):
 
 
 def pose_track(pose0, V, dt, step, sub=1):
-    """Posa lungo l'orizzonte, integrata con `step` a passo dt/sub.
+    """Pose along the horizon, integrated with `step` at step dt/sub.
 
-    `sub` suddivide l'intervallo di predizione SENZA toccare l'ingresso, che
-    resta costante su ciascun dt: e' cosi' che si fa variare il passo di
-    integrazione a sequenza di comandi fissata, e quindi si misura un ordine su
-    una traiettoria vera.
+    `sub` subdivides the prediction interval WITHOUT touching the input, which
+    stays constant over each dt: that is how the integration step is varied at a
+    fixed command sequence, and hence how an order is measured on a real
+    trajectory.
     """
     h = dt / sub
     pose = (float(pose0[0]), float(pose0[1]), float(pose0[2]))
@@ -173,10 +174,11 @@ def pose_track_exact(pose0, V, dt):
 
 
 def horizon_errors(x0, U, dt, tau_v, tau_w, subs=(1, 2, 4, 8, 16)):
-    """Errore di posizione lungo un orizzonte vero, per i due schemi.
+    """Position error along a real horizon, for the two schemes.
 
-    Ritorna {'sub': [...], 'dt': [...], 'euler': [...], 'midpoint': [...]} con
-    l'errore FINALE (a fine orizzonte) contro l'arco esatto, uno per passo.
+    Returns {'sub': [...], 'dt': [...], 'euler': [...], 'midpoint': [...]} with
+    the FINAL error (at the end of the horizon) against the exact arc, one per
+    step.
     """
     V = velocity_sequence(x0, U, dt, tau_v, tau_w)
     ref = pose_track_exact(x0[:3], V, dt)
@@ -193,12 +195,12 @@ def horizon_errors(x0, U, dt, tau_v, tau_w, subs=(1, 2, 4, 8, 16)):
 def lag_displacement(x0, U, dt, tau_v, tau_w):
     """Spostamento trascurato tenendo v costante a v_{k+1} sull'intervallo.
 
-    Il modello dell'MPC risolve v' = (u - v)/tau, quindi dentro l'intervallo la
-    velocita' SALE verso u invece di essere gia' arrivata. L'integrale della
-    differenza vale (u - v_k) * tau * (1 - e^{-dt/tau}) per intervallo. Sul
-    profilo deployato tau e' 1 ms e il termine e' sub-millimetrico, ma e' dello
-    stesso ordine dell'errore del punto medio: serve a dire dove sta il
-    pavimento sotto cui raffinare lo schema non compra piu' nulla.
+    The MPC model solves v' = (u - v)/tau, so within the interval the velocity
+    RISES towards u instead of having already got there. The integral of the
+    difference is (u - v_k) * tau * (1 - e^{-dt/tau}) per interval. On the
+    deployed profile tau is 1 ms and the term is sub-millimetric, but it is of the
+    same order as the midpoint error: it says where the floor is, below which
+    refining the scheme buys nothing more.
     """
     lv, lw = lag_coeffs(dt, tau_v, tau_w)
     vx, vy, wz = float(x0[3]), float(x0[4]), float(x0[5])
@@ -213,11 +215,11 @@ def lag_displacement(x0, U, dt, tau_v, tau_w):
 
 
 def test_orders():
-    """Euler ~ ordine 1, punto medio ~ ordine 2, su piu' regimi di rotazione."""
-    # (vx, vy, omega) — i limiti deployati sul G1 sono vx<=0.3, vy<=0.02, |w|<=0.3
+    """Euler ~ order 1, midpoint ~ order 2, over several rotation regimes."""
+    # (vx, vy, omega) — the deployed limits on the G1 are vx<=0.4, vy<=0.20, |w|<=0.4
     regimi = {
         "G1 nominale (vx=0.2, w=0.3)":  (0.20, 0.00, 0.30),
-        "G1 con deriva laterale":       (0.20, 0.02, 0.30),
+        "G1 with lateral drift":        (0.20, 0.02, 0.30),
         "rotazione rapida (w=1.0)":     (0.30, 0.00, 1.00),
     }
     ok = True
@@ -233,27 +235,27 @@ def test_orders():
             print(f"| {dt:.3f} | {ee:.3e} | {em:.3e} | {ee/em:.0f}x |")
         print(f"ordine stimato:  Euler {o_e:.2f}   punto medio {o_m:.2f}")
         if not (0.85 <= o_e <= 1.15):
-            print(f"  FALLITO: ordine di Euler {o_e:.2f} fuori da [0.85, 1.15]")
+            print(f"  FAILED: Euler order {o_e:.2f} outside [0.85, 1.15]")
             ok = False
         if not (1.85 <= o_m <= 2.15):
-            print(f"  FALLITO: ordine del punto medio {o_m:.2f} fuori da [1.85, 2.15]")
+            print(f"  FAILED: midpoint order {o_m:.2f} outside [1.85, 2.15]")
             ok = False
     return ok
 
 
 def test_matches_nlp():
     """
-    Lo schema del test coincide con quello dentro l'NLP.
+    The scheme of the test coincides with the one inside the NLP.
 
-    Non basta che la teoria torni: serve che mpc_tracker integri davvero cosi'.
-    Si confronta un passo di dinamica estratto dall'NLP con lo step di riferimento,
-    per entrambi gli schemi.
+    It is not enough for the theory to work out: mpc_tracker has to integrate that
+    way. One dynamics step extracted from the NLP is compared with the reference
+    step, for both schemes.
     """
     import casadi as ca
     from a_star_mpc_planner.mpc_tracker import MPCConfig, MPCTracker
 
     dt = 0.2
-    # tau << dt  =>  lag = 1  =>  v_next = u  : cosi' il confronto isola px/py
+    # tau << dt  =>  lag = 1  =>  v_next = u  : this way the comparison isolates px/py
     base = dict(N=2, dt=dt, tau_v=1e-3, tau_w=1e-3, vx_max=1.0, vy_max=1.0,
                 omega_max=2.0, W_obs_sigmoid=0.0, max_obs_constraints=1)
     pose0 = (0.3, -0.2, 0.4)
@@ -264,20 +266,20 @@ def test_matches_nlp():
         tr = MPCTracker(MPCConfig(integrator=schema, **base))
         tr._build_nlp()
         opti = tr._opti
-        # _X[:,1] e' una variabile, non un'espressione: la mappa f(X0,U0) si
-        # ricostruisce dai vincoli di uguaglianza. I primi 6 sono, in ordine,
-        # X[i,1] - f_i(X[:,0], U[:,0]) per i = 0..5.
+        # _X[:,1] is a variable, not an expression: the map f(X0,U0) is
+        # reconstructed from the equality constraints. The first 6 are, in order,
+        # X[i,1] - f_i(X[:,0], U[:,0]) for i = 0..5.
         f_expr = tr._X[:, 1] - opti.g[:6]
-        # Uno slice di matrice non e' "purely symbolic": ca.Function lo rifiuta.
-        # Si valuta quindi assegnando i valori iniziali e leggendo l'espressione.
+        # A matrix slice is not "purely symbolic": ca.Function rejects it. So it
+        # is evaluated by assigning the initial values and reading the expression.
         opti.set_initial(tr._X[:, 0], [pose0[0], pose0[1], pose0[2], 0.0, 0.0, 0.0])
         opti.set_initial(tr._U[:, 0], list(u))
         got = np.array(opti.debug.value(f_expr, opti.initial())).ravel()[:3]
         want = np.array(ref_step(pose0, u, dt))
         err = float(np.max(np.abs(got - want)))
-        print(f"\nNLP '{schema}': scarto dallo schema di riferimento = {err:.3e}")
+        print(f"\nNLP '{schema}': deviation from the reference scheme = {err:.3e}")
         if err > 1e-12:
-            print(f"  FALLITO: l'NLP non integra come '{schema}'")
+            print(f"  FAILED: the NLP does not integrate like '{schema}'")
             print(f"    NLP  {got}")
             print(f"    atteso {want}")
             ok = False
@@ -286,12 +288,12 @@ def test_matches_nlp():
 
 def main():
     print("=" * 72)
-    print("Ordine di troncamento — dispense §2.1.3, eq. (2.9) vs (2.10)")
+    print("Truncation order — lecture notes §2.1.3, eq. (2.9) vs (2.10)")
     print("=" * 72)
     ok = test_orders()
     print()
     print("=" * 72)
-    print("Coerenza con la dinamica costruita da MPCTracker")
+    print("Consistency with the dynamics built by MPCTracker")
     print("=" * 72)
     ok = test_matches_nlp() and ok
     print()

@@ -7,15 +7,17 @@ barriera ripida e pesante inietta autovalori grandi e rapidamente variabili
 nell'Hessiana proprio dove vive la soluzione. Finora era un'affermazione senza
 niente dietro, ripetuta in due sezioni. Questa figura la rende visibile.
 
-TRE PANNELLI, contro la clearance d:
-  valore      J_obs(d)      la sigmoide SATURA, la hinge quadratica no
-  gradiente   dJ/dd         la sigmoide lo perde dentro l'ostacolo, la hinge no
-  curvatura   d2J/dd2       cresce come alpha^2: e' il prezzo
+THREE PANELS, against the clearance d:
+  value       J_obs(d)      the sigmoid SATURATES, the quadratic hinge does not
+  gradient    dJ/dd         the sigmoid loses it inside the obstacle, the hinge
+                            does not
+  curvature   d2J/dd2       grows as alpha^2: that is the price
 
-PERCHE' NON SI RIDISEGNA A MANO. La funzione e' presa da common.obstacle_cost,
-che e' la stessa che finisce nell'NLP (un solo ostacolo, il robot spostato lungo
-una retta). Derivate per differenze finite centrate sullo stesso campione: cosi'
-il grafico non puo' divergere dalla formula deployata senza che diverga anche il
+WHY IT IS NOT REDRAWN BY HAND. The function is taken from common.obstacle_cost,
+which is the same one that ends up in the NLP (a single obstacle, the robot moved
+along a line). Derivatives by central finite differences on the same sample: this
+way the plot cannot diverge from the deployed formula without also diverging from
+the
 controllore.
 
     python3 metrics/fig_barrier_shape.py
@@ -36,20 +38,20 @@ import common  # noqa: E402
 
 
 def profilo(cfg, alpha: float, d: np.ndarray) -> np.ndarray:
-    """J_obs valutata a distanza d da un singolo ostacolo, con la data pendenza."""
+    """J_obs evaluated at distance d from a single obstacle, at the given slope."""
     c = dataclasses.replace(cfg, obs_alpha=float(alpha))
     P = np.column_stack([d, np.zeros_like(d)])
     return common.obstacle_cost(P, np.zeros((1, 2)), c)
 
 
 def solo_sigmoide(cfg, alpha: float, d: np.ndarray) -> np.ndarray:
-    """La sola zona sigmoide, ottenuta SOTTRAENDO la hinge dal totale.
+    """The sigmoid part alone, obtained by SUBTRACTING the hinge from the total.
 
-    Non e' una seconda implementazione della sigmoide: e' il totale deployato
-    meno un termine in forma chiusa, quindi non puo' divergere dalla formula che
-    gira nell'NLP. Serve a mostrare cosa la hinge ripara — la saturazione del
-    valore e la scomparsa del gradiente dentro l'ostacolo — che e' esattamente
-    l'argomento del testo.
+    It is not a second implementation of the sigmoid: it is the deployed total
+    minus a closed-form term, so it cannot diverge from the formula that runs in
+    the NLP. It is there to show what the hinge repairs — the saturation of the
+    value and the disappearance of the gradient inside the obstacle — which is
+    exactly the argument of the text.
     """
     W, r = float(cfg.W_obs_sigmoid), float(cfg.obs_r)
     return profilo(cfg, alpha, d) - W * 2.0 * np.maximum(0.0, r - d) ** 2
@@ -65,20 +67,20 @@ def main() -> int:
     cfg, raw = common.load_profile()
     a_dep = float(cfg.obs_alpha)
     r, W = float(cfg.obs_r), float(cfg.W_obs_sigmoid)
-    r_body = 0.35                      # ingombro del G1, come in §2.4
+    r_body = 0.35                      # footprint of the G1, as in §2.4
 
-    # Le quattro pendenze includono SEMPRE quella deployata, qualunque sia nel
-    # profilo: una figura che illustra una configurazione diversa da quella
-    # descritta due righe sopra e' peggio che nessuna figura.
+    # The four slopes ALWAYS include the deployed one, whatever it is in the
+    # profile: a figure illustrating a configuration different from the one
+    # described two lines above is worse than no figure at all.
     alphas = sorted({round(a_dep / 3, 2), round(a_dep, 2),
                      round(a_dep * 2, 2), round(a_dep * 4, 2)})
 
-    # Il campione parte a 2 cm, non a zero. obstacle_cost calcola
-    # d = sqrt(dx^2 + dy^2 + eps) con eps = 1e-6: sotto il centimetro la mappa
-    # coordinata -> clearance non e' piu' l'identita', e derivare rispetto alla
-    # coordinata darebbe una curvatura che e' un artefatto della
-    # regolarizzazione invece della barriera. A 2 cm lo scarto e' dello 0.1%, e
-    # sotto quella penetrazione la domanda non ha comunque senso fisico.
+    # The sample starts at 2 cm, not at zero. obstacle_cost computes
+    # d = sqrt(dx^2 + dy^2 + eps) with eps = 1e-6: below a centimetre the map
+    # coordinate -> clearance is no longer the identity, and differentiating with
+    # respect to the coordinate would give a curvature that is an artefact of the
+    # regularisation instead of the barrier. At 2 cm the discrepancy is 0.1%, and
+    # below that penetration the question makes no physical sense anyway.
     d = np.linspace(0.02, 3.0 * r, 4001)
     h = d[1] - d[0]
 
@@ -108,8 +110,8 @@ def main() -> int:
             print(f"  alpha={a:6.2f}  curvatura massima {np.abs(c).max():.3g}"
                   f"  ({np.abs(c).max() / W:.3g} x W)")
 
-    # La sigmoide da sola, al passo deployato: e' il termine di paragone dei due
-    # difetti che la hinge ripara.
+    # The sigmoid alone, at the deployed slope: it is the term of comparison for
+    # the two defects the hinge repairs.
     Js = solo_sigmoide(cfg, a_dep, d)
     gs = np.gradient(Js, h)
     kw_s = dict(color="#d62728", lw=1.4, ls="--", zorder=4,

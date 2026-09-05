@@ -87,37 +87,37 @@ class AStarPlanner:
                                hard obstacles (infinite cost).
         obstacle_cost_weight : soft cost multiplier for cells below threshold.
                                Higher values push the path further from obstacles.
-        tabu_weight          : peso del termine tabu nella SCELTA DEL GOAL LOCALE
-                               (non nel costo di percorso). 0 disattiva: con 0 il
-                               comportamento e' identico a prima, bit per bit.
+        tabu_weight          : weight of the tabu term in the LOCAL GOAL CHOICE
+                               (not in the path cost). 0 disables it: with 0 the
+                               behaviour is identical to before, bit for bit.
         """
         self.obstacle_threshold = obstacle_threshold
         self.obstacle_cost_weight = obstacle_cost_weight
         self.tabu_weight = float(tabu_weight)
-        # Isteresi sulla SCELTA del bersaglio: per cambiare rotta la nuova
-        # candidata deve battere di almeno questo margine [m] quella vicina alla
-        # scelta precedente. Serve dove due rotte sono OMOTOPICAMENTE DIVERSE ma
-        # di costo quasi uguale — i due lati di un corridoio simmetrico, i due
-        # capi di un muro. Li' l'argmin puro alterna a ogni ripianificazione e il
-        # robot dondola sul posto senza impegnarsi. Misurato su dead_end: senza
-        # margine il bersaglio salta fra y=+1.7 e y=-1.2 ogni ciclo. 0 disattiva.
+        # Hysteresis on the target CHOICE: to change route the new candidate has
+        # to beat the one near the previous choice by at least this margin [m]. It
+        # is needed where two routes are HOMOTOPICALLY DIFFERENT but of almost
+        # equal cost — the two sides of a symmetric corridor, the two ends of a
+        # wall. There a pure argmin alternates at every replan and the robot sways
+        # on the spot without committing. Measured on dead_end: with no margin the
+        # target jumps between y=+1.7 and y=-1.2 every cycle. 0 disables it.
         self.switch_margin = float(switch_margin)
-        # Impegno di lato (vedi _scored_local_goal). False = comportamento storico.
+        # Side commitment (see _scored_local_goal). False = original behaviour.
         self.commit_to_side = bool(commit_to_side)
-        # Ripiego sulla candidata successiva quando A* non raggiunge la prima.
-        # PERCHE'. _scored_local_goal ordina le candidate per distanza DAL GOAL e
-        # non guarda se il robot puo' arrivarci: davanti a un muro che attraversa
-        # tutta la finestra la migliore sta dall'altra parte, A* non trova
-        # percorso, e il ripiego storico (la proiezione lungo il raggio) punta
-        # anch'esso oltre il muro. Il nodo non pubblica nulla, resta il piano
-        # precedente e il robot spinge contro il muro. Misurato su
-        # long_wall_south: bersaglio (5.8, 3.84), geodetica 0.40 m, nessun
-        # percorso, robot fermo per 470 s dei 480 di budget.
-        # Con questo attivo si scorre la graduatoria e si prende la prima
-        # candidata che A* raggiunge davvero. False = comportamento storico.
+        # Fall back to the next candidate when A* cannot reach the first one.
+        # WHY. _scored_local_goal ranks the candidates by distance FROM THE GOAL
+        # and does not check whether the robot can get there: in front of a wall
+        # crossing the whole window the best one is on the other side, A* finds no
+        # path, and the original fallback (the projection along the ray) also
+        # points beyond the wall. The node publishes nothing, the previous plan
+        # stays and the robot pushes against the wall. Measured on
+        # long_wall_south: target (5.8, 3.84), geodesic 0.40 m, no path, robot
+        # stuck for 470 s of the 480 s budget.
+        # With this on, the ranking is scanned and the first candidate A* actually
+        # reaches is taken. False = original behaviour.
         self.retry_reachable = bool(retry_reachable)
-        self._last_scored = []         # graduatoria dell'ultimo ciclo
-        self._side = 0             # -1 destra, +1 sinistra, 0 nessun impegno
+        self._last_scored = []         # ranking of the last cycle
+        self._side = 0             # -1 right, +1 left, 0 no commitment
         self._side_released = False
         self._prev_goal_xy = None      # ultima scelta, per l'isteresi
         self._prev_global = None       # goal globale associato
@@ -188,14 +188,14 @@ class AStarPlanner:
                     break
 
         if path_grid is None and geodesic is not None:
-            # Il bersaglio geodetico puo' essere raggiungibile DAL GOAL ma non
-            # DAL ROBOT dentro la finestra: il fronte d'onda tratta lo spazio
-            # mai visto come libero e puo' aggirare la porzione di muro gia'
-            # osservata passando per l'ignoto, mentre A* cerca solo nella
-            # finestra e trova quel muro sulla propria strada. Senza questo
-            # ripiego il nodo non pubblica nulla e il robot resta FERMO — che e'
-            # peggio del comportamento storico. Osservato su long_wall con
-            # grid_half_width 6: bersaglio (-0.20, -8.60), fuori dall'arena.
+            # The geodesic target may be reachable FROM THE GOAL but not FROM THE
+            # ROBOT within the window: the wavefront treats never-seen space as
+            # free and can go around the already observed portion of wall through
+            # the unknown, while A* searches only inside the window and finds that
+            # wall in its way. Without this fallback the node publishes nothing and
+            # the robot STANDS STILL — which is worse than the original behaviour.
+            # Observed on long_wall with grid_half_width 6: target (-0.20, -8.60),
+            # outside the arena.
             gix2, giy2 = self._local_goal(grid_map, six, siy, gx, gy, None, None)
             if gix2 is not None and (gix2, giy2) != (gix, giy):
                 path_grid = self._a_star(grid_map, six, siy, gix2, giy2)
@@ -228,15 +228,15 @@ class AStarPlanner:
         the ray (drone -> global_goal) with the grid boundary and return
         the last free boundary cell along that ray.
 
-        Con `tabu` attivo la regola cambia: invece di PROIETTARE il goal si
-        MINIMIZZA su tutte le celle libere candidate
+        With `tabu` active the rule changes: instead of PROJECTING the goal, it
+        MINIMISES over all candidate free cells
 
             J(c) = ||c - goal|| + tabu_weight * tabu(c)
 
-        La proiezione lungo il raggio e' memoryless e direzionale, ed e' cio'
-        che davanti a un ostacolo concavo manda il bersaglio dentro la
-        concavita' ciclo dopo ciclo. L'argmin con memoria puo' invece scegliere
-        un bersaglio laterale, che e' quanto serve per uscire.
+        The projection along the ray is memoryless and directional, and it is what
+        sends the target into a concave obstacle cycle after cycle. The argmin with
+        memory can instead pick a lateral target, which is what it takes to get
+        out.
         """
         usa_tabu = (tabu is not None and getattr(tabu, "active", False)
                     and self.tabu_weight > 0)
@@ -245,10 +245,10 @@ class AStarPlanner:
                                            tabu if usa_tabu else None, geodesic)
             if cand is not None:
                 return cand
-            # Nessuna candidata utilizzabile: o il tabu ha saturato la finestra,
-            # o (con la geodetica) nessuna cella di bordo e' raggiungibile su
-            # cio' che si conosce. Si ripiega sulla regola geometrica, che
-            # almeno fa muovere il robot verso terreno ignoto.
+            # No usable candidate: either the tabu has saturated the window, or
+            # (with the geodesic) no border cell is reachable over what is known.
+            # Fall back to the geometric rule, which at least moves the robot
+            # towards unknown ground.
             if usa_tabu:
                 tabu.panic_reset()
 
@@ -282,26 +282,27 @@ class AStarPlanner:
         tabu=None,
         geodesic=None,
     ):
-        """Bersaglio come argmin di d(c, goal) + w * tabu(c).
+        """Target as the argmin of d(c, goal) + w * tabu(c).
 
-        `d` e' la GEODETICA sulla mappa nota quando `geodesic` e' fornito,
-        altrimenti l'euclidea. E' la differenza che conta: con l'euclidea una
-        cella in fondo a una tasca chiusa sembra vicinissima al goal (3.65 m
-        contro i 28.79 m di cammino reale, misurati su dead_end), e il
-        pianificatore la sceglie. La geodetica usa l'informazione che il robot
-        ha gia' raccolto invece di buttarla via.
+        `d` is the GEODESIC on the known map when `geodesic` is given, otherwise
+        the euclidean distance. That is the difference that matters: with the
+        euclidean one, a cell at the bottom of a closed pocket looks very close to
+        the goal (3.65 m against the 28.79 m of the real path, measured on
+        dead_end), and the planner picks it. The geodesic uses the information the
+        robot has already gathered instead of throwing it away.
 
-        Il tabu resta come ROMPI-SIMMETRIA: quando due candidate hanno geodetica
-        praticamente uguale — i due lati di un corridoio, i due capi di un muro —
-        e' cio' che impedisce di cambiare idea a ogni ripianificazione.
+        The tabu remains as a SYMMETRY BREAKER: when two candidates have
+        practically equal geodesic distance — the two sides of a corridor, the two
+        ends of a wall — it is what stops the planner changing its mind at every
+        replan.
 
-        Le candidate sono le celle libere del BORDO della finestra piu', se il
-        goal globale ci sta dentro, la sua cella. Solo il bordo perche' e' li'
-        che si decide la direzione: una candidata interna farebbe fermare il
-        robot a meta' finestra senza motivo.
+        The candidates are the free cells on the BORDER of the window plus, if the
+        global goal falls inside it, its cell. Only the border, because that is
+        where the direction is decided: an interior candidate would stop the robot
+        halfway across the window for no reason.
 
-        Ritorna None quando ogni candidata e' penalizzata (tabu saturo) o non
-        ce ne sono di libere: il chiamante ripiega.
+        Returns None when every candidate is penalised (tabu saturated) or there
+        are no free ones: the caller falls back.
         """
         cells = grid_map.cells
         ring = []
@@ -324,9 +325,10 @@ class AStarPlanner:
             if geodesic is not None:
                 d = geodesic.distance(wx, wy)
                 if not math.isfinite(d):
-                    # Irraggiungibile su cio' che si conosce: scartata. Non si
-                    # ripiega sull'euclidea, che e' proprio la metrica che
-                    # sbaglia. Se NESSUNA e' raggiungibile si ripiega a valle.
+                    # Unreachable over what is known: discarded. It does not fall
+                    # back to the euclidean distance, which is precisely the metric
+                    # that gets it wrong. If NONE is reachable, the fallback happens
+                    # downstream.
                     continue
                 n_raggiungibili += 1
             else:
@@ -341,45 +343,44 @@ class AStarPlanner:
                 best, best_J = (ix, iy), J
 
         if best is None:
-            # Con la geodetica attiva questo significa "nessuna candidata
-            # raggiungibile sulla mappa nota": il chiamante ripiega sulla regola
-            # geometrica, che almeno fa muovere il robot verso terreno ignoto.
+            # With the geodesic active this means "no candidate reachable on the
+            # known map": the caller falls back to the geometric rule, which at
+            # least moves the robot towards unknown ground.
             return None
-        # Saturazione: si ripiega SOLO quando NESSUNA candidata e' vergine, cioe'
-        # quando il tabu ha coperto ogni direzione e non esiste piu' un "altrove"
-        # da provare. Non basta che la vincente sia penalizzata: l'argmin ha gia'
-        # pesato la penalita', e se vince lo stesso e' perche' e' il compromesso
-        # migliore. (Bailare su best_pen > 0 disattivava il meccanismo proprio
-        # nei cicli in cui serviva.)
+        # Saturation: it gives up ONLY when NO candidate is untouched, i.e. when
+        # the tabu has covered every direction and there is no "elsewhere" left to
+        # try. It is not enough for the winner to be penalised: the argmin has
+        # already weighed the penalty, and if it still wins it is because it is the
+        # best compromise. (Bailing out on best_pen > 0 disabled the mechanism
+        # exactly in the cycles where it was needed.)
         if tabu is not None and n_libere and n_vergini == 0:
             return None
 
-        # ── impegno di lato ───────────────────────────────────────────
-        # PERCHE' SERVE. Con la geodetica lo spazio mai visto e' trattato come
-        # libero, quindi al primo ciclo aggirare il muro sembra costare poco da
-        # ENTRAMBI i lati, e a decidere e' un'asimmetria numerica di cio' che si
-        # e' gia' visto — non un ragionamento. Poi, mentre il robot costeggia,
-        # vede altro muro: la stima del lato SCELTO cresce, mentre quella
-        # dell'altro resta ottimistica perche' non e' stato esplorato. Appena la
-        # supera, il pianificatore inverte. Dall'altra parte succede lo stesso, e
-        # il risultato e' un ciclo. Nessun margine di isteresi fisso lo ferma,
-        # perche' lo scarto fra i due lati cresce senza limite.
+        # ── side commitment ──────────────────────────────────────────
+        # WHY IT IS NEEDED. With the geodesic, never-seen space is treated as free,
+        # so on the first cycle going around the wall looks cheap from BOTH sides,
+        # and what decides is a numerical asymmetry of what has already been seen —
+        # not reasoning. Then, as the robot follows the wall, it sees more wall: the
+        # estimate of the CHOSEN side grows, while the other stays optimistic
+        # because it has not been explored. As soon as it exceeds it, the planner
+        # reverses. The same happens on the other side, and the result is a cycle.
+        # No fixed hysteresis margin stops it, because the gap between the two sides
+        # grows without bound.
         #
-        # L'unico criterio sensato e' l'EVIDENZA: scelto un lato non si cambia
-        # finche' quel lato non e' DIMOSTRATO chiuso, cioe' finche' esiste
-        # ancora una candidata con geodetica finita da quella parte. E' cio' che
-        # fa un algoritmo Bug, ed e' cio' che rende la ricerca completa invece
-        # che oscillante.
+        # The only sensible criterion is EVIDENCE: once a side is chosen it is not
+        # changed until that side is PROVEN closed, i.e. as long as a candidate with
+        # finite geodesic distance still exists on it. That is what a Bug algorithm
+        # does, and it is what makes the search complete instead of oscillating.
         if self.commit_to_side and scored and geodesic is not None:
             rx, ry = grid_map.index_to_world(six, siy)
             vx, vy = gx - rx, gy - ry
             nrm = math.hypot(vx, vy)
             if nrm > 1e-6:
                 def _lato(wx, wy):
-                    # segno del prodotto vettoriale (goal-robot) x (cand-robot):
-                    # +1 a sinistra della direzione verso il goal, -1 a destra.
-                    # La banda morta di 1 m evita di "impegnarsi" su una
-                    # candidata che sta praticamente sull'asse.
+                    # sign of the cross product (goal-robot) x (cand-robot):
+                    # +1 to the left of the direction towards the goal, -1 to the
+                    # right. The 1 m dead band avoids "committing" to a candidate
+                    # that sits practically on the axis.
                     c = vx * (wy - ry) - vy * (wx - rx)
                     return 0 if abs(c) / nrm < 1.0 else (1 if c > 0 else -1)
 
@@ -389,10 +390,10 @@ class AStarPlanner:
                         cand = min(stesso)
                         best, best_J = (cand[1], cand[2]), cand[0]
                     else:
-                        # Nessuna candidata raggiungibile da quel lato: e' la
-                        # PROVA che e' chiuso. Solo ora l'impegno si scioglie, e
-                        # non viene piu' ripreso per questo goal (altrimenti si
-                        # tornerebbe a impegnarsi sul lato appena escluso).
+                        # No candidate reachable on that side: that is the PROOF
+                        # that it is closed. Only now is the commitment released,
+                        # and it is not taken up again for this goal (otherwise it
+                        # would commit to the side just ruled out).
                         self._side = 0
                         self._side_released = True
                 if self._side == 0 and not self._side_released:
@@ -400,10 +401,10 @@ class AStarPlanner:
                     if s_best != 0:
                         self._side = s_best
 
-        # ── isteresi ──────────────────────────────────────────────────
-        # Se il goal globale e' cambiato la memoria non vale piu': un bersaglio
-        # ereditato dalla missione precedente e' semplicemente la direzione
-        # sbagliata.
+        # ── hysteresis ───────────────────────────────────────────────
+        # If the global goal has changed the memory is worthless: a target
+        # inherited from the previous mission is simply the wrong direction.
+
         gkey = (round(gx, 3), round(gy, 3))
         if self._prev_global != gkey:
             self._prev_global = gkey
@@ -413,7 +414,7 @@ class AStarPlanner:
 
         if self.switch_margin > 0.0 and self._prev_goal_xy is not None and scored:
             px, py = self._prev_goal_xy
-            # la candidata che meglio prosegue la scelta precedente
+            # the candidate that best continues the previous choice
             near = min(scored, key=lambda t: math.hypot(t[3] - px, t[4] - py))
             if near[0] <= best_J + self.switch_margin:
                 best = (near[1], near[2])

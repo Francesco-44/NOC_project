@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 """
-FIGURA §5.5 — la galleria delle fughe.
+FIGURE §5.5 — the gallery of escapes.
 
-Un pannello per mondo: la geometria vera, la traccia della baseline (proiezione
-lungo il raggio) e quella della regola deployata (argmin della geodetica). I
-mondi sono in due gruppi.
+One panel per world: the real geometry, the trace of the baseline (projection
+along the ray) and that of the deployed rule (argmin of the geodesic). The worlds
+come in two groups.
 
-TRAPPOLE       concavita' in cui la baseline entra e non esce: vicolo cieco,
-               ferro di cavallo, corridoio a L, e le tre varianti di muro lungo
-               in cui il varco e' da un lato solo.
-CONTROLLI      scene che SEMBRANO trappole e non lo sono: il corridoio aperto in
-               fondo, lo zigzag, la stanza con una porta sola, il magazzino. Qui
-               la geodetica non deve fare niente di speciale: deve tirare dritto.
-               Sono i falsi positivi, e senza di loro il risultato sulle
-               trappole non dimostra nulla, perche' una regola che rifiuta OGNI
-               concavita' le supererebbe tutte e fallirebbe queste.
+TRAPS      concavities the baseline enters and does not leave: dead end,
+           horseshoe, L-corridor, and the three long-wall variants where the gap
+           is on one side only.
+CONTROLS   scenes that LOOK like traps and are not: the corridor open at the far
+           end, the zigzag, the room with a single door, the warehouse. Here the
+           geodesic must do nothing special: it must go straight through. They
+           are the false positives, and without them the result on the traps
+           proves nothing, because a rule that refuses EVERY concavity would
+           clear all of them and fail these.
 
-DUE SCELTE DI DISEGNO, entrambe per errori visti sulla prima versione.
+TWO DESIGN CHOICES, both prompted by problems seen in the first version.
 
-1. La baseline e' una BANDA larga e trasparente sotto la linea sottile della
-   geodetica, non una tratteggiata accanto. Serve a due cose opposte: dove le
+1. The baseline is a wide, transparent BAND under the thin line of the geodesic,
+   not a dashed line beside it. It serves two opposite purposes: where the
    due regole coincidono (corridoio aperto, porta, magazzino) l'alone rosso
-   attorno alla linea blu e' l'unico modo di far vedere che coincidono, perche'
-   due tratti sovrapposti si nascondono a vicenda; e dove la baseline rimbalza
-   (vicolo cieco, ferro di cavallo) il gomitolo da 80 m diventa una macchia
-   invece di un intrico di tratti che si leggono come tante croci.
+   around the blue line is the only way to show that they coincide, because two
+   overlapping strokes hide each other; and where the baseline bounces (dead end,
+   horseshoe) the 80 m tangle becomes a smudge instead of a knot of strokes that
+   read as a mass of crosses.
 
-2. Un solo marcatore di esito per piano, a croce piena con bordo bianco, in modo
-   che sia distinguibile dalle intersezioni della traccia.
+2. A single outcome marker per plan, a filled cross with a white edge, so that it
+   can be told apart from the self-intersections of the trace.
 
     python3 metrics/fig_escape_gallery.py
 """
@@ -74,7 +74,7 @@ def _riga(righe, mondo, piano):
 
 
 def _esito(r):
-    """Etichetta compatta di esito, per il sottotitolo del pannello."""
+    """Compact outcome label, for the subtitle of the panel."""
     if r is None:
         return "--"
     if not r["goal"]:
@@ -85,13 +85,13 @@ def _esito(r):
 
 
 def _barra_scala(ax, L):
-    """Barra di scala: le dieci arene non hanno la stessa estensione, quindi
-    senza questa i pannelli non sono confrontabili fra loro."""
+    """Scale bar: the ten arenas do not have the same extent, so without this the
+    panels cannot be compared with each other."""
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
     xa = x0 + 0.06 * (x1 - x0)
     ya = y0 + 0.07 * (y1 - y0)
-    # alone bianco: in tre pannelli la barra cade sopra una traccia
+    # white halo: in three panels the bar falls on top of a trace
     ax.plot([xa, xa + L], [ya, ya], "-", c="w", lw=4.0,
             solid_capstyle="butt", zorder=8)
     ax.plot([xa, xa + L], [ya, ya], "-", c="#222222", lw=1.4,
@@ -105,12 +105,11 @@ def main() -> int:
     src = os.path.join(_HERE, "out", "escape_all.json")
     righe = json.load(open(src))
 
-    # Terza traccia, disegnata SOLO dove cambia l'esito. E' la stessa regola
-    # geodetica con `retry_reachable` attivo: quando A* non raggiunge la
-    # candidata migliore si scorre la graduatoria invece di ripiegare sulla
-    # proiezione. Serve in un pannello solo, long_wall_south, e senza di essa
-    # quel pannello mostra due tracce che finiscono entrambe contro il muro,
-    # cioe' il sintomo senza la riparazione.
+    # Third trace, drawn ONLY where the outcome changes. It is the same geodesic
+    # rule with `retry_reachable` on: when A* cannot reach the best candidate the
+    # ranking is scanned instead of falling back to the projection. It is needed
+    # in one panel only, long_wall_south, and without it that panel shows two
+    # traces both ending against the wall, i.e. the symptom without the repair.
     fix = os.path.join(_HERE, "out", "escape_all_retry.json")
     righe_fix = json.load(open(fix)) if os.path.exists(fix) else []
 

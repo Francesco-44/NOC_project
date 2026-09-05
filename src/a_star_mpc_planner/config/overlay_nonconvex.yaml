@@ -1,96 +1,97 @@
-# Overlay per i mondi con ostacoli NON CONVESSI (long_wall, horseshoe,
-# dead_end di g1_sim/mujoco_world.py). Si usa cosi':
+# Overlay for the worlds with NON-CONVEX obstacles (long_wall, horseshoe,
+# dead_end and the others in g1_sim/mujoco_world.py). It is used like this:
 #
 #   ros2 launch g1_sim g1_a_star_mpc.launch.py world:=horseshoe \
 #        planner_overlay:=$(ros2 pkg prefix a_star_mpc_planner)/share/a_star_mpc_planner/config/overlay_nonconvex.yaml
 #
-# PERCHE' SERVE. A* pianifica su una finestra mobile larga 2*grid_half_width
-# centrata sul robot. Se il goal cade fuori da quella finestra viene proiettato
-# sul bordo, e con un ostacolo concavo la proiezione punta dritta dentro la
-# trappola: il pianificatore non puo' aggirare cio' che non vede. Misurato su
-# metrics/common.world_scenario, un solo piano dallo spawn:
+# WHY IT IS NEEDED. A* plans on a moving window 2*grid_half_width wide, centred
+# on the robot. If the goal falls outside that window it is projected onto the
+# border, and with a concave obstacle that projection points straight into the
+# trap: the planner cannot go around what it does not see.
 #
-# Misurato in ANELLO CHIUSO (metrics/common.closed_loop, un run per cella):
+# Measured in CLOSED LOOP (metrics/common.closed_loop, one run per cell):
 #
 #   grid_half_width   long_wall          horseshoe    dead_end
-#   6.0 (default)     bloccato           bloccato     bloccato
-#   8.0               ATTRAVERSA il muro goal ok      bloccato
-#   10.0              goal ok            goal ok      goal ok   <- adottato
+#   6.0 (default)     blocked            blocked      blocked
+#   8.0               GOES THROUGH wall  goal ok      blocked
+#   10.0              goal ok            goal ok      goal ok   <- adopted
 #   14.0              goal ok            goal ok      goal ok
 #
-# 10.0 e' il valore adottato, ed e' quello con cui gira l'intera campagna di
-# metrics/escape_test.py. Il caso che decide e' l_corridor, il mondo con il piede
-# piu' lungo: dalla cima del piede (6.5, 11) l'imbocco del corridoio sta a
-# (-2, 0), cioe' 8.5 m in x e 11 m in y, e la sola proiezione radiale del goal
-# sul bordo della finestra non ne esce. Con la metrica geodetica sul target
-# locale il piano esiste comunque: goal raggiunto in 112.7 s, clearance minima
-# 0.80 m (escape_all_hw10.json, riga l_corridor/geodetica).
+# 10.0 is the value adopted, and it is the one the whole metrics/escape_test.py
+# campaign runs with. The deciding case is l_corridor, the world with the
+# longest foot: from the top of the foot (6.5, 11) the corridor entrance is at
+# (-2, 0), i.e. 8.5 m in x and 11 m in y, and the radial projection of the goal
+# onto the window border alone does not get out of it. With the geodesic metric
+# on the local target the plan exists anyway: goal reached in 112.7 s, minimum
+# clearance 0.80 m (escape_all_hw10.json, row l_corridor/geodesic).
 #
-# COSTO, e perche' non si sale oltre. grid_reso resta quello del profilo (0.20),
-# quindi a hw=10 la griglia e' 100x100 e un piano costa ~140 ms contro i ~50 ms
-# del default: dentro il periodo di ripianificazione (replan_rate_hz 1.0), ma non
-# gratis. Salire ancora costa molto in fretta, perche' il peso non e' l'A* in se'
-# ma l'aggiornamento della griglia gaussiana su ~2000 punti di ostacolo. Misurato
-# sul caso peggiore (l_corridor dalla cima del piede):
+# COST, and why one does not go higher. grid_reso stays the one of the profile
+# (0.20), so at hw=10 the grid is 100x100 and a plan costs ~140 ms against the
+# ~50 ms of the default: inside the replanning period (replan_rate_hz 1.0), but
+# not free. Going higher gets expensive very quickly, because the weight is not
+# A* itself but the update of the Gaussian grid over ~2000 obstacle points.
+# Measured on the worst case (l_corridor from the top of the foot):
 #
-#   hw   reso   celle     ms
-#   14   0.20   140x140   1838   PIU' del periodo di ripianificazione
+#   hw   reso   cells     ms
+#   14   0.20   140x140   1838   MORE than the replanning period
 #   14   0.25   112x112   1031
 #   14   0.30    93x93     645
 #   14   0.35    80x80     504
 #
-# A hw=14 la finestra tornerebbe utilizzabile solo diradando la griglia, e a reso
-# 0.35 un canale libero di 0.9 m (la strettoia di long_wall_false_north)
-# scenderebbe a ~2.6 celle, troppo poche perche' A* lo tratti in modo affidabile.
+# At hw=14 the window would only become usable by thinning the grid, and at
+# reso 0.35 a free channel of 0.9 m (the narrow passage of
+# long_wall_false_north) would drop to ~2.6 cells, too few for A* to handle it
+# reliably.
 #
-# Allargare la finestra NON indebolisce le trappole: da quando c'e' la
-# percezione limitata, la trappola dipende dalla PORTATA DEL LIDAR (8 m) e non
-# dalla finestra di pianificazione — lo spazio mai visto resta ottimisticamente
-# libero in entrambi i casi. La finestra decide solo fin dove A* puo' tracciare
-# una via d'uscita su cio' che gia' conosce. La
-# cella "ATTRAVERSA il muro" e' un FALSO successo: l'impianto dell'harness non
-# ha collisioni, il ripiego proporzionale ha puntato l'ultimo waypoint di A*
-# oltre il muro e ci e' passato dentro (clearance 0.033 m). Vedi
-# metrics/common.check_collisions — un goal raggiunto va sempre letto insieme alla
-# clearance.
+# Widening the window does NOT weaken the traps: since perception became
+# limited, the trap depends on the LIDAR RANGE (8 m) and not on the planning
+# window — space never seen stays optimistically free either way. The window
+# only decides how far A* can trace a way out over what it already knows. The
+# "GOES THROUGH wall" cell is a FALSE success: the harness plant has no
+# collisions, the proportional fallback aimed at the last A* waypoint beyond the
+# wall and went through it (clearance 0.033 m). See
+# metrics/common.check_collisions — a goal reached must always be read together
+# with the clearance.
 #
-# La soglia non e' universale: dipende da quanto e' grande l'ostacolo concavo
-# rispetto alla finestra. La regola pratica e' che la finestra deve contenere
-# l'ostacolo INTERO piu' la via d'uscita, non solo la faccia che il robot vede.
+# The threshold is not universal: it depends on how large the concave obstacle
+# is with respect to the window. The rule of thumb is that the window must
+# contain the WHOLE obstacle plus the way out, not just the face the robot sees.
 #
-# E' la ragione per cui la finestra larga non e' il default del profilo: si paga
-# su ogni ciclo, anche nei mondi convessi che non ne hanno bisogno.
+# This is why the wide window is not the default of the profile: it is paid on
+# every cycle, including in the convex worlds that do not need it.
 #
-# ALTERNATIVA DA PROVARE PRIMA: nav_graph:=true. La memoria topologica globale
-# esiste proprio per ricordare la struttura oltre la finestra, e questi tre
-# mondi sono il test che non ha mai avuto. Se basta quella, la finestra puo'
-# restare a 6.0 e si risparmiano i 250 ms.
+# ALTERNATIVE WORTH TRYING FIRST: nav_graph:=true. The global topological memory
+# exists precisely to remember structure beyond the window, and these worlds are
+# the test it has never had. If that is enough, the window can stay at 6.0 and
+# the extra ~90 ms are saved.
 # ─────────────────────────────────────────────────────────────────────────
-# map_decay_sec: 0 — LA MEMORIA NON DEVE SCADERE
+# map_decay_sec: 0 — THE MEMORY MUST NOT EXPIRE
 #
-# PersistentOccupancyMap sfratta ogni cella non riconfermata entro map_decay_sec
-# (20 s nel profilo G1). Su un ostacolo concavo questo e' fatale: il fondo del
-# ferro di cavallo si vede solo da DENTRO, quindi appena il robot esce e
-# costeggia un braccio smette di riconfermarlo. Dopo 20 s la cella viene
-# sfrattata, la U torna "aperta" nella mappa, la geodetica ricalcolata ci manda
-# dritto attraverso, e il robot RIENTRA. Ping-pong con periodo ~20 s.
+# PersistentOccupancyMap evicts every cell not re-confirmed within
+# map_decay_sec (20 s in the G1 profile). On a concave obstacle that is fatal:
+# the back of the horseshoe is only visible from INSIDE, so as soon as the robot
+# comes out and follows an arm it stops re-confirming it. After 20 s the cell is
+# evicted, the U goes back to "open" in the map, the recomputed geodesic sends
+# the robot straight through it, and it GOES BACK IN. Ping-pong with a period of
+# ~20 s.
 #
-# Si misura sull'orologio: uscire dalla U (4 m) e arrivare a meta' braccio (6 m)
-# fa ~10 m a ~0.28 m/s = 36 s, e il rientro si osserva proprio a meta' braccio.
+# It can be measured on the clock: leaving the U (4 m) and reaching mid-arm
+# (6 m) is ~10 m at ~0.28 m/s = 36 s, and the re-entry is observed exactly at
+# mid-arm.
 #
-# Nessun tabu puo' rimediare: il tabu penalizza le zone gia' visitate, ma qui il
-# problema non e' la scelta, e' che la MAPPA E' SBAGLIATA — il muro non c'e'
-# piu'. Prima si ripara cio' che il robot sa, poi semmai come decide.
+# No tabu can fix this: tabu penalises places already visited, but here the
+# problem is not the choice, it is that the MAP IS WRONG — the wall is no longer
+# there. First one repairs what the robot knows, then, if needed, how it decides.
 #
-# Il decadimento a tempo serve agli ostacoli DINAMICI (persone), ma il criterio
-# e' sbagliato in partenza: sfratta le celle che non si sono GUARDATE, non
-# quelle che si sono viste VUOTE. Un muro alle spalle non e' meno reale perche'
-# non lo si sta osservando. La forma corretta e' lo sgombero per raggio (si
-# cancella una cella quando un raggio le passa attraverso). Finche' non c'e',
-# qui si tiene tutto: questi mondi sono statici.
+# Time decay is there for DYNAMIC obstacles (people), but the criterion is wrong
+# to begin with: it evicts the cells that have not been LOOKED AT, not the ones
+# that have been seen EMPTY. A wall behind you is no less real because you are
+# not looking at it. The correct form is ray clearing (a cell is erased when a
+# ray passes through it). Until that exists, everything is kept here: these
+# worlds are static.
 #
-# ATTENZIONE: con `people:=` NON usare 0 — le persone lascerebbero scie
-# permanenti. In quel caso alzare a 120-300 s invece di azzerare.
+# NOTE: with `people:=` do NOT use 0 — people would leave permanent trails. In
+# that case raise it to 120-300 s instead of zeroing it.
 /**:
   ros__parameters:
     grid_half_width: 10.0

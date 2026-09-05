@@ -2,26 +2,26 @@
 """
 Interior point contro active set — dispense §6.2.2.
 
-La regola pratica del corso: **active set conviene con poche disuguaglianze,
-interior point con molte**. Questo progetto permette di verificarla senza
-cambiare problema, perche' la formulazione degli ostacoli e' commutabile
-(§6.3.3, gia' implementata):
+The rule of thumb of the course: **active set pays off with few inequalities,
+interior point with many**. This project allows checking it without changing
+problem, because the obstacle formulation is switchable (§6.3.3, already
+implemented):
 
-    obstacle_mode = 'penalty'   ostacoli nel COSTO
+    obstacle_mode = 'penalty'   obstacles in the COST
                                 -> 60 disuguaglianze, tutte box sugli ingressi
-    obstacle_mode = 'l1'        ostacoli come VINCOLI con slack
-                                -> centinaia di disuguaglianze
+    obstacle_mode = 'l1'        obstacles as CONSTRAINTS with slack
+                                -> hundreds of inequalities
 
-Cioe' lo stesso identico sistema, in due regimi opposti rispetto alla regola.
-Se la regola vale, il vincitore deve CAMBIARE fra i due.
+That is, the very same system, in two opposite regimes with respect to the rule.
+If the rule holds, the winner must CHANGE between the two.
 
 I due metodi confrontati:
   IPOPT           punto interno applicato direttamente all'NLP
-  SQP + qpOASES   sequenza di QP risolti con strategia active-set
+  SQP + qpOASES   a sequence of QPs solved with an active-set strategy
 
 Entrambi partono dallo STESSO punto iniziale a freddo: partire dalla soluzione
-di uno dei due falserebbe il confronto (misurato: qpOASES scende da 6 a 2
-iterazioni se innescato con la soluzione di IPOPT).
+of either would distort the comparison (measured: qpOASES drops from 6 to 2
+iterations if seeded with the IPOPT solution).
 
 Uso:
     python3 metrics/solver_compare.py
@@ -48,7 +48,7 @@ MAX_IP_ITER = 300
 
 
 def estrai_nlp(cfg, sc, ref=None, x0=None, path=None, obs=None):
-    """Costruisce l'NLP e ne estrae la forma standard piu' i valori correnti."""
+    """Builds the NLP and extracts its standard form plus the current values."""
     tr = common.make_tracker(cfg)
     if x0 is not None:
         tr.solve(np.asarray(x0, float), path, obstacle_points_2d=obs)
@@ -69,17 +69,17 @@ def estrai_nlp(cfg, sc, ref=None, x0=None, path=None, obs=None):
 
 
 def risolvi(nlp, metodo: str) -> dict:
-    """Un solve dal punto iniziale a freddo, con il metodo richiesto."""
+    """One cold-started solve from the initial point, with the requested method."""
     if metodo == "ipopt":
         opts = {"ipopt": {"print_level": 0, "sb": "yes", "max_iter": MAX_IP_ITER},
                 "print_time": False}
         S = ca.nlpsol("S", "ipopt", nlp["prob"], opts)
     else:
-        # Tolleranze STRETTE. Con quelle di default (1e-6) l'SQP dichiarava
-        # convergenza dopo 1 iterazione in un punto peggiore (f = 21308 contro
-        # 17414 di IPOPT): confrontare i TEMPI di due solve che finiscono in
-        # minimi diversi non significa nulla. A 1e-10 raggiunge lo stesso
-        # minimo, e solo allora il confronto e' un confronto.
+        # TIGHT tolerances. With the defaults (1e-6) SQP declared convergence
+        # after 1 iteration at a worse point (f = 21308 against 17414 for IPOPT):
+        # comparing the TIMES of two solves that end at different minima means
+        # nothing. At 1e-10 it reaches the same minimum, and only then is the
+        # comparison a comparison.
         opts = {"print_iteration": False, "print_header": False, "print_time": False,
                 "max_iter": MAX_SQP_ITER, "tol_pr": 1e-10, "tol_du": 1e-10,
                 "qpsol": "qpoases", "qpsol_options": {"printLevel": "none"}}
@@ -124,7 +124,7 @@ def main() -> int:
 
     print("Interior point contro active set (§6.2.2)")
     print(f"IPOPT: punto interno sull'NLP · SQP+qpOASES: active set sui QP interni")
-    print(f"cold start identico per entrambi · d_safe = {args.d_safe} m")
+    print(f"identical cold start for both · d_safe = {args.d_safe} m")
     print()
 
     righe = []
@@ -147,23 +147,23 @@ def main() -> int:
                   f"{ip['ms']:8.1f} ms  {ip['status'][:28]}")
             print(f"    SQP+qpOASES  f={asq['f']:12.3f} iter={asq['iter']:4d} "
                   f"{asq['ms']:8.1f} ms  {asq['status'][:28]}")
-            # Il confronto vale solo se i due arrivano allo STESSO minimo.
+            # The comparison is only valid if the two reach the SAME minimum.
             stesso = (ip["ok"] and asq["ok"] and
                       abs(ip["f"] - asq["f"]) / max(abs(ip["f"]), 1e-9) < 1e-3)
             righe[-1]["stesso_minimo"] = bool(stesso)
             if stesso:
                 vinc = "active set" if asq["ms"] < ip["ms"] else "interior point"
                 rap = max(ip["ms"], asq["ms"]) / max(min(ip["ms"], asq["ms"]), 1e-9)
-                print(f"    -> stesso minimo · piu' veloce: {vinc} ({rap:.1f}x)")
+                print(f"    -> same minimum · faster: {vinc} ({rap:.1f}x)")
             elif ip["ok"] and asq["ok"]:
                 print(f"    -> MINIMI DIVERSI (scarto "
                       f"{abs(ip['f']-asq['f'])/max(abs(ip['f']),1e-9)*100:.1f}%): "
-                      f"confronto dei tempi NON valido")
+                      f"time comparison NOT valid")
             print()
 
-    # ── verdetto sulla regola del corso ─────────────────────────────────
+    # ── verdict on the rule of thumb ────────────────────────────────────
     print("=" * 78)
-    print("LA REGOLA DEL §6.2.2 SI VERIFICA?")
+    print("DOES THE RULE OF §6.2.2 HOLD?")
     print("=" * 78)
     for regime in dict.fromkeys(r["regime"] for r in righe):
         sel = [r for r in righe if r["regime"] == regime and r.get("stesso_minimo")]
@@ -182,28 +182,28 @@ def main() -> int:
               f"SQP+qpOASES {t_as:8.1f} ms ({it_as:.0f} iter)")
         print(f"    vince: {vinc}")
     print()
-    print("La regola del corso: active set con POCHE disuguaglianze, interior")
-    print("point con MOLTE. Se il vincitore cambia fra i due regimi la regola e'")
-    print("verificata; se non cambia va detto — e' una regola pratica, non un")
-    print("teorema, e qui il problema e' NON CONVESSO, condizione che la regola")
-    print("non contempla.")
+    print("The rule of the course: active set with FEW inequalities, interior")
+    print("point with MANY. If the winner changes between the two regimes the rule")
+    print("holds; if it does not change that has to be said — it is a rule of thumb,")
+    print("not a theorem, and here the problem is NON-CONVEX, a condition the rule")
+    print("does not cover.")
     print()
     print()
-    print("CAUTELA sul confronto. Il vantaggio vero dell'active set in MPC non e'")
-    print("il singolo solve a freddo: e' il WARM START fra due solve consecutivi,")
-    print("dove l'active set cambia di poche righe e qpOASES riparte dalla")
-    print("fattorizzazione precedente (e' la 'online active set strategy' per cui")
-    print("qpOASES e' stato scritto). Qui partiamo a freddo APPOSTA, per non")
-    print("favorire nessuno dei due — ma cosi' si toglie all'active set proprio")
-    print("cio' che lo rende competitivo. Il confronto va quindi letto come:")
-    print("'a freddo, su questo problema non convesso, il punto interno domina, e")
-    print("il suo margine cresce con il numero di disuguaglianze'.")
+    print("A CAVEAT on the comparison. The real advantage of active set in MPC is")
+    print("not the single cold solve: it is the WARM START between two consecutive")
+    print("solves, where the active set changes by a few rows and qpOASES restarts")
+    print("from the previous factorisation (the 'online active set strategy' qpOASES")
+    print("was written for). Here we start cold ON PURPOSE, so as not to favour")
+    print("either of them — but that takes away from active set exactly what makes")
+    print("it competitive. The comparison should therefore be read as:")
+    print("'cold, on this non-convex problem, the interior point dominates, and its")
+    print("margin grows with the number of inequalities'.")
     print()
-    print("Nota su SQP: con l'Hessiana esatta della lagrangiana CasADi segnala")
-    print("'Indefinite Hessian detected'. E' atteso — il problema non e' convesso")
-    print("(§5.2), quindi il QP interno puo' non esserlo. E' esattamente la")
-    print("ragione per cui il §6.3.2 raccomanda Gauss-Newton per l'SQP: H = 2 JF^T W JF")
-    print("e' semidefinita positiva per costruzione, e il QP torna convesso.")
+    print("Note on SQP: with the exact Hessian of the Lagrangian CasADi reports")
+    print("'Indefinite Hessian detected'. That is expected — the problem is not")
+    print("convex (§5.2), so the inner QP may not be either. It is exactly the")
+    print("reason why §6.3.2 recommends Gauss-Newton for SQP: H = 2 JF^T W JF is")
+    print("positive semidefinite by construction, and the QP becomes convex again.")
 
     out = os.path.join(_HERE, "out", "solver_compare.json")
     os.makedirs(os.path.dirname(out), exist_ok=True)

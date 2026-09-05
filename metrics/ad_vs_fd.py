@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Differenziazione automatica contro differenze finite — dispense §5.2 e §5.3.
+Automatic differentiation against finite differences — lecture notes §5.2, §5.3.
 
-Il corso da' tre numeri sul costo di un gradiente in n variabili:
+The course gives three figures for the cost of a gradient in n variables:
 
-  differenze in avanti  : n+1 valutazioni, accuratezza ~ sqrt(eps) ~ 1e-8
-                          con passo ottimo h ~ sqrt(eps)
-  differenze centrate   : 2n  valutazioni, accuratezza ~ eps^(2/3) ~ 1e-11
-                          con passo ottimo h ~ eps^(1/3) ~ 7.6e-6
-  AD in modo inverso    : < 3 valutazioni INDIPENDENTEMENTE da n,
-                          accuratezza a precisione macchina
+  forward differences  : n+1 evaluations, accuracy ~ sqrt(eps) ~ 1e-8
+                         with optimal step h ~ sqrt(eps)
+  central differences  : 2n  evaluations, accuracy ~ eps^(2/3) ~ 1e-11
+                         with optimal step h ~ eps^(1/3) ~ 7.6e-6
+  reverse-mode AD      : < 3 evaluations REGARDLESS of n,
+                         accuracy at machine precision
 
-Questo script li verifica sull'obiettivo effettivamente minimizzato dall'MPC,
-non su una funzione di prova, e poi misura quanto vale l'Hessiana esatta
-confrontando IPOPT con Hessiana da AD contro L-BFGS.
+This script checks them on the objective the MPC actually minimises, not on a
+test function, and then measures what the exact Hessian is worth by comparing
+IPOPT with an AD Hessian against L-BFGS.
 
-Uso:
+Usage:
     python3 metrics/ad_vs_fd.py
     python3 metrics/ad_vs_fd.py --bag metrics/bags/industrial_plant_fix
 """
@@ -51,7 +51,7 @@ def build_point(cfg, sc, ref=None):
 
 
 def fd_forward(f, x, p, h):
-    """Gradiente per differenze in avanti: n+1 valutazioni."""
+    """Gradient by forward differences: n+1 evaluations."""
     n = x.size
     g = np.empty(n)
     f0 = float(f(ca.DM(x), ca.DM(p)))
@@ -62,7 +62,7 @@ def fd_forward(f, x, p, h):
 
 
 def fd_central(f, x, p, h):
-    """Gradiente per differenze centrate: 2n valutazioni."""
+    """Gradient by central differences: 2n evaluations."""
     n = x.size
     g = np.empty(n)
     for i in range(n):
@@ -100,9 +100,9 @@ def main() -> int:
     print(f"{etichetta} · n = {n} variabili decisionali · N={cfg.N} dt={cfg.dt}")
     print()
 
-    # ── Gradiente di riferimento: AD ────────────────────────────────────
-    # Warm-up piu' minimo fra blocchi: con la media si misurava un gradiente AD
-    # piu' veloce di una valutazione di f, cioe' un rapporto impossibile.
+    # ── Reference gradient: AD ──────────────────────────────────────────
+    # Warm-up plus minimum over blocks: with the mean, an AD gradient came out
+    # faster than one evaluation of f, i.e. an impossible ratio.
     xd, pd = ca.DM(x), ca.DM(p)
     g_ad = np.array(gf_fun(xd, pd)).ravel()
     t_ad = common.time_call(lambda: gf_fun(xd, pd), 200, 5)
@@ -111,19 +111,19 @@ def main() -> int:
     print("=" * 74)
     print("COSTO  (§5.3)")
     print("=" * 74)
-    print(f"una valutazione di f          : {t_f*1e6:9.1f} us")
-    print(f"gradiente per AD              : {t_ad*1e6:9.1f} us  "
-          f"= {t_ad/t_f:5.2f} valutazioni di f")
-    print(f"  il corso prevede < 3 valutazioni indipendentemente da n: "
-          f"{'CONFERMATO' if t_ad/t_f < 3 else 'NON confermato'}")
+    print(f"one evaluation of f           : {t_f*1e6:9.1f} us")
+    print(f"gradient by AD                : {t_ad*1e6:9.1f} us  "
+          f"= {t_ad/t_f:5.2f} evaluations of f")
+    print(f"  the course predicts < 3 evaluations regardless of n: "
+          f"{'CONFIRMED' if t_ad/t_f < 3 else 'NOT confirmed'}")
     print()
 
-    # ── Accuratezza delle differenze finite al variare del passo ────────
+    # ── Accuracy of the finite differences as the step varies ───────────
     print("=" * 74)
     print("ACCURATEZZA vs PASSO  (§5.2)")
     print("=" * 74)
     scala = float(np.linalg.norm(g_ad))
-    print(f"norma del gradiente di riferimento: {scala:.3e}")
+    print(f"norm of the reference gradient: {scala:.3e}")
     print()
     print("| h | errore relativo (avanti) | errore relativo (centrate) |")
     print("|---|---|---|")
@@ -137,14 +137,14 @@ def main() -> int:
         if ef < best_f[0]: best_f = (ef, h)
         if ec < best_c[0]: best_c = (ec, h)
         nota = ""
-        if abs(h - np.sqrt(EPS)) < 1e-12: nota = "  <- sqrt(eps), ottimo per avanti"
-        if abs(h - np.cbrt(EPS)) < 1e-12: nota = "  <- eps^(1/3), ottimo per centrate"
+        if abs(h - np.sqrt(EPS)) < 1e-12: nota = "  <- sqrt(eps), optimal for forward"
+        if abs(h - np.cbrt(EPS)) < 1e-12: nota = "  <- eps^(1/3), optimal for central"
         print(f"| {h:.2e} | {ef:.3e} | {ec:.3e} |{nota}")
     print()
     print(f"miglior errore in avanti : {best_f[0]:.2e} a h = {best_f[1]:.2e}   "
-          f"(il corso prevede ~1e-8)")
+          f"(the course predicts ~1e-8)")
     print(f"miglior errore centrate  : {best_c[0]:.2e} a h = {best_c[1]:.2e}   "
-          f"(il corso prevede ~1e-11)")
+          f"(the course predicts ~1e-11)")
     print()
 
     # ── Costo in valutazioni ────────────────────────────────────────────
@@ -153,22 +153,22 @@ def main() -> int:
     print("=" * 74)
     print("BILANCIO")
     print("=" * 74)
-    print(f"| metodo | valutazioni di f | tempo stimato | accuratezza |")
+    print(f"| method | evaluations of f | estimated time | accuracy |")
     print(f"|---|---|---|---|")
     print(f"| differenze in avanti | {nev_f} | {nev_f*t_f*1e3:7.2f} ms | {best_f[0]:.1e} |")
     print(f"| differenze centrate  | {nev_c} | {nev_c*t_f*1e3:7.2f} ms | {best_c[0]:.1e} |")
     print(f"| AD (modo inverso)    | {t_ad/t_f:.1f} | {t_ad*1e3:7.2f} ms | "
           f"precisione macchina |")
     print()
-    # Il budget per ciclo lo fissa il RATE DI CONTROLLO (mpc_rate_hz), non il
-    # passo di discretizzazione dt: sono due parametri distinti.
+    # The per-cycle budget is set by the CONTROL RATE (mpc_rate_hz), not by the
+    # discretisation step dt: they are two distinct parameters.
     rate = float(raw.get("mpc_rate_hz", 1.0 / cfg.dt))
     budget_ms = 1000.0 / rate
-    print(f"A {rate:g} Hz nominali il budget per ciclo e' {budget_ms:.0f} ms: "
-          f"le differenze centrate da sole ne userebbero "
+    print(f"At a nominal {rate:g} Hz the per-cycle budget is {budget_ms:.0f} ms: "
+          f"central differences alone would use "
           f"{nev_c*t_f*1e3/budget_ms*100:.0f}%.")
-    print("E il rapporto peggiora LINEARMENTE con n, quindi con l'orizzonte:")
-    print("e' l'argomento che rende discutibile allungare N (roadmap §1.3).")
+    print("And the ratio gets LINEARLY worse with n, hence with the horizon:")
+    print("that is the argument that makes lengthening N questionable.")
     print()
 
     # ── Hessiana esatta contro L-BFGS ───────────────────────────────────
@@ -186,9 +186,9 @@ def main() -> int:
         print(f"| {hess:14s} | {r.iterations:3d} | {r.solve_time_ms:7.1f} ms | "
               f"{r.cost:.3f} | {r.status} |")
     print()
-    print("Lettura: l'Hessiana esatta costa piu' lavoro per iterazione ma ne")
-    print("serve meno; L-BFGS evita le derivate seconde e paga in iterazioni.")
-    print("E' il compromesso Newton / quasi-Newton del §4.4.4, misurato senza")
+    print("Reading: the exact Hessian costs more work per iteration but needs")
+    print("fewer of them; L-BFGS avoids second derivatives and pays in iterations.")
+    print("It is the Newton / quasi-Newton trade-off of §4.4.4, measured without")
     print("scrivere un solutore.")
     return 0
 

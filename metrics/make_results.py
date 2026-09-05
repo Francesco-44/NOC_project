@@ -1,31 +1,32 @@
 #!/usr/bin/env python3
 """
-Generatore dei risultati per il report — un comando, un file di numeri.
+Results generator for the report — one command, one file of numbers.
 
-Esegue tutte le misure della roadmap e scrive:
+It runs all the measurements and writes:
 
-    metrics/out/results.json   tutti i numeri, in forma strutturata
-    metrics/out/results.md     lo stesso, in tabelle pronte da leggere
-    metrics/out/tex/           lo stesso, in LaTeX per il report (metrics/results_tex.py):
-                           metrics_macros.tex, metrics_body.tex,
-                           metrics_standalone.tex
+    metrics/out/results.json   every number, in structured form
+    metrics/out/results.md     the same, in tables ready to read
+    metrics/out/tex/           the same, in LaTeX for the report
+                           (metrics/results_tex.py): metrics_macros.tex,
+                           metrics_body.tex, metrics_standalone.tex
 
-Perche' esiste: i numeri di un report NON vanno copiati a mano dal terminale.
-Appena si ritocca un parametro divergono dal codice in silenzio — e' gia'
-successo in questo progetto con snippets/nlp_structure.py, rimasto a una
-taratura superata. Qui ogni numero e' calcolato dagli
-stessi identici moduli usati dagli strumenti interattivi, e il file porta con
-se' la provenienza (commit git, profilo, versioni) per essere verificabile.
+Why it exists: the numbers of a report must NOT be copied by hand from the
+terminal. As soon as a parameter is touched they diverge from the code in
+silence — it already happened in this project with snippets/nlp_structure.py,
+which stayed on a superseded tuning. Here every number is computed by the very
+same modules the interactive tools use, and the file carries its provenance
+(git commit, profile, versions) so that it can be verified.
 
-Le misure sono divise per CLASSE, perche' la classe decide se vanno rifatte:
+The measurements are split by CLASS, because the class decides when they have to
+be redone:
 
-  classe 1  proprieta' della formulazione. Non dipendono da nessuna run:
-            si calcolano una volta e basta.
-  classe 2  proprieta' dell'istanza (punto di lavoro). Variano ciclo per
-            ciclo: si riportano come profilo lungo una missione, non come
-            numero singolo.
-  classe 3  prestazione in anello chiuso. Dipendono da run e mondo: qui
-            servono davvero piu' missioni.
+  class 1  properties of the formulation. They do not depend on any run: they
+           are computed once and for all.
+  class 2  properties of the instance (operating point). They vary cycle by
+           cycle: they are reported as a profile along a mission, not as a
+           single number.
+  class 3  closed-loop performance. They depend on the run and the world: here
+           several missions are genuinely needed.
 
 Uso:
     python3 metrics/make_results.py
@@ -73,8 +74,8 @@ def provenance(profile: str, cfg) -> dict:
         "data_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "git_commit": _git("rev-parse", "HEAD"),
         "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
-        # Se l'albero e' sporco i numeri NON sono riproducibili da un commit:
-        # va detto nel file, non scoperto dopo.
+        # If the tree is dirty the numbers are NOT reproducible from a commit:
+        # it has to be said in the file, not discovered afterwards.
         "git_albero_sporco": dirty,
         "profilo": os.path.relpath(profile, _ROOT),
         "python": platform.python_version(),
@@ -111,12 +112,12 @@ def classe1(cfg, raw, quick: bool) -> dict:
         "con deriva laterale": (0.20, 0.02, 0.30),
         "rotazione rapida (w=1.0)": (0.30, 0.00, 1.00),
     }
-    # La griglia dei passi DERIVA dal dt deployato invece di essere fissa: con
-    # una griglia costante il passo che il report cita (\resDt) puo' non esserci,
-    # e "al dt deployato" finisce per riportare l'errore misurato a un altro
-    # passo. T e' otto volte dt cosi' che ogni livello lo divida esattamente
-    # (integrate() lo pretende, e con un numero non intero di passi l'errore
-    # misurato sarebbe il disallineamento dell'orizzonte, non l'ordine).
+    # The grid of steps is DERIVED from the deployed dt instead of being fixed:
+    # with a constant grid the step the report quotes (\resDt) may not be there,
+    # and "at the deployed dt" ends up reporting the error measured at another
+    # step. T is eight times dt so that every level divides it exactly
+    # (integrate() requires it, and with a non-integer number of steps the error
+    # is not comparable across levels).
     dts_dep = tuple(cfg.dt / 2 ** i for i in range(5))
     T_dep = 8.0 * cfg.dt
     integ = {}
@@ -144,9 +145,9 @@ def classe1(cfg, raw, quick: bool) -> dict:
     }
 
     # --- bersaglio locale: le tre metriche a confronto (§3.1) -----------
-    # Sono i numeri annotati sulla figura fig_local_target: il report li cita nel
-    # testo, e devono essere gli stessi. Calcolarli qui e' l'unico modo di
-    # garantirlo — una figura e una frase che si contraddicono sono peggio di
+    # These are the numbers annotated on the figure fig_local_target: the report
+    # quotes them in the text, and they must be the same. Computing them here is
+    # the only way to guarantee it — a figure and a sentence that contradict each
     # nessuna delle due.
     import fig_local_target as FLT
     out["bersaglio_locale"] = FLT.measure(cfg, raw)
@@ -166,10 +167,10 @@ def classe1(cfg, raw, quick: bool) -> dict:
     B = 3 if quick else 5
     xd, pd = ca.DM(x), ca.DM(p)
     g_ad = np.array(gf_fun(xd, pd)).ravel()
-    # Il rapporto AD/f e' un micro-benchmark su tempi di ~100 us: una singola
-    # coppia di misure e' inaffidabile (osservato oscillare fra 0.95 e 1.53,
-    # dove < 1 e' fisicamente impossibile). Si ripete la coppia e si riporta la
-    # MEDIANA con l'intervallo, invece di una cifra che finge precisione.
+    # The AD/f ratio is a micro-benchmark on times of ~100 us: a single
+    # measurement swings by tens of per cent (values below 1 have been seen,
+    # where < 1 is physically impossible). The pair is repeated and the MEDIAN
+    # reported with its interval, instead of a figure that fakes precision.
     K = 3 if quick else 5
     tads, tfs = [], []
     for _ in range(K):
@@ -225,7 +226,7 @@ def classe1(cfg, raw, quick: bool) -> dict:
     sc2 = common.SCENARIOS["narrow_gap"]()
     x0 = np.array([sc2.pose[0], sc2.pose[1], sc2.pose[2], 0.0, 0.0, 0.0])
     path = [(float(q[0]), float(q[1]), 0.0) for q in sc2.reference()]
-    d_safe = 1.1                      # scelto perche' il vincolo MORDA
+    d_safe = 1.1                      # chosen so that the constraint BITES
     _, _, S_h = EP.solve_mode(cfg, "l1", 1e9, x0, path, sc2.obstacles, d_safe)
     trh, _, _ = EP.solve_mode(cfg, "l1", 1e9, x0, path, sc2.obstacles, d_safe)
     import casadi as ca2  # noqa: F401
@@ -311,10 +312,10 @@ def classe2(cfg, raw, bagpath: str, quick: bool) -> dict:
     out["biforcazione"] = bif
 
     # --- integratore sugli orizzonti VERI della bag (§3.2) --------------
-    # Il test sintetico di classe1 misura l'ordine su un arco a velocita'
-    # costante: e' il regime giusto per stimare un ordine, non quello dell'MPC.
-    # Qui la stessa misura gira sulla sequenza di ingressi ottima di orizzonti
-    # realmente risolti, dove omega cambia segno e gli errori si cancellano in
+    # The synthetic class-1 test measures the order on a constant-velocity arc:
+    # that is the right regime to estimate an order, not the regime of the MPC.
+    # Here the same measurement runs on the optimal input sequence of horizons
+    # actually solved, where omega changes sign and the errors partly cancel.
     # parte invece di sommarsi.
     import integrator_bag as IB
     out["integratore_bag"] = IB.measure(cfg, raw, bagpath,
@@ -360,10 +361,10 @@ def classe3(cfg, raw, bagpath: str, quick: bool, integ: dict = None) -> dict:
         "offset_k0": off,
         "divergenza_fine_orizzonte": (med[N] - off) if med[N] is not None else None,
     }
-    # Il confronto che spiega perche' RK2 non aiuta l'anello chiuso. I due
-    # termini erano COSTANTI SCRITTE A MANO (1.74e-2 / 8.70e-5), misurate a
-    # dt=0.20 e citate sotto l'etichetta del dt deployato: appena il profilo si
-    # e' spostato a 0.35 il report ha cominciato a dire una cosa falsa senza che
+    # The comparison that explains why RK2 does not help the closed loop. The two
+    # numbers used to be constants measured at dt=0.20 and quoted under the label
+    # of the deployed dt: as soon as the profile moved to 0.35 the report started
+    # saying something false without anyone noticing.
     # niente se ne accorgesse. Ora vengono dalla misura sugli orizzonti veri.
     if integ:
         out["errore_predizione"]["errore_euler_orizzonte"] = \
@@ -372,9 +373,9 @@ def classe3(cfg, raw, bagpath: str, quick: bool, integ: dict = None) -> dict:
             integ["al_dt_deployato"]["errore_midpoint_m"]
 
     # --- integratore in anello chiuso (§3.2) ---------------------------
-    # L'errore di predizione e' una cosa, il costo pagato in anello chiuso e'
-    # un'altra: si applica solo il primo ingresso e A* ripianifica. Finora
-    # l'affermazione ("<=1.1% sul costo mediano") non era generata da nessuno
+    # The prediction error is one thing, the cost paid in closed loop is another:
+    # only the first input is applied and A* replans. Until now the claim
+    # ("<=1.1% on the median cost") was not generated by any
     # script; ora lo e'.
     import integrator_bag as IB
     out["integratore_anello"] = IB.closed_loop(cfg, raw, verbose=False)
@@ -422,11 +423,11 @@ def classe3(cfg, raw, bagpath: str, quick: bool, integ: dict = None) -> dict:
             "iter_theta": float(a["iter_theta"].mean()),
             "velocita_inutilizzata_da_v_ref": float(1.0 - cfg.v_ref / cfg.vx_max),
         }
-        # Il costo RELATIVO da solo inganna: J* varia di quasi due ordini di
-        # grandezza fra i cicli, quindi lo stesso aumento assoluto si legge come
-        # +1% o +40% a seconda del denominatore. Si registrano entrambi, piu' il
-        # fondo scala di J*, cosi' il report puo' citare la cifra che significa
-        # qualcosa invece di quella che fa impressione.
+        # The RELATIVE cost alone is misleading: J* varies by almost two orders of
+        # magnitude across cycles, so the same absolute increase reads as +1% or
+        # +40% depending on the denominator. Both are recorded, plus the full
+        # scale of J*, so that the report can quote the figure that means
+        # something instead of the one that impresses.
         dJ = a["J_con_terminale"] - a["J_senza_terminale"]
         out["vincolo_terminale"] = {
             "slack_max": float(a["slack_terminale"].max()),
@@ -448,10 +449,10 @@ def to_markdown(res: dict) -> str:
     L = []
     m = res["meta"]
     L.append("# Risultati — generati automaticamente\n")
-    L.append("> Non modificare a mano: rigenerare con `python3 metrics/make_results.py`.\n")
+    L.append("> Do not edit by hand: regenerate with `python3 metrics/make_results.py`.\n")
     L.append(f"- data: {m['data_utc']}")
-    L.append(f"- commit: `{m['git_commit'][:10]}` sul branch `{m['git_branch']}`"
-             + ("  **(albero di lavoro sporco: numeri non riproducibili da questo commit)**"
+    L.append(f"- commit: `{m['git_commit'][:10]}` on branch `{m['git_branch']}`"
+             + ("  **(dirty working tree: numbers not reproducible from this commit)**"
                 if m["git_albero_sporco"] else ""))
     L.append(f"- profilo: `{m['profilo']}`")
     L.append(f"- CasADi {m['casadi']}, numpy {m['numpy']}, Python {m['python']}\n")
@@ -463,10 +464,10 @@ def to_markdown(res: dict) -> str:
 
     c1 = res.get("classe1")
     if c1:
-        L.append("\n## Classe 1 — proprietà della formulazione\n")
-        L.append("*Indipendenti dalla run: si calcolano una volta sola.*\n")
+        L.append("\n## Class 1 — properties of the formulation\n")
+        L.append("*Independent of the run: computed once and for all.*\n")
         i = c1["integratore"]
-        L.append("\n### Ordine di troncamento (§2.1.3)\n")
+        L.append("\n### Truncation order (§2.1.3)\n")
         L.append("| regime | ordine Euler | ordine punto medio |")
         L.append("|---|---|---|")
         for nome, d in i["regimi"].items():
@@ -477,26 +478,26 @@ def to_markdown(res: dict) -> str:
 
         dv = c1["derivate"]
         L.append("\n### Derivate: AD contro differenze finite (§5.2–5.3)\n")
-        L.append("| metodo | valutazioni di f | accuratezza |")
+        L.append("| method | f evaluations | accuracy |")
         L.append("|---|---|---|")
         L.append(f"| differenze in avanti | {dv['valutazioni_fd_avanti']} | {dv['miglior_err_avanti']:.1e} |")
         L.append(f"| differenze centrate | {dv['valutazioni_fd_centrate']} | {dv['miglior_err_centrate']:.1e} |")
         L.append(f"| **AD inverso** | **{dv['ad_in_valutazioni_di_f']:.1f}** "
                  f"(intervallo {dv['ad_in_valutazioni_di_f_min']:.1f}–"
                  f"{dv['ad_in_valutazioni_di_f_max']:.1f}) | precisione macchina |")
-        L.append("\n*Il costo dell'AD è un micro-benchmark su tempi di ~100 μs: si riporta "
-                 "la mediana di più misure con il suo intervallo, perché una singola coppia "
-                 "oscilla sensibilmente. Quello che conta, ed è stabile, è che stia fra 1 e 3 "
-                 "come prevede il §5.3 — non la sua seconda cifra.*")
+        L.append("\n*The cost of AD is a micro-benchmark on times of ~100 μs: the median of "
+                 "several measurements is reported with its interval, because a single pair "
+                 "swings noticeably. What matters, and is stable, is that it lies between 1 "
+                 "and 3 as §5.3 predicts — not its second digit.*")
         if not dv.get("ad_ratio_attendibile", True):
-            L.append("\n> **Misura non attendibile**: qualche ripetizione ha dato un rapporto "
-                     "< 1, cioè un gradiente più veloce della funzione. Rieseguire a macchina "
-                     "scarica prima di usare questo numero.")
+            L.append("\n> **Unreliable measurement**: some repetitions gave a ratio < 1, i.e. a "
+                     "gradient faster than the function itself. Re-run on an idle machine "
+                     "before using this number.")
         L.append(f"\nPassi ottimi misurati: avanti {dv['h_ottimo_avanti']:.2e} "
                  f"(teorico √eps = {dv['h_teorico_avanti']:.2e}), centrate "
                  f"{dv['h_ottimo_centrate']:.2e} (teorico eps^(1/3) = {dv['h_teorico_centrate']:.2e}).")
-        L.append(f"Le differenze centrate userebbero il {dv['quota_budget_fd_centrate']*100:.0f}% "
-                 f"del budget di ciclo ({dv['budget_ciclo_ms']:.0f} ms).\n")
+        L.append(f"Central differences would use {dv['quota_budget_fd_centrate']*100:.0f}% "
+                 f"of the cycle budget ({dv['budget_ciclo_ms']:.0f} ms).\n")
 
         h = c1["hessiana"]
         L.append("\n### Hessiana esatta contro L-BFGS (§4.4.4)\n")
@@ -506,7 +507,7 @@ def to_markdown(res: dict) -> str:
             L.append(f"| {k} | {v['iterazioni']} | {v['J']:.3f} |")
 
         pe = c1["penalita_esatta"]
-        L.append("\n### Penalità esatta ℓ¹ (Thm 6.3.1)\n")
+        L.append("\n### Exact ℓ¹ penalty (Thm 6.3.1)\n")
         L.append(f"d_safe = {pe['d_safe']}, max|μ\\*| = {pe['max_mu_vincolo_distanza']:.3e}\n")
         L.append("| ρ | slack ℓ¹ | slack ℓ² |")
         L.append("|---|---|---|")
@@ -517,7 +518,7 @@ def to_markdown(res: dict) -> str:
                  f"pendenza ℓ² sulla coda = {pe['pendenza_l2_coda']:.2f} (attesa −1).\n")
 
         L.append("\n### Struttura dell'NLP\n")
-        L.append("| N | variabili | vincoli | densità jac | densità hess |")
+        L.append("| N | variables | constraints | jac density | hess density |")
         L.append("|---|---|---|---|---|")
         for r in c1["nlp"]["per_N"]:
             L.append(f"| {r['N']} | {r['n_var']} | {r['n_con']} | "
@@ -525,46 +526,46 @@ def to_markdown(res: dict) -> str:
 
     c2 = res.get("classe2")
     if c2:
-        L.append("\n\n## Classe 2 — proprietà dell'istanza\n")
-        L.append("*Variano ciclo per ciclo: il dato è il profilo, non un numero singolo.*\n")
+        L.append("\n\n## Class 2 — properties of the instance\n")
+        L.append("*They vary cycle by cycle: the datum is the profile, not a single number.*\n")
         k = c2["kkt"]
-        L.append("\n### KKT lungo la missione (§6.1)\n")
+        L.append("\n### KKT along the mission (§6.1)\n")
         L.append(f"LICQ sempre verificata: **{k['licq_sempre']}** · "
-                 f"complementarità stretta sempre: **{k['complementarita_stretta_sempre']}** · "
+                 f"strict complementarity always: **{k['complementarita_stretta_sempre']}** · "
                  f"SOC-C-2 sempre soddisfatta: **{k['soc_c2_sempre']}**\n")
-        L.append(f"Dimensione del cono critico fra **{k['cono_critico_min']}** e "
-                 f"**{k['cono_critico_max']}** a seconda del punto di lavoro "
-                 f"(vale l'identità `dim(cono) = n_var − vincoli attivi`: è il "
-                 f"complemento della saturazione, non una tendenza temporale).\n")
+        L.append(f"Critical cone dimension between **{k['cono_critico_min']}** and "
+                 f"**{k['cono_critico_max']}** depending on the operating point "
+                 f"(the identity `dim(cone) = n_var − active constraints` holds: it is "
+                 f"the complement of the saturation, not a trend in time).\n")
         L.append("| ciclo | t [s] | attivi | rango | LICQ | cono | λ_min proiettato |")
         L.append("|---|---|---|---|---|---|---|")
         for d in k["profilo"]:
             L.append(f"| {d['ciclo']} | {d['t']:.0f} | {d['n_attivi_totali']} | "
-                     f"{d['rango_jacobiano_attivo']} | {'sì' if d['licq'] else 'NO'} | "
+                     f"{d['rango_jacobiano_attivo']} | {'yes' if d['licq'] else 'NO'} | "
                      f"{d['dim_cono_critico']} | {d['hess_proj_lambda_min']:+.2e} |")
         b = c2["biforcazione"]["centred_pillar"]
         L.append(f"\n### Biforcazione (§4.4.5, Thm 4.4.6)\n")
         if b["soglia_sup"]:
-            L.append(f"Soglia fra W_obs = {b['soglia_inf']:.0f} e {b['soglia_sup']:.0f}; "
-                     f"il deployato è {res['meta']['parametri_chiave']['W_obs_sigmoid']:g} "
+            L.append(f"Threshold between W_obs = {b['soglia_inf']:.0f} and {b['soglia_sup']:.0f}; "
+                     f"the deployed one is {res['meta']['parametri_chiave']['W_obs_sigmoid']:g} "
                      f"({'sotto' if b['deployato_sotto_soglia'] else 'sopra'} soglia).")
         bb = c2["biforcazione"]["bag_ciclo_piu_impegnativo"]
-        L.append(f"Sul ciclo reale {bb['ciclo']}: biforca mai = **{bb['biforca_mai']}**.\n")
+        L.append(f"On the real cycle {bb['ciclo']}: never bifurcates = **{bb['biforca_mai']}**.\n")
 
     c3 = res.get("classe3")
     if c3:
         L.append("\n\n## Classe 3 — prestazione in anello chiuso\n")
-        L.append("*Dipendono da run e mondo: qui servono più missioni.*\n")
+        L.append("*They depend on the run and the world: several missions are needed here.*\n")
         e = c3["errore_predizione"]
-        L.append(f"\n### Errore di predizione (§7.2.5) — bag `{e['bag']}`, "
+        L.append(f"\n### Prediction error (§7.2.5) — bag `{e['bag']}`, "
                  f"{e['cicli_usati']} cicli\n")
-        L.append(f"Offset a k=0: {e['offset_k0']:.4f} m (allineamento temporale, non modello).")
+        L.append(f"Offset at k=0: {e['offset_k0']:.4f} m (time alignment, not the model).")
         riga = f"**Divergenza a fine orizzonte: {e['divergenza_fine_orizzonte']:.3f} m**"
         if "errore_euler_orizzonte" in e:
-            riga += (f", cioè {e['divergenza_fine_orizzonte']/e['errore_euler_orizzonte']:.0f}× "
-                     f"l'errore di Euler e "
+            riga += (f", i.e. {e['divergenza_fine_orizzonte']/e['errore_euler_orizzonte']:.0f}× "
+                     f"the Euler error and "
                      f"{e['divergenza_fine_orizzonte']/e['errore_midpoint_orizzonte']:.0f}× "
-                     f"quello del punto medio, sullo stesso orizzonte")
+                     f"the midpoint one, over the same horizon")
         L.append(riga + ".\n")
         if "path_following" in c3:
             pf = c3["path_following"]
@@ -574,13 +575,13 @@ def to_markdown(res: dict) -> str:
             L.append(f"| vx media [m/s] | {pf['vx_media_time']:.4f} | {pf['vx_media_theta']:.4f} |")
             L.append(f"| spostamento [m] | {pf['spostamento_time']:.4f} | {pf['spostamento_theta']:.4f} |")
             L.append(f"| iterazioni | {pf['iter_time']:.1f} | {pf['iter_theta']:.1f} |")
-            L.append(f"\n**+{pf['guadagno_spostamento']*100:.0f}% di avanzamento**; "
-                     f"v_ref lasciava inutilizzato il "
-                     f"{pf['velocita_inutilizzata_da_v_ref']*100:.0f}% della velocità.\n")
+            L.append(f"\n**+{pf['guadagno_spostamento']*100:.0f}% of progress**; "
+                     f"v_ref was leaving "
+                     f"{pf['velocita_inutilizzata_da_v_ref']*100:.0f}% of the speed unused.\n")
             vt = c3["vincolo_terminale"]
             L.append("\n### Vincolo terminale (§7.2.5)\n")
             L.append(f"Slack massimo {vt['slack_max']:.3e} — sempre ammissibile: "
-                     f"**{vt['sempre_ammissibile']}**. Costo del vincolo da "
+                     f"**{vt['sempre_ammissibile']}**. Cost of the constraint from "
                      f"{vt['costo_relativo_min']*100:+.1f}% a {vt['costo_relativo_max']*100:+.1f}%.\n")
     return "\n".join(L) + "\n"
 
@@ -593,13 +594,13 @@ def main() -> int:
     ap.add_argument("--only", nargs="*", default=None,
                     choices=["classe1", "classe2", "classe3"])
     ap.add_argument("--quick", action="store_true",
-                    help="meno punti di campionamento: per provare, non per il report")
+                    help="fewer sampling points: for a trial run, not for the report")
     ap.add_argument("--out", default=os.path.join(_HERE, "out"))
     ap.add_argument("--report-dir", default=None,
-                    help="albero Metrics/ del report da aggiornare "
+                    help="Metrics/ tree of the report to update "
                          "(default: report/Metrics)")
     ap.add_argument("--no-report", action="store_true",
-                    help="non toccare l'albero di compilazione del report")
+                    help="do not touch the build tree of the report")
     args = ap.parse_args()
 
     cfg, raw = common.load_profile(args.profile, [])
@@ -610,10 +611,10 @@ def main() -> int:
 
     t0 = time.perf_counter()
     if "classe1" in voci:
-        print("[1/3] classe 1 — proprietà della formulazione…", flush=True)
+        print("[1/3] class 1 — properties of the formulation…", flush=True)
         res["classe1"] = classe1(cfg, raw, args.quick)
     if "classe2" in voci:
-        print("[2/3] classe 2 — proprietà dell'istanza…", flush=True)
+        print("[2/3] class 2 — properties of the instance…", flush=True)
         res["classe2"] = classe2(cfg, raw, args.bag, args.quick)
     if "classe3" in voci:
         print("[3/3] classe 3 — prestazione in anello chiuso…", flush=True)
@@ -630,23 +631,24 @@ def main() -> int:
         fh.write(to_markdown(res))
     salvati = [pj, pm]
 
-    # LaTeX: stesse misure, forma citabile dal report. Se la generazione fallisce
-    # NON si perde la campagna (json e md sono gia' su disco): si stampa l'errore
-    # e si continua, perche' rifare i solve costa e rifare il .tex no.
+    # LaTeX: same measurements, in a form the report can cite. If the generation
+    # fails the campaign is NOT lost (json and md are already on disk): the error
+    # is printed and it carries on, because redoing the solves is expensive and
+    # redoing the .tex is not.
     try:
         import results_tex
         salvati += results_tex.write_all(
             res, os.path.join(args.out, "tex"),
             results_tex.load_extra(pj))
     except Exception as exc:
-        print(f"\nLaTeX NON generato: {exc}")
-        print("  (i numeri sono comunque in results.json; "
-              "riprovare con  python3 metrics/results_tex.py)")
+        print(f"\nLaTeX NOT generated: {exc}")
+        print("  (the numbers are in results.json anyway; "
+              "retry with  python3 metrics/results_tex.py)")
 
-    # Il report LaTeX legge macro, tabelle e figure da <build>/Metrics/. Senza
-    # questo passo il .tex resta indietro di una campagna e non si vede: compila
-    # lo stesso, con i numeri vecchi. Stesso trattamento del blocco sopra --- se
-    # fallisce non si perde la campagna.
+    # The LaTeX report reads macros, tables and figures from <build>/Metrics/.
+    # Without this step the .tex stays one campaign behind and it does not show:
+    # it compiles all the same, with the old numbers. Same treatment as the block
+    # above — if it fails the campaign is not lost.
     if not args.no_report:
         try:
             import sync_report
@@ -654,15 +656,15 @@ def main() -> int:
             n = len(sync_report.sync(os.path.join(args.out, "tex"), args.out, dest))
             print(f"\nreport aggiornato: {n} file in {dest}")
         except Exception as exc:
-            print(f"\nreport NON aggiornato: {exc}")
+            print(f"\nreport NOT updated: {exc}")
 
     print("\nsalvati:")
     for q in salvati:
         print(f"  {q}")
     print(f"durata {res['meta']['durata_s']:.0f} s")
     if res["meta"]["git_albero_sporco"]:
-        print("\nATTENZIONE: albero di lavoro sporco — questi numeri non sono")
-        print("riproducibili dal commit indicato. Committare prima di usarli nel report.")
+        print("\nWARNING: dirty working tree — these numbers are not")
+        print("reproducible from the stated commit. Commit before using them in the report.")
     return 0
 
 

@@ -1,52 +1,52 @@
 """
-mujoco_sim — impianto MuJoCo dell'Unitree G1 per lo stack A*+MPC.
+mujoco_sim — MuJoCo plant of the Unitree G1 for the A*+MPC stack.
 
-MuJoCo al posto di Gazebo: in Gazebo il G1 non avrebbe alcuna sorgente di moto
-senza scriverne una da zero, e si finirebbe comunque per scrivere a mano lo
-stesso impianto cinematico che MuJoCo da' gia' fatto.
+MuJoCo instead of Gazebo: in Gazebo the G1 would have no source of motion
+without writing one from scratch, and one would end up hand-writing the same
+kinematic plant MuJoCo already provides.
 
-Modalita' di moto
------------------
-  * physics=False (DEFAULT, l'unica usata qui) — la base viene mossa
-    CINEMATICAMENTE da /cmd_vel imponendo la posa del giunto libero:
+Motion modes
+------------
+  * physics=False (DEFAULT, the only one used here) — the base is moved
+    KINEMATICALLY by /cmd_vel, imposing the pose of the free joint:
 
         x_{k+1}   = x_k   + (vx cos(yaw_k) - vy sin(yaw_k)) dt
         y_{k+1}   = y_k   + (vx sin(yaw_k) + vy cos(yaw_k)) dt
         yaw_{k+1} = yaw_k + wz dt
 
-    che e' ESATTAMENTE il modello SE(2) olonomico su cui l'MPC ottimizza (con
-    costanti di tempo dell'attuatore nulle). Il disadattamento modello/impianto
-    e' quindi nullo per costruzione: e' una scelta deliberata, perche' rende gli
-    esperimenti di ottimizzazione (iterazioni IPOPT, condizionamento, warm start,
-    penalita' esatta, active-set vs interior-point) misure del SOLUTORE e non
-    del rumore dell'andatura.
+    which is EXACTLY the holonomic SE(2) model the MPC optimises over (with zero
+    actuator time constants). The model/plant mismatch is therefore nil by
+    construction: a deliberate choice, because it makes the optimization
+    experiments (IPOPT iterations, conditioning, warm start, exact penalty,
+    active set vs interior point) measurements of the SOLVER and not of gait
+    noise.
 
-  * physics=True — il G1 cammina sotto fisica pilotato dalla policy RL AMO sul
-    bus DDS Unitree (lowlevel_bridge.py). NON usata in questo branch: richiede
-    torch, unitree_sdk2py e cyclonedds in un ambiente separato, e sul materiale
-    di origine la camminata non e' verificata. Il codice resta perche' la strada
-    e' la stessa del robot reale.
+  * physics=True — the G1 walks under physics, driven by the AMO RL policy over
+    the Unitree DDS bus (lowlevel_bridge.py). NOT used here: it requires torch,
+    unitree_sdk2py and cyclonedds in a separate environment, and on the source
+    material the walking is not verified. The code stays because the path is the
+    same as on the real robot.
 
-Interfaccia ROS
----------------
-  IN   /cmd_vel                geometry_msgs/Twist  (vx, vy, wz corpo)
+ROS interface
+-------------
+  IN   /cmd_vel                geometry_msgs/Twist  (body vx, vy, wz)
   OUT  /odom                   nav_msgs/Odometry
   OUT  /livox/lidar            sensor_msgs/PointCloud2, frame `lidar_frame`
   OUT  /clock                  rosgraph_msgs/Clock
-  OUT  /joint_states           sensor_msgs/JointState (posa di stazionamento)
-  TF   odom -> base_link       posa della base
-  TF   odom -> lidar_frame     presa dal site MuJoCo che genera i raggi
+  OUT  /joint_states           sensor_msgs/JointState (standing pose)
+  TF   odom -> base_link       pose of the base
+  TF   odom -> lidar_frame     taken from the MuJoCo site that casts the rays
 
-Mid-360 simulato con mj_multiRay dal site `mid360`, con ray-cast limitato al
-gruppo geometrico dell'ambiente: il robot non mappa se stesso, quindi in
-simulazione il self-filtering non serve (serve sul robot reale, dove il LiDAR
-vede il rig di sostegno — vedi cloud_self_filter.py).
+Mid-360 simulated with mj_multiRay from the `mid360` site, with the ray-cast
+restricted to the geometry group of the environment: the robot does not map
+itself, so in simulation self-filtering is unnecessary (it is needed on the real
+robot, where the LiDAR sees the support rig — see cloud_self_filter.py).
 
-A differenza dell'originale, la TF del sensore viene pubblicata da questo nodo e
-non da robot_state_publisher: cosi' la nuvola e la trasformazione sono coerenti
-per costruzione e non servono l'URDF a 29 DoF ne' le sue mesh.
+Unlike the original, the TF of the sensor is published by this node and not by
+robot_state_publisher: this way the cloud and the transform are consistent by
+construction, and neither the 29-DoF URDF nor its meshes are needed.
 
-Derivato dal materiale del laboratorio CIHR (pacchetto policypilot).
+Derived from the material of the CIHR laboratory (policypilot package).
 """
 
 import math
@@ -74,8 +74,8 @@ from g1_sim.mujoco_world import build_model
 
 def default_g1_mjcf() -> str:
     """
-    MJCF del G1, cercato prima nella share del pacchetto installato e poi
-    nell'albero sorgente (layout --symlink-install). Nessun percorso assoluto.
+    MJCF of the G1, looked up first in the share of the installed package and
+    then in the source tree (--symlink-install layout). No absolute paths.
     """
     import os
     try:
@@ -92,7 +92,7 @@ def default_g1_mjcf() -> str:
 
 
 def _mat_to_quat(R):
-    """Matrice di rotazione 3x3 -> (x, y, z, w). Shepperd, ramo piu' stabile."""
+    """3x3 rotation matrix -> (x, y, z, w). Shepperd, most stable branch."""
     tr = R[0, 0] + R[1, 1] + R[2, 2]
     if tr > 0.0:
         s = math.sqrt(tr + 1.0) * 2.0
@@ -149,15 +149,15 @@ class MujocoSim(Node):
     def __init__(self):
         super().__init__('mujoco_sim')
         self.declare_parameter('g1_xml', '')   # default resolved below
-        # Mondo: 'industrial' (magazzino, default) oppure uno dei mondi con
-        # ostacoli non convessi — long_wall, horseshoe, dead_end. Vedi
+        # World: 'industrial' (the warehouse, default) or one of the worlds with
+        # non-convex obstacles — long_wall, horseshoe, dead_end. See
         # mujoco_world.WORLDS.
         self.declare_parameter('world', 'industrial')
-        # Con true la posa di spawn la decide il MONDO (ogni mondo ha un punto
-        # di partenza da cui la trappola ha senso); con false valgono spawn_x/
-        # spawn_y/spawn_yaw qui sotto. I valori di spawn_* restano quelli del
-        # magazzino, quindi cambiando mondo senza questo flag il robot nascerebbe
-        # dentro un muro.
+        # With true the spawn pose is decided by the WORLD (every world has a
+        # starting point from which its trap makes sense); with false the
+        # spawn_x/spawn_y/spawn_yaw below apply. The spawn_* values are those of
+        # the warehouse, so changing world without this flag would spawn the robot
+        # inside a wall.
         self.declare_parameter('use_world_spawn', True)
         self.declare_parameter('spawn_x', -12.0)
         self.declare_parameter('spawn_y', 0.0)
@@ -183,13 +183,13 @@ class MujocoSim(Node):
         self.declare_parameter('wz_limit', 1.0)
         self.declare_parameter('cmd_timeout', 1.0)
         self.declare_parameter('viewer', True)
-        # Cadenza di RENDERING del viewer passivo, DISACCOPPIATA da sim_rate_hz.
-        # viewer.sync() costa ~20 ms sotto WSLg (misurato, mondo industriale):
-        # chiamarlo a ogni _sim_tick (100 Hz) richiederebbe il 200% di un core,
-        # quindi il tick slitta, sim_t avanza piu' lentamente del tempo di parete
-        # e OGNI nodo con use_sim_time rallenta in proporzione (RTF misurato
-        # 0.305). Decimando a 30 Hz il rendering scende a ~60% di un core e il
-        # clock di simulazione torna in tempo reale. 0 disabilita il decimatore.
+        # RENDERING rate of the passive viewer, DECOUPLED from sim_rate_hz.
+        # viewer.sync() costs ~20 ms under WSLg (measured, industrial world):
+        # calling it at every _sim_tick (100 Hz) would take 200% of a core, so the
+        # tick slips, sim_t advances more slowly than wall time and EVERY node with
+        # use_sim_time slows down in proportion (measured RTF 0.305). Decimating to
+        # 30 Hz brings rendering down to ~60% of a core and the simulation clock
+        # back to real time. 0 disables the decimator.
         self.declare_parameter('viewer_fps', 30.0)
         # ---- physics / AMO mode ----
         # physics=False (default): kinematic teleport from /cmd_vel (fast, for
@@ -256,9 +256,9 @@ class MujocoSim(Node):
             self.yaw = float(self.get_parameter('spawn_yaw').value)
         gx, gy = self.info['world_goal']
         self.get_logger().info(
-            f"mondo '{self.info['world']}': {self.info['world_desc']} | "
+            f"world '{self.info['world']}': {self.info['world_desc']} | "
             f"spawn ({self.x:.1f}, {self.y:.1f}, yaw {self.yaw:.2f}) | "
-            f"goal suggerito ({gx:.1f}, {gy:.1f}) da assegnare con 2D Goal Pose")
+            f"suggested goal ({gx:.1f}, {gy:.1f}), to be sent with 2D Goal Pose")
         self.vx = self.vy = self.wz = 0.0
         self._last_cmd_t = 0.0
         self.cmd_timeout = float(self.get_parameter('cmd_timeout').value)
@@ -554,11 +554,11 @@ class MujocoSim(Node):
         self._viewer_sync()
 
     def _viewer_sync(self):
-        """Ridisegna il viewer al piu' a viewer_fps, in tempo di SIMULAZIONE.
+        """Redraw the viewer at most at viewer_fps, in SIMULATION time.
 
-        Chiamata a ogni tick, ma il ridisegno vero avviene solo quando e' scaduto
-        il periodo: cosi' il costo del rendering non entra nel passo di
-        integrazione e non trascina con se' il clock /clock."""
+        Called at every tick, but the actual redraw only happens when the period
+        has elapsed: this way the rendering cost does not enter the integration
+        step and does not drag the /clock with it."""
         if self.viewer is None or not self.viewer.is_running():
             return
         fps = self._viewer_fps
@@ -701,11 +701,11 @@ class MujocoSim(Node):
         sid = self.info['site_id']
         pnt = self.data.site_xpos[sid].copy()
         R = self.data.site_xmat[sid].reshape(3, 3)
-        # La TF del sensore viene pubblicata QUI, dalla stessa posa del site che
-        # genera i raggi: cosi' la nuvola e la trasformazione sono coerenti per
-        # costruzione e non serve robot_state_publisher (ne' l'URDF a 29 DoF) per
-        # avere la catena odom -> mid360_link. Il consumatore a valle
-        # (lidar_filter_node) riporta la nuvola nel frame di pianificazione.
+        # The TF of the sensor is published HERE, from the same pose as the site
+        # that casts the rays: this way the cloud and the transform are consistent
+        # by construction and robot_state_publisher (nor the 29-DoF URDF) is needed
+        # to have the odom -> mid360_link chain. The consumer downstream
+        # (lidar_filter_node) brings the cloud back into the planning frame.
         self._publish_lidar_tf(pnt, R)
         world_dirs = (R @ self._local_dirs.T).T
         mujoco.mj_multiRay(self.model, self.data, pnt, world_dirs.flatten(),
@@ -776,12 +776,12 @@ def main(args=None):
                 rclpy.shutdown()
         except Exception:
             pass
-        # Il viewer passivo di MuJoCo tiene in vita un thread non-daemon: senza
-        # questo il processo non termina su SIGINT e il launch deve escalare
-        # fino a SIGKILL dopo 15 s. Peggio: un simulatore sopravvissuto continua
-        # a pubblicare /odom e /clock, e la sessione successiva ne trova DUE in
-        # conflitto (posa fantasma e "jump back in time" in RViz).
-        # A questo punto la chiusura ROS e' gia' completa.
+        # The passive MuJoCo viewer keeps a non-daemon thread alive: without this
+        # the process does not terminate on SIGINT and the launch has to escalate
+        # to SIGTERM/SIGKILL. In the meantime the old process keeps publishing
+        # /odom and /clock, and the next session finds TWO of them in conflict
+        # (ghost pose and "jump back in time" in RViz).
+        # At this point the ROS shutdown is already complete.
         os._exit(0)
 
 

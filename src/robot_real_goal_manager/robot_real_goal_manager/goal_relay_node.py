@@ -59,9 +59,9 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        # rclpy.shutdown() puo' essere gia' stato chiamato dal gestore di
-        # segnale: richiamarlo solleva RCLError e fa uscire il nodo con codice 1
-        # anche quando lo spegnimento e' regolare.
+        # rclpy.shutdown() may already have been called by the signal handler:
+        # calling it again raises RCLError and makes the node exit with code 1 even
+        # when the shutdown is orderly.
         if rclpy.ok():
             rclpy.shutdown()
 

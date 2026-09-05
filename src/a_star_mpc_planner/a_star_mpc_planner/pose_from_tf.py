@@ -1,34 +1,34 @@
 """
-pose_from_tf — pubblica la posa del robot come PoseStamped leggendola da TF.
+pose_from_tf — publishes the robot pose as a PoseStamped, reading it from TF.
 
-Sorgente di posa ALTERNATIVA a odom_to_pose_node: invece di ripubblicare
-/odom, interroga TF a rate fisso. Utile quando la posa nasce da una catena di
-trasformazioni (EKF, SLAM) e non da un singolo topic Odometry.
+ALTERNATIVE pose source to odom_to_pose_node: instead of republishing /odom, it
+queries TF at a fixed rate. Useful when the pose comes from a chain of transforms
+(EKF, SLAM) and not from a single Odometry topic.
 
-Default di questo stack: `odom -> base_link`, cioe' il frame di pianificazione,
-perche' qui non c'e' alcuna mappa a priori (A* lavora sulla griglia gaussiana a
-orizzonte mobile). Nel progetto di origine i default erano `map -> base_footprint`
-perche' li' la posa veniva da slam_toolbox in modalita' localization.
+Default of this stack: `odom -> base_link`, i.e. the planning frame, because
+there is no prior map here (A* works on the moving-horizon Gaussian grid). In the
+original project the defaults were `map -> base_footprint`, because there the
+pose came from slam_toolbox in localization mode.
 
-RILEVAMENTO DI TF CONGELATA (tf_freeze_timeout)
------------------------------------------------
-Il lookup chiede ``Time()`` = "l'ultima disponibile", quindi quando l'odometria
-smette di alimentare TF il buffer continua a restituire PER SEMPRE la stessa
-trasformazione. Ripubblicarla con lo stamp corrente sarebbe indistinguibile da
-una posa sana: a valle il planner continuerebbe a ripianificare da una posa che
-non si muove piu', e il robot camminerebbe contro una posa stantia.
+WHY THE FREEZE CHECK
 
-Quindi: si pubblica solo finche' lo stamp PROPRIO della trasformazione avanza.
-Se resta fermo per tf_freeze_timeout si smette di pubblicare, il topic della
-posa tace, e il timeout a valle ferma il robot.
+The lookup asks for ``Time()`` = "the latest available", so when odometry stops
+feeding TF the buffer keeps returning the same transform FOREVER. Republishing it
+with the current stamp would be indistinguishable from a healthy pose:
+downstream, the planner would keep replanning from a pose that no longer moves,
+and the robot would walk against a stale pose.
 
-Il confronto e' fra stamp consecutivi, misurando da quanto stanno fermi
-sull'orologio LOCALE: non si confronta mai uno stamp remoto con l'orologio
-locale, quindi regge anche quando il produttore della posa sta dall'altra parte
-del collegamento e i due orologi non concordano.
+Hence: publishing continues only as long as the transform's OWN stamp advances.
+If it stays put for tf_freeze_timeout, publishing stops, the pose topic goes
+quiet, and the timeout downstream stops the robot.
 
-Intercetta una posa CONGELATA, non una SBAGLIATA: un'odometria che diverge
-mantiene gli stamp in avanzamento e supera questo controllo.
+The comparison is between consecutive stamps, measuring how long they have been
+still on the LOCAL clock: a remote stamp is never compared with the local clock,
+so it holds even when the producer of the pose is on the other side of the link
+and the two clocks disagree.
+
+It catches a FROZEN pose, not a WRONG one: odometry that drifts keeps its stamps
+advancing and passes this check.
 
 Ripreso dal progetto Unitree-G1 (policypilot/navigation/pose_from_tf.py).
 """

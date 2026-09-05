@@ -93,11 +93,11 @@ class MPCNode(Node):
         self.declare_parameter('mpc_obs_r',               0.5)
         self.declare_parameter('mpc_max_obs_constraints', 15)
         self.declare_parameter('mpc_obs_check_radius',    2.0)
-        # Schema di integrazione del canale di posizione (dispense §2.1.3):
-        # 'euler' (eq. 2.9, ordine 1) oppure 'midpoint' (eq. 2.10, ordine 2).
+        # Integration scheme of the position channel (lecture notes §2.1.3):
+        # 'euler' (eq. 2.9, order 1) or 'midpoint' (eq. 2.10, order 2).
         self.declare_parameter('mpc_integrator', 'euler')
-        # Riformulazioni del Capitolo 7 (roadmap §1.1 e §1.2). Entrambe
-        # spente per default: il comportamento deployato resta invariato.
+        # Reformulations of Chapter 7. Both off by default: the deployed behaviour
+        # stays unchanged.
         self.declare_parameter('mpc_path_mode', 'time')          # 'time' | 'theta'
         self.declare_parameter('mpc_theta_progress_weight', 50.0)
         self.declare_parameter('mpc_terminal_constraint', 'none')  # 'none' | 'equilibrium'
@@ -238,8 +238,8 @@ class MPCNode(Node):
         )
 
         # ── Subscribers ───────────────────────────────────────────────
-        # Nome del topic della posa: parametrico, e' l'unico punto in cui
-        # il robot entra in questo nodo. Il G1 pubblica su /robot_pose.
+        # Name of the pose topic: parametric, it is the only point where the robot
+        # enters this node. The G1 publishes on /robot_pose.
         self.declare_parameter('pose_topic', '/robot_pose')
         _pose_topic = self.get_parameter('pose_topic').value
         self._pose_topic = _pose_topic
@@ -691,17 +691,17 @@ class MPCNode(Node):
                 nxt_xy  = result.x_pred[lookahead_idx, :2]
                 nxt_yaw = float(result.x_pred[lookahead_idx, 2])
             else:
-                # Fallback: l'orizzonte non arriva a eff_lookahead. Si punta
-                # l'ultimo waypoint di A*.
+                # Fallback: the horizon does not reach eff_lookahead. Aim at the
+                # last A* waypoint.
                 #
-                # Lo yaw NON puo' essere quello corrente del robot: il
-                # controllore a valle insegue l'orientamento del setpoint, e
-                # "mantieni l'orientamento che hai" significa omega = 0. Se il
-                # fallback e' frequente il robot non ruota MAI: avanza dritto
-                # finche' il goal non gli finisce di fianco, e li' si pianta,
-                # perche' lo spostamento laterale e' fortemente penalizzato
-                # (R_vy >> R_vx) e non basta a chiudere l'errore da solo.
-                # Il riferimento corretto e' la direzione VERSO il waypoint.
+                # The yaw canNOT be the robot's current one: the controller
+                # downstream tracks the setpoint orientation, and "keep the
+                # orientation you have" means omega = 0. If the fallback is
+                # frequent the robot NEVER turns: it goes straight until the goal
+                # ends up beside it, and there it gets stuck, because lateral
+                # motion is heavily penalised (R_vy >> R_vx) and is not enough to
+                # close the error on its own.
+                # The correct reference is the direction TOWARDS the waypoint.
                 last_wp = self._a_star_path[-1]
                 nxt_xy  = np.array([float(last_wp[0]), float(last_wp[1])])
                 _d      = nxt_xy - robot_pos
@@ -766,15 +766,15 @@ class MPCNode(Node):
             float(self._fail_count),
             float(1 if result.security_mode else 0),
             float(self._adaptive_vx_max),   # [6] current adaptive vx limit
-            # [7..12] stato iniziale x0 dell'NLP, cioe' ESATTAMENTE cio' che e'
-            # stato passato al solutore. Serve a poter ri-risolvere lo stesso
-            # problema offline da una bag (metrics/): posizione e yaw si potrebbero
-            # dedurre da /mpc/predicted_path[0], ma le velocita' sono stimate
-            # qui dentro (EMA sulle differenze di posa) e senza queste non
-            # uscirebbero mai.
+            # [7..12] initial state x0 of the NLP, i.e. EXACTLY what was passed to
+            # the solver. It is what makes it possible to re-solve the same problem
+            # offline from a bag (metrics/): position and yaw could be derived from
+            # /mpc/predicted_path[0], but the velocities are estimated in here (EMA
+            # on pose differences) and without these they would never come out.
+
             float(state[0]), float(state[1]), float(state[2]),
             float(state[3]), float(state[4]), float(state[5]),
-            # [13] iterazioni di IPOPT dell'ultimo solve (-1 se non disponibili)
+            # [13] IPOPT iterations of the last solve (-1 if unavailable)
             float(result.iterations if hasattr(result, 'iterations') else -1),
         ]
         self._diagnostics_pub.publish(diag)

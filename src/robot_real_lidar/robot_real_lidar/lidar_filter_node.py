@@ -121,10 +121,10 @@ class LidarFilterNode(Node):
             return
 
         # Read XYZ from the raw cloud.
-        # read_points() restituisce un array STRUTTURATO (dtype con campi
-        # nominati), che non e' castabile a float32: il .view()+.reshape() che
-        # c'era prima falliva con "Cannot cast array data from dtype([('x',...".
-        # read_points_numpy() restituisce direttamente un (N, 3) float32.
+        # read_points() returns a STRUCTURED array (dtype with named fields), which
+        # cannot be cast to float32: the .view()+.reshape() used before failed with
+        # "Cannot cast array data from dtype([('x',...".
+        # read_points_numpy() returns a (N, 3) float32 array directly.
         pts = pc2.read_points_numpy(
             msg, field_names=("x", "y", "z"), skip_nans=True
         ).astype(np.float32, copy=False)

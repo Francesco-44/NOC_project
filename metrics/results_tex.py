@@ -1,41 +1,41 @@
 #!/usr/bin/env python3
 """
-Renderer LaTeX dei risultati — da metrics/out/results.json a un file .tex.
+LaTeX renderer of the results — from metrics/out/results.json to a .tex file.
 
-Perche' esiste, in una riga: `results.md` si legge, non si cita. Un report
-LaTeX ha bisogno di tabelle LaTeX e, soprattutto, di **numeri richiamabili dal
-testo corrente**: se nel report scrivi "l'ordine misurato e' 2.00" a mano, quel
-2.00 e' gia' morto: sopravvive al prossimo `make_results.py` senza avvisare.
+Why it exists, in one line: `results.md` is read, not cited. A LaTeX report
+needs LaTeX tables and, above all, **numbers callable from running text**: if
+the report says "the measured order is 2.00" by hand, that 2.00 is already
+dead: it survives the next `make_results.py` without warning.
 
-Genera quindi TRE file, in `metrics/out/tex/`:
+It therefore generates THREE files in `metrics/out/tex/`:
 
-  metrics_macros.tex      una macro per ogni scalare (\\resOrderMidpoint, ...).
-                          E' questo il pezzo che rende l'aggiornamento
-                          automatico: nel report si scrive $\\resOrderMidpoint$
-                          e il numero segue il codice da solo.
-  metrics_body.tex        sezioni e tabelle, SENZA preambolo: e' il file da
-                          \\input{} dentro Report.tex quando la struttura del
-                          report sara' decisa.
-  metrics_standalone.tex  preambolo minimo + i due file sopra: compila da solo
-                          nel repo del report, senza toccare Report.tex.
+  metrics_macros.tex      one macro per scalar (\\resOrderMidpoint, ...). This
+                          is the piece that makes the update automatic: the
+                          report writes $\\resOrderMidpoint$ and the number
+                          follows the code on its own.
+  metrics_body.tex        sections and tables, WITHOUT a preamble: the file to
+                          \\input{} inside Report.tex once the structure of the
+                          report is settled.
+  metrics_standalone.tex  minimal preamble + the two files above: it compiles on
+                          its own in the report repository, without touching
+                          Report.tex.
 
-L'ordine delle sezioni segue il report, non il codice: modello e
-discretizzazione, struttura dell'NLP, derivate, condizioni di ottimalita',
-regolarita' della soluzione, riformulazioni, campagne in anello chiuso. Ogni
-sezione porta un `\\resNote{...}` che dice a quale sezione del report e'
-destinata: al momento dell'integrazione si svuota quella macro e le note
-spariscono tutte insieme.
+The order of the sections follows the report, not the code: model and
+discretisation, NLP structure, derivatives, optimality conditions, regularity of
+the solution, reformulations, closed-loop campaigns. Every section carries a
+`\\resNote{...}` saying which section of the report it is meant for: at
+integration time that macro is emptied and the notes all disappear together.
 
-Il contenuto .tex e' in inglese perche' il report lo e': deve essere
-copiaincollabile senza tradurre.
+The .tex content is in English because the report is: it has to be
+copy-pasteable without translation.
 
-Uso:
-    python3 metrics/results_tex.py                     # da metrics/out/results.json
-    python3 metrics/results_tex.py --results altro.json --out /tmp/tex
-    python3 metrics/results_tex.py --check             # solo verifica sintattica
+Usage:
+    python3 metrics/results_tex.py                     # from metrics/out/results.json
+    python3 metrics/results_tex.py --results other.json --out /tmp/tex
+    python3 metrics/results_tex.py --check             # syntax check only
 
-Viene invocato anche in coda a `metrics/make_results.py`, quindi un
-`python3 metrics/make_results.py` aggiorna misure e LaTeX in un colpo solo.
+It is also invoked at the end of `metrics/make_results.py`, so a single
+`python3 metrics/make_results.py` updates measurements and LaTeX in one go.
 """
 from __future__ import annotations
 
@@ -51,17 +51,17 @@ _ROOT = os.path.dirname(_HERE)
 
 
 # ---------------------------------------------------------------------------
-# Formattazione dei numeri
+# Number formatting
 #
-# Regola: le macro numeriche si espandono in contenuto da usare DENTRO $...$
-# (quindi "1.29\times 10^{-10}" e non "$1.29\times 10^{-10}$"), le macro
+# Rule: the numeric macros expand to content to be used INSIDE $...$
+# (hence "1.29\times 10^{-10}" and not "$1.29\times 10^{-10}$"), the macros
 # testuali in testo normale. E' dichiarata in testa a metrics_macros.tex.
 # ---------------------------------------------------------------------------
 DASH = "---"
 
 
 def sci(v, d: int = 2) -> str:
-    """Notazione scientifica in forma LaTeX, senza delimitatori di math mode."""
+    """Scientific notation in LaTeX form, without math-mode delimiters."""
     if v is None:
         return DASH
     v = float(v)
@@ -77,7 +77,7 @@ def fx(v, d: int = 2) -> str:
 
 
 def smart(v, sig: int = 3) -> str:
-    """Virgola fissa se il numero e' leggibile cosi', scientifica altrimenti."""
+    """Fixed point if the number reads well that way, scientific otherwise."""
     if v is None:
         return DASH
     v = float(v)
@@ -97,18 +97,18 @@ def pc(v, d: int = 1) -> str:
 
 def m(s: str) -> str:
     """
-    Avvolge in $...$ un valore gia' formattato.
+    Wraps an already formatted value in $...$.
 
-    Serve perche' sci()/smart() producono contenuto da math mode
-    ("1.74\\times 10^{-2}"): dentro una cella di tabella va delimitato, o
-    LaTeX si ferma su \\times fuori da $. Le macro invece restano nude, perche'
-    nel testo del report si scrivono gia' dentro $...$.
+    Needed because sci()/smart() produce math-mode content
+    ("1.74\\times 10^{-2}"): inside a table cell it has to be delimited, or LaTeX
+    stops at \\times outside $. The macros instead stay bare, because in the
+    report text they are already written inside $...$.
     """
     return s if s == DASH else f"${s}$"
 
 
-# I regimi di moto arrivano dal JSON con i nomi italiani di make_results.py;
-# il documento e' in inglese perche' il report lo e'.
+# The motion regimes arrive from the JSON with the Italian names of
+# make_results.py; the document is in English because the report is.
 REGIMES_EN = {
     "nominale (vx=0.2, w=0.3)": "nominal ($v_x=0.2$, $\\omega=0.3$)",
     "con deriva laterale": "with lateral drift",
@@ -120,8 +120,8 @@ def regime(name: str) -> str:
     return REGIMES_EN.get(name, esc(name))
 
 
-# Gli esiti degli script satellite sono stringhe italiane, a volte con enfasi in
-# markdown (**...**), che in LaTeX resterebbe letterale.
+# The outcomes of the satellite scripts are Italian strings, sometimes with
+# markdown emphasis (**...**), which would stay literal in LaTeX.
 OUTCOMES_EN = {
     "vincolo inattivo": "constraint inactive",
     "tightening efficace": "tightening effective",
@@ -130,7 +130,7 @@ OUTCOMES_EN = {
 }
 
 
-# I regimi del confronto fra solutori arrivano anch'essi in italiano.
+# The regimes of the solver comparison also arrive in Italian.
 SOLVER_REGIMES_EN = {
     "penalty (ostacoli nel costo)": "penalty (obstacles in the cost)",
     "l1 (ostacoli come vincoli)": "$\\ell^1$ (obstacles as constraints)",
@@ -152,7 +152,7 @@ def yesno(b) -> str:
 
 
 def esc(s) -> str:
-    """Escape del testo che finisce in LaTeX (percorsi, nomi di bag, ...)."""
+    """Escape of text that ends up in LaTeX (paths, bag names, ...)."""
     if s is None:
         return DASH
     out = str(s)
@@ -165,7 +165,7 @@ def esc(s) -> str:
 
 
 def tt(s) -> str:
-    """Testo a spaziatura fissa, con escape."""
+    """Monospaced text, escaped."""
     return r"\texttt{" + esc(s) + "}"
 
 
@@ -174,18 +174,18 @@ def tt(s) -> str:
 # ---------------------------------------------------------------------------
 class Macros:
     """
-    Accumula le coppie nome/valore che diventeranno \\resdef{...}{...}.
+    Accumulates the name/value pairs that become \\resdef{...}{...}.
 
-    Il nome deve essere di sole lettere: in LaTeX una macro non puo' contenere
-    cifre ne' underscore. `add` lo verifica invece di produrre un file che non
+    The name must consist of letters only: in LaTeX a macro cannot contain digits
+    or underscores. `add` checks it instead of producing a file that does not
     compila.
     """
 
     _OK = re.compile(r"^res[A-Za-z]+$")
 
     def __init__(self) -> None:
-        # I parametri deployati servono anche alle sezioni alimentate dagli
-        # script satellite, che non ricevono results.json.
+        # The deployed parameters are needed by the sections fed by the
+        # satellite scripts too, which do not receive results.json.
         self.params: dict = {}
         self._groups: list[tuple[str, list[tuple[str, str, str]]]] = []
         self._seen: set[str] = set()
@@ -199,10 +199,10 @@ class Macros:
         if self._cur is None:
             self.group("misc")
         if not self._OK.match(name):
-            raise ValueError(f"nome di macro non valido per LaTeX: {name!r} "
-                             "(prefisso 'res' + sole lettere)")
+            raise ValueError(f"invalid macro name for LaTeX: {name!r} "
+                             "(prefix 'res' + letters only)")
         if name in self._seen:
-            raise ValueError(f"macro duplicata: {name!r}")
+            raise ValueError(f"duplicate macro: {name!r}")
         self._seen.add(name)
         self._cur.append((name, value, comment))
         return "\\" + name
@@ -210,31 +210,31 @@ class Macros:
     def render(self, meta: dict) -> str:
         L = [
             "% " + "=" * 72,
-            "% metrics_macros.tex — GENERATO AUTOMATICAMENTE, NON MODIFICARE A MANO",
+            "% metrics_macros.tex — AUTOMATICALLY GENERATED, DO NOT EDIT BY HAND",
             "%",
-            "%   rigenerare con:  python3 metrics/make_results.py",
-            "%              o con: python3 metrics/results_tex.py",
+            "%   regenerate with: python3 metrics/make_results.py",
+            "%             or with: python3 metrics/results_tex.py",
             "%",
             f"%   commit {meta.get('git_commit','')[:10]} on {meta.get('git_branch','')}"
             f"   ({meta.get('data_utc','')})",
             "%",
-            "% CONVENZIONE",
-            "%   - le macro NUMERICHE si espandono in contenuto da math mode:",
-            "%       si scrive  $\\resOrderMidpoint$  e non  \\resOrderMidpoint",
-            "%   - le macro TESTUALI (branch, commit, profilo, bag) vanno in testo.",
+            "% CONVENTION",
+            "%   - the NUMERIC macros expand to math-mode content:",
+            "%       one writes  $\\resOrderMidpoint$  and not  \\resOrderMidpoint",
+            "%   - the TEXT macros (branch, commit, profile, bag) go in text mode.",
             "%",
-            "% USO NEL REPORT",
-            "%   \\input{metrics_macros}   nel preambolo, poi nel corpo:",
+            "% USE IN THE REPORT",
+            "%   \\input{metrics_macros}   in the preamble, then in the body:",
             "%       ``the measured order is $\\resOrderMidpoint$, against",
             "%         $\\resOrderEuler$ for forward Euler''",
-            "%   Il numero segue il codice: nessuna cifra copiata a mano.",
+            "%   The number follows the code: no digit copied by hand.",
             "% " + "=" * 72,
             "",
             r"\providecommand{\resdef}[2]{\expandafter\def\csname #1\endcsname{#2}}",
             "",
-            "% Richiamo delle tabelle. Ognuna sta in un file suo sotto tab/, cosi'",
-            "% il report la include dove vuole e resta viva a ogni rigenerazione.",
-            "% Chi compila da un'altra cartella ridefinisce solo \\restabdir:",
+            "% Table lookup. Each one lives in its own file under tab/, so the",
+            "% report includes it where it wants and it stays live at every regeneration.",
+            "% Compiling from another folder only redefines \\restabdir:",
             "%     \\renewcommand{\\restabdir}{Metrics/tab}",
             r"\providecommand{\restabdir}{tab}",
             r"\providecommand{\restab}[1]{\input{\restabdir/#1}}",
@@ -256,12 +256,12 @@ class Macros:
 
 
 # ---------------------------------------------------------------------------
-# Utilita' per le tabelle
+# Table utilities
 # ---------------------------------------------------------------------------
-# Le tabelle non vengono inlineate nel corpo: ognuna finisce in un file suo,
-# sotto tab/, e sia il documento di staging sia Report_metrics.tex la
-# richiamano con \restab{nome}. Una sola sorgente, due consumatori, e il
-# report resta vivo quando si rigenera.
+# The tables are not inlined in the body: each one ends up in a file of its own,
+# under tab/, and both the staging document and Report_metrics.tex pull it in
+# with \restab{name}. One source, two consumers, and the
+# report stays live when it is regenerated.
 TABLES: dict[str, list[str]] = {}
 
 
@@ -273,16 +273,16 @@ def _tabname(label: str) -> str:
 
 def table(spec: str, header: list[str], rows: list[list[str]], caption: str,
           label: str, small: bool = True, note: str = "") -> list[str]:
-    """Registra il corpo della tabella e restituisce il float che la include.
+    """Register the table body and return the float that includes it.
 
-    IL FILE GENERATO CONTIENE SOLO IL TABULAR — niente float, niente caption,
-    niente label. La didascalia sta nel documento che include la tabella, cosi'
-    puo' essere riscritta a mano dove si sta scrivendo, invece che in questo
-    generatore. Un file rigenerato non puo' quindi cancellare una didascalia
-    scritta nel report, che era il modo in cui si perdevano.
+    THE GENERATED FILE CONTAINS ONLY THE TABULAR — no float, no caption, no
+    label. The caption lives in the document that includes the table, so it can be
+    rewritten by hand where the writing happens, instead of in this generator. A
+    regenerated file therefore cannot wipe out a caption written in the report,
+    which was how captions used to get lost.
 
-    `metrics_body.tex` continua a essere autosufficiente perche' il float che
-    questa funzione restituisce porta con se' la didascalia predefinita.
+    `metrics_body.tex` remains self-contained because the float this function
+    returns carries the default caption with it.
     """
     T = [f"\\begin{{tabular}}{{{spec}}}"]
     T.append(r"  \toprule")
@@ -309,43 +309,43 @@ def table(spec: str, header: list[str], rows: list[list[str]], caption: str,
 
 
 # ---------------------------------------------------------------------------
-# Sezioni del corpo, nell'ordine in cui serviranno nel report
+# Sections of the body, in the order they will be needed in the report
 # ---------------------------------------------------------------------------
 def sec_provenance(res: dict, M: Macros) -> list[str]:
     m = res["meta"]
     p = m["parametri_chiave"]
     M.params = dict(p)
-    M.group("provenienza e profilo")
+    M.group("provenance and profile")
     commit = M.add("resCommit", esc(m.get("git_commit", "")[:10]), "commit corto")
     branch = M.add("resBranch", esc(m.get("git_branch", "")), "branch")
     profile = M.add("resProfile", tt(os.path.basename(m.get("profilo", ""))), "file YAML")
-    date = M.add("resDate", esc(m.get("data_utc", "")[:10]), "data della run")
+    date = M.add("resDate", esc(m.get("data_utc", "")[:10]), "date of the run")
     M.add("resCasadi", esc(m.get("casadi", "")))
     M.add("resNumpy", esc(m.get("numpy", "")))
     M.add("resPython", esc(m.get("python", "")))
-    bag = M.add("resBag", tt(os.path.basename(str(m.get("bag", "")).rstrip("/"))), "bag usato")
+    bag = M.add("resBag", tt(os.path.basename(str(m.get("bag", "")).rstrip("/"))), "bag used")
 
-    M.group("parametri deployati (dal profilo, non copiati a mano)")
+    M.group("deployed parameters (from the profile, not copied by hand)")
     N = M.add("resN", str(p["N"]), "orizzonte in passi")
-    dt = M.add("resDt", fx(p["dt"], 2), "passo di campionamento [s]")
+    dt = M.add("resDt", fx(p["dt"], 2), "sampling step [s]")
     M.add("resHorizonSeconds", fx(p["N"] * p["dt"], 2), "N*dt [s]")
-    M.add("resVref", fx(p["v_ref"], 2), "velocita' di crociera [m/s]")
+    M.add("resVref", fx(p["v_ref"], 2), "cruise speed [m/s]")
     M.add("resVxMax", fx(p["vx_max"], 2))
     if "vx_min" in p:
-        # negativo: il report lo usa dentro un intervallo, quindi serve col segno
-        M.add("resVxMin", fx(p["vx_min"], 2), "limite di retromarcia [m/s]")
-        M.add("resVxMinAbs", fx(abs(p["vx_min"]), 2), "modulo del limite di retromarcia")
+        # negative: the report uses it inside an interval, so the sign is needed
+        M.add("resVxMin", fx(p["vx_min"], 2), "reverse limit [m/s]")
+        M.add("resVxMinAbs", fx(abs(p["vx_min"]), 2), "magnitude of the reverse limit")
     M.add("resVyMax", fx(p["vy_max"], 2))
     M.add("resOmegaMax", fx(p["omega_max"], 2))
-    M.add("resWobsDep", smart(p["W_obs_sigmoid"]), "peso della barriera")
-    M.add("resObsRDep", fx(p["obs_r"], 2), "raggio di sicurezza [m]")
+    M.add("resWobsDep", smart(p["W_obs_sigmoid"]), "weight of the barrier")
+    M.add("resObsRDep", fx(p["obs_r"], 2), "safety radius [m]")
     if "obs_alpha" in p:
-        M.add("resAobsDep", smart(p["obs_alpha"]), "pendenza della barriera")
+        M.add("resAobsDep", smart(p["obs_alpha"]), "slope of the barrier")
         M.add("resObsCheckR", fx(p["obs_check_radius"], 1),
-              "raggio di ricerca degli ostacoli [m]")
+              "obstacle search radius [m]")
         M.add("resMobs", str(int(p["max_obs_constraints"])),
-              "numero fisso di termini di ostacolo")
-    M.add("resTauV", smart(p["tau_v"]), "costante di tempo [s]")
+              "fixed number of obstacle terms")
+    M.add("resTauV", smart(p["tau_v"]), "time constant [s]")
     M.add("resIntegrator", esc(p["integrator"]))
     M.add("resPathMode", esc(p["path_mode"]))
     M.add("resTerminalMode", esc(p["terminal_constraint"]))
@@ -397,7 +397,7 @@ def sec_discretisation(res: dict, M: Macros) -> list[str]:
     b = res.get("classe2", {}).get("integratore_bag")
     if not d:
         return []
-    M.group("discretizzazione (ordine di troncamento)")
+    M.group("discretisation (truncation order)")
     reg = d["regimi"]
     nom_key = next(iter(reg))
     nom = reg[nom_key]
@@ -407,7 +407,7 @@ def sec_discretisation(res: dict, M: Macros) -> list[str]:
     ee = M.add("resErrEulerDep", sci(dep["errore_euler_m"]), "errore a dt deployato [m], arco sintetico")
     em = M.add("resErrMidpointDep", sci(dep["errore_midpoint_m"]))
     gain = M.add("resIntegratorGain", f"{dep['guadagno']:.0f}", "rapporto Euler/punto medio")
-    Tsyn = M.add("resOrderWindow", fx(d.get("orizzonte_s", 3.0), 2), "finestra del test sintetico [s]")
+    Tsyn = M.add("resOrderWindow", fx(d.get("orizzonte_s", 3.0), 2), "window of the synthetic test [s]")
 
     L = [
         r"\resSubsec{Model discretisation: truncation order}",
@@ -437,20 +437,20 @@ def sec_discretisation(res: dict, M: Macros) -> list[str]:
 
     bl = res.get("classe1", {}).get("bersaglio_locale")
     if bl:
-        M.group("bersaglio locale: le tre metriche (figura §3.1)")
-        M.add("resFigWorld", esc(bl["mondo"]), "mondo della figura")
+        M.group("local target: the three metrics (figure §3.1)")
+        M.add("resFigWorld", esc(bl["mondo"]), "world of the figure")
         M.add("resFigProjGeo", fx(bl["geo_proiezione"], 1),
-              "geodetica del bersaglio scelto dalla proiezione [m]")
+              "geodesic of the target chosen by projection [m]")
         M.add("resFigEuclGeo", fx(bl["geo_argmin_euclideo"], 1),
-              "geodetica del bersaglio scelto dall'argmin euclideo [m]")
+              "geodesic of the target chosen by the euclidean argmin [m]")
         M.add("resFigGeoGeo", fx(bl["geo_geodetica"], 1),
-              "geodetica del bersaglio scelto dalla geodetica [m]")
+              "geodesic of the target chosen by the geodesic [m]")
 
     if not b:
         return L
 
-    # --- la stessa misura su orizzonti VERI ------------------------------
-    M.group("integratore su orizzonti veri (bag)")
+    # --- the same measurement on REAL horizons ---------------------------
+    M.group("integrator on real horizons (bag)")
     bd = b["al_dt_deployato"]
     bc = M.add("resIntegBagCycles", str(b["cicli_usati"]), "orizzonti ri-risolti")
     bbag = M.add("resIntegBagName", esc(b["bag"]), "bag usata")
@@ -461,8 +461,8 @@ def sec_discretisation(res: dict, M: Macros) -> list[str]:
     bg = M.add("resIntegBagGain", f"{bd['guadagno']:.0f}", "rapporto sugli orizzonti veri")
     boe = M.add("resIntegBagOrderEuler", fx(b["ordine"]["euler"], 2))
     bom = M.add("resIntegBagOrderMidpoint", fx(b["ordine"]["midpoint"], 2))
-    bw = M.add("resIntegBagOmega", fx(b["omega_ptp_mediano"], 2), "escursione di omega [rad/s]")
-    bl = M.add("resLagFloor", sci(b["lag_mediano_m"]), "spostamento trascurato dal lag [m]")
+    bw = M.add("resIntegBagOmega", fx(b["omega_ptp_mediano"], 2), "excursion of omega [rad/s]")
+    bl = M.add("resLagFloor", sci(b["lag_mediano_m"]), "displacement neglected by the lag [m]")
 
     L += [
         "",
@@ -530,13 +530,13 @@ def sec_prediction(res: dict, M: Macros) -> list[str]:
     e = res.get("classe3", {}).get("errore_predizione")
     if not e:
         return []
-    M.group("errore di predizione in anello aperto")
-    cyc = M.add("resPredCycles", str(e["cicli_usati"]), "cicli del bag usati")
+    M.group("open-loop prediction error")
+    cyc = M.add("resPredCycles", str(e["cicli_usati"]), "bag cycles used")
     off = M.add("resPredOffset", fx(e["offset_k0"], 4), "offset a k=0 [m]")
     div = M.add("resPredDivergence", fx(e["divergenza_fine_orizzonte"], 3),
-                "divergenza a fine orizzonte [m]")
-    # I due denominatori vengono dalla misura sugli orizzonti VERI (classe2),
-    # non piu' da costanti scritte a mano al passo sbagliato.
+                "divergence at the end of the horizon [m]")
+    # The two denominators come from the measurement on the REAL horizons
+    # (class 2), no longer from constants written by hand at the wrong step.
     r_eul = e["divergenza_fine_orizzonte"] / e["errore_euler_orizzonte"]
     r_mid = e["divergenza_fine_orizzonte"] / e["errore_midpoint_orizzonte"]
     ve = M.add("resPredVsEuler", f"{r_eul:.0f}", "divergenza / errore Euler")
@@ -583,22 +583,22 @@ def sec_nlp(res: dict, M: Macros) -> list[str]:
     Ndep = res["meta"]["parametri_chiave"]["N"]
     dep = next((r for r in per_N if r["N"] == Ndep), per_N[0])
 
-    M.group("struttura e sparsita' dell'NLP")
+    M.group("structure and sparsity of the NLP")
     nv = M.add("resNvar", str(dep["n_var"]), f"variabili decisionali a N={Ndep}")
     nc = M.add("resNcon", str(dep["n_con"]))
-    neq = M.add("resNeq", str(dep["n_eq"]), "vincoli di uguaglianza")
+    neq = M.add("resNeq", str(dep["n_eq"]), "equality constraints")
     nin = M.add("resNineq", str(dep["n_ineq"]), "box sugli ingressi")
     npar = M.add("resNpar", str(dep["n_par"]), "parametri CasADi")
     jd = M.add("resJacDensity", fx(100 * dep["jac_density"], 2), "densita' jacobiano [%]")
-    hd = M.add("resHessDensity", fx(100 * dep["hess_density"], 2), "densita' hessiana [%]")
-    # Scomposizione "alla Report.tex": stato/ingresso, dinamica/condizione
-    # iniziale, termini di barriera. Guardati con .get() perche' una cache
-    # generata prima di nlp_structure.structure() averli non li contiene.
+    hd = M.add("resHessDensity", fx(100 * dep["hess_density"], 2), "Hessian density [%]")
+    # Breakdown "as in Report.tex": state/input, dynamics/initial condition,
+    # barrier terms. Guarded with .get() because a cache generated before
+    # nlp_structure.structure() had them does not contain them.
     if all(k in dep for k in ("n_var_state", "n_var_input", "n_eq_dyn", "n_barrier")):
-        M.add("resNvarState", str(dep["n_var_state"]), "variabili di stato")
-        M.add("resNvarInput", str(dep["n_var_input"]), "variabili di ingresso")
-        M.add("resNeqDyn", str(dep["n_eq_dyn"]), "uguaglianze di dinamica")
-        M.add("resNBarrier", str(dep["n_barrier"]), "termini di barriera nel costo")
+        M.add("resNvarState", str(dep["n_var_state"]), "state variables")
+        M.add("resNvarInput", str(dep["n_var_input"]), "input variables")
+        M.add("resNeqDyn", str(dep["n_eq_dyn"]), "dynamics equalities")
+        M.add("resNBarrier", str(dep["n_barrier"]), "barrier terms in the cost")
     big = max(per_N, key=lambda r: r["N"])
     M.add("resNvarBig", str(big["n_var"]), f"variabili a N={big['N']}")
     M.add("resNbig", str(big["N"]))
@@ -647,20 +647,20 @@ def sec_derivatives(res: dict, M: Macros) -> list[str]:
     d = res.get("classe1", {}).get("derivate")
     if not d:
         return []
-    M.group("derivate: AD contro differenze finite")
-    nvar = M.add("resDerivNvar", str(d["n_variabili"]), "variabili del punto di prova")
-    tf = M.add("resTimeF", fx(d["t_f_us"], 1), "una valutazione di f [us]")
-    tg = M.add("resTimeGrad", fx(d["t_grad_ad_us"], 1), "un gradiente per AD [us]")
-    rat = M.add("resADratio", fx(d["ad_in_valutazioni_di_f"], 2), "AD in valutazioni di f")
+    M.group("derivatives: AD against finite differences")
+    nvar = M.add("resDerivNvar", str(d["n_variabili"]), "variables of the test point")
+    tf = M.add("resTimeF", fx(d["t_f_us"], 1), "one evaluation of f [us]")
+    tg = M.add("resTimeGrad", fx(d["t_grad_ad_us"], 1), "one gradient by AD [us]")
+    rat = M.add("resADratio", fx(d["ad_in_valutazioni_di_f"], 2), "AD in evaluations of f")
     lo = M.add("resADratioMin", fx(d["ad_in_valutazioni_di_f_min"], 2))
     hi = M.add("resADratioMax", fx(d["ad_in_valutazioni_di_f_max"], 2))
     nf = M.add("resFDforwardEvals", str(d["valutazioni_fd_avanti"]))
     ncq = M.add("resFDcentralEvals", str(d["valutazioni_fd_centrate"]))
     ef = M.add("resFDforwardErr", sci(d["miglior_err_avanti"]))
     ecq = M.add("resFDcentralErr", sci(d["miglior_err_centrate"]))
-    bud = M.add("resCycleBudget", fx(d["budget_ciclo_ms"], 0), "budget di ciclo [ms]")
+    bud = M.add("resCycleBudget", fx(d["budget_ciclo_ms"], 0), "cycle budget [ms]")
     shr = M.add("resFDcentralBudget", pc(d["quota_budget_fd_centrate"], 0),
-                "quota del budget per FD centrate [%]")
+                "share of the budget for central FD [%]")
 
     rows = [[m(sci(r["h"])), m(sci(r["err_avanti"])), m(sci(r["err_centrate"]))]
             for r in d["tabella_passi"]]
@@ -711,13 +711,13 @@ def sec_hessian(res: dict, M: Macros) -> list[str]:
     ex, lb = d.get("exact"), d.get("limited-memory")
     if not ex or not lb:
         return []
-    M.group("hessiana esatta contro L-BFGS")
+    M.group("exact Hessian against L-BFGS")
     ie = M.add("resIterExactHess", str(ex["iterazioni"]))
     il = M.add("resIterLBFGS", str(lb["iterazioni"]))
     sav = M.add("resHessIterSaving", pc(1 - ex["iterazioni"] / lb["iterazioni"], 0),
-                "iterazioni risparmiate [%]")
-    # in grassetto il conteggio di iterazioni migliore: e' il confronto che la
-    # tabella esiste per fare, e le linee guida chiedono di evidenziarlo
+                "iterations saved [%]")
+    # the best iteration count in bold: it is the comparison the table exists to
+    # make, and the guidelines ask for it to be highlighted
     def _it(v, best):
         return r"\textbf{" + str(v) + "}" if v == best else str(v)
     best_it = min(ex["iterazioni"], lb["iterazioni"])
@@ -753,15 +753,15 @@ def sec_kkt(res: dict, M: Macros) -> list[str]:
     if not d or not d.get("profilo"):
         return []
     prof = d["profilo"]
-    M.group("condizioni di ottimalita' lungo la missione")
+    M.group("optimality conditions along the mission")
     nc = M.add("resKKTcycles", str(len(prof)), "cicli analizzati")
     li = M.add("resLICQalways", yesno(d["licq_sempre"]))
     st = M.add("resStrictAlways", yesno(d["complementarita_stretta_sempre"]))
     so = M.add("resSOCalways", yesno(d["soc_c2_sempre"]))
     cmin = M.add("resConeMin", str(d["cono_critico_min"]))
     cmax = M.add("resConeMax", str(d["cono_critico_max"]))
-    # Lungo la missione il cono si restringe: e' il fatto da raccontare, e la
-    # sua direzione va letta dai dati invece che assunta.
+    # Along the mission the cone narrows: that is the fact to report, and its
+    # direction has to be read from the data instead of assumed.
     cone_first = prof[0]["dim_cono_critico"]
     cone_last = prof[-1]["dim_cono_critico"]
     M.add("resConeFirst", str(cone_first), "cono al primo ciclo campionato")
@@ -792,11 +792,11 @@ def sec_kkt(res: dict, M: Macros) -> list[str]:
             f"number of directions the optimizer still has left after the active "
             f"constraints have taken their share.")
     lmin = min(p["hess_proj_lambda_min"] for p in prof)
-    lm = M.add("resLambdaMinWorst", sci(lmin), "min sul profilo di lambda_min proiettato")
+    lm = M.add("resLambdaMinWorst", sci(lmin), "minimum over the profile of projected lambda_min")
     nbmax = max(p.get("n_attivi_ineq", 0) for p in prof)
-    M.add("resActiveBoundsMax", str(nbmax), "massimo di box attivi")
+    M.add("resActiveBoundsMax", str(nbmax), "maximum number of active box constraints")
     gl = max(p.get("grad_L_inf", 0.0) for p in prof)
-    M.add("resGradLagWorst", sci(gl), "residuo di stazionarieta' peggiore")
+    M.add("resGradLagWorst", sci(gl), "worst stationarity residual")
 
     rows = [[str(p["ciclo"]), fx(p["t"], 0), str(p["n_attivi_totali"]),
              str(p.get("n_attivi_ineq", 0)), str(p["rango_jacobiano_attivo"]),
@@ -846,18 +846,18 @@ def sec_penalty(res: dict, M: Macros) -> list[str]:
     d = res.get("classe1", {}).get("penalita_esatta")
     if not d:
         return []
-    M.group("penalita' esatta l1 contro l2")
-    ds = M.add("resDsafe", fx(d["d_safe"], 2), "distanza di sicurezza imposta [m]")
+    M.group("exact l1 penalty against l2")
+    ds = M.add("resDsafe", fx(d["d_safe"], 2), "imposed safety distance [m]")
     mu = M.add("resMuMax", smart(d["max_mu_vincolo_distanza"]),
-               "moltiplicatore massimo del vincolo di distanza")
+               "largest multiplier of the distance constraint")
     rz = d.get("rho_slack_l1_nullo")
     rzs = M.add("resRhoLoneZero", sci(rz, 0) if rz else DASH, "rho a cui lo slack l1 si annulla")
     slope = d.get("pendenza_l2_coda")
     slope_ok = slope is not None and not math.isnan(slope)
     sl = M.add("resSlopeLtwo", fx(slope, 2) if slope_ok else DASH,
-               "pendenza log-log della coda l2")
-    # Il decadimento 1/rho e' la previsione; se la misura non ci arriva lo si
-    # dice, invece di scrivere "come previsto" accanto a un numero che non lo e'.
+               "log-log slope of the l2 tail")
+    # The 1/rho decay is the prediction; if the measurement does not match it, say
+    # so, instead of writing "as predicted" next to a number that is not.
     if slope_ok and abs(slope + 1.0) <= 0.15:
         slope_txt = (f"the fitted log--log slope of its tail being ${sl}$ against a "
                      f"predicted $-1$")
@@ -869,7 +869,7 @@ def sec_penalty(res: dict, M: Macros) -> list[str]:
 
     rows = []
     for r in d["tabella"]:
-        # lo zero esatto e' IL risultato della tabella (Thm sulla penalita' esatta)
+        # the exact zero is THE result of the table (exact-penalty theorem)
         s1 = r"$\mathbf{0}$" if r["slack_l1"] < 1e-8 else f"${sci(r['slack_l1'])}$"
         rows.append([f"${sci(r['rho'], 0)}$", s1, f"${sci(r['slack_l2'])}$"])
     return [
@@ -918,24 +918,24 @@ def sec_terminal(res: dict, M: Macros) -> list[str]:
     d = res.get("classe3", {}).get("vincolo_terminale")
     if not d:
         return []
-    M.group("vincolo terminale di equilibrio")
+    M.group("terminal equilibrium constraint")
     sm = M.add("resTermSlackMax", sci(d["slack_max"]), "slack terminale massimo")
     fe = M.add("resTermFeasible", yesno(d["sempre_ammissibile"]))
-    lo = M.add("resTermCostMin", pc(d["costo_relativo_min"], 1), "costo minimo [%]")
-    hi = M.add("resTermCostMax", pc(d["costo_relativo_max"], 1), "costo massimo [%]")
-    # Cifra assoluta: e' quella che si puo' citare senza ingannare. Vedi il
-    # commento in make_results._classe3. Guardata con .get() perche' una cache
-    # generata prima di questa modifica non la contiene.
+    lo = M.add("resTermCostMin", pc(d["costo_relativo_min"], 1), "minimum cost [%]")
+    hi = M.add("resTermCostMax", pc(d["costo_relativo_max"], 1), "maximum cost [%]")
+    # Absolute figure: it is the one that can be quoted without misleading. See
+    # the comment in make_results._classe3. Guarded with .get() because a cache
+    # generated before this addition does not contain it.
     has_abs = all(k in d for k in ("costo_assoluto_min", "costo_assoluto_max",
                                    "J_min", "J_max"))
     if has_abs:
         am = M.add("resTermAbsMin", fx(d["costo_assoluto_min"], 1),
-                   "aumento assoluto minimo di J*")
+                   "smallest absolute increase of J*")
         ax = M.add("resTermAbsMax", fx(d["costo_assoluto_max"], 1),
-                   "aumento assoluto massimo di J*")
-        jl = M.add("resTermJMin", fx(d["J_min"], 1), "J* piu' piccolo fra i cicli")
-        jh = M.add("resTermJMax", fx(d["J_max"], 1), "J* piu' grande fra i cicli")
-    # Il lag discreto e' 1 - exp(-dt/tau): con tau << dt vale 1, cioe' v(k+1)=u(k).
+                   "largest absolute increase of J*")
+        jl = M.add("resTermJMin", fx(d["J_min"], 1), "smallest J* across the cycles")
+        jh = M.add("resTermJMax", fx(d["J_max"], 1), "largest J* across the cycles")
+    # The discrete lag is 1 - exp(-dt/tau): with tau << dt it is 1, i.e. v(k+1)=u(k).
     tau = float(M.params.get("tau_v", 0.0)) or 1e-12
     dtv = float(M.params.get("dt", 0.0))
     lag = 1.0 - math.exp(-dtv / tau) if dtv else float("nan")
@@ -994,25 +994,25 @@ def sec_bifurcation(res: dict, M: Macros) -> list[str]:
     cp = d.get("centred_pillar")
     if not cp:
         return []
-    M.group("regolarita' della soluzione e biforcazione")
+    M.group("regularity of the solution and bifurcation")
     lo = cp.get("soglia_inf")
     hi = cp.get("soglia_sup")
     lo_m = M.add("resBifLow", smart(lo) if lo is not None else DASH,
                  "ultimo W senza biforcazione")
     hi_m = M.add("resBifHigh", smart(hi) if hi is not None else DASH,
-                 "primo W con biforcazione")
+                 "first W with a bifurcation")
     below = M.add("resBifDeployedBelow", yesno(cp.get("deployato_sotto_soglia")))
     bb = d.get("bag_ciclo_piu_impegnativo", {})
-    bc = M.add("resBifBagCycle", str(bb.get("ciclo", "")) or DASH, "ciclo piu' impegnativo")
+    bc = M.add("resBifBagCycle", str(bb.get("ciclo", "")) or DASH, "most demanding cycle")
     be = M.add("resBifBagEver", yesno(bb.get("biforca_mai")))
-    # Quando biforca, i due minimi non si equivalgono: il divario di costo e' il
-    # dato interessante, perche' dice che il warm start non sceglie solo DOVE si
+    # When it bifurcates, the two minima are not equivalent: the cost gap is the
+    # interesting datum, because it says that the warm start does not only choose
     # finisce ma QUANTO si paga.
     split = [r for r in cp["tabella"] if r["sep"] > 1e-3]
     gap = max((abs(r["JL"] - r["JR"]) / max(abs(r["JL"]), 1e-9) for r in split),
               default=0.0)
     M.add("resBifCostGap", pc(gap, 2) if split else DASH,
-          "divario relativo fra i due minimi [%]")
+          "relative gap between the two minima [%]")
 
     rows = [[m(smart(r["W"])), m(sci(r["sep"])), m(smart(r["JL"])),
              m(smart(r["JR"])), str(r["itL"]), str(r["itR"])]
@@ -1065,7 +1065,7 @@ def sec_pathfollowing(res: dict, M: Macros) -> list[str]:
     d = res.get("classe3", {}).get("path_following")
     if not d:
         return []
-    M.group("path following in theta contro riferimento a tempo")
+    M.group("path following in theta against time-based reference")
     vt = M.add("resVxTime", fx(d["vx_media_time"], 3), "vx media, riferimento a tempo")
     vh = M.add("resVxTheta", fx(d["vx_media_theta"], 3), "vx media, ascissa")
     at = M.add("resAdvanceTime", fx(d["spostamento_time"], 3), "avanzamento [m]")
@@ -1127,31 +1127,31 @@ def sec_horizon(extra: dict, M: Macros) -> list[str]:
         print(f"  [horizon_sweep.json ignorato: schema inatteso ({exc})]", file=sys.stderr)
         return []
 
-    M.group("campagna orizzonte (N, dt)")
-    M.add("resHorizonBudget", fx(budget, 0), "budget di ciclo [ms]")
+    M.group("horizon campaign (N, dt)")
+    M.add("resHorizonBudget", fx(budget, 0), "cycle budget [ms]")
     over = [r for r in rows_in if r.get("solve_ms_p95", 0) > budget]
     M.add("resHorizonOverBudget", str(len(over)), "configurazioni oltre budget")
     M.add("resHorizonConfigs", str(len(rows_in)), "configurazioni provate")
     dep_rows = [r for r in rows_in if r["N"] == depN and abs(r["dt"] - depdt) < 1e-9]
     if dep_rows:
         M.add("resHorizonDepTail", fx(max(r["solve_ms_p95"] for r in dep_rows), 1),
-              "p95 peggiore della configurazione deployata [ms]")
+              "worst p95 of the deployed configuration [ms]")
 
     scenarios: dict[str, list] = {}
     for r in rows_in:
         scenarios.setdefault(str(r.get("scenario", "default")), []).append(r)
 
-    # Aggregazione per (N, dt) attraverso gli scenari, in senso conservativo:
-    # tempo medio, clearance PEGGIORE, p95 PEGGIORE. Dichiarata in didascalia,
-    # perche' una media sulla clearance nasconderebbe la quasi-collisione.
+    # Aggregation by (N, dt) across the scenarios, conservatively: the worst case
+    # is taken for the clearance and the mean for the times,
+    # because averaging the clearance would hide the near-collision.
     agg: dict[tuple, dict] = {}
     for r in rows_in:
         k = (int(r["N"]), round(float(r["dt"]), 4))
         a = agg.setdefault(k, {"t": [], "c": [], "p": [], "goal": True})
-        # Una configurazione che NON arriva al goal non ha un tempo al goal:
-        # il campo e' null. Va escluso dalla media invece di essere convertito,
-        # e la configurazione va marcata come fallita — e' gia' cosi' che viene
-        # tenuta fuori dalla classifica di non dominanza.
+        # A configuration that does NOT reach the goal has no time to goal: the
+        # field is null. It has to be excluded from the mean instead of being
+        # converted, and the configuration marked as failed — which is already how
+        # it is kept out of the non-dominance ranking.
         t = r.get("tempo_al_goal_s")
         if t is not None:
             a["t"].append(float(t))
@@ -1183,10 +1183,10 @@ def sec_horizon(extra: dict, M: Macros) -> list[str]:
     highb = [q for q in ok if q["T"] >= SPLIT]
     banded = bool(lowb and highb)
 
-    M.add("resHorizonNondom", str(len(nondom)), "configurazioni non dominate")
+    M.add("resHorizonNondom", str(len(nondom)), "non-dominated configurations")
     M.add("resHorizonDepNondom", yesno(dep_nd) if dep else DASH)
     if banded:
-        M.add("resHorizonSplit", fx(SPLIT, 0), "soglia della fascia [s]")
+        M.add("resHorizonSplit", fx(SPLIT, 0), "threshold of the band [s]")
         M.add("resHorizonLowT", fx(sum(q["t"] for q in lowb) / len(lowb), 1))
         M.add("resHorizonLowC", fx(min(q["c"] for q in lowb), 3))
         M.add("resHorizonHighT", fx(sum(q["t"] for q in highb) / len(highb), 1))
@@ -1195,7 +1195,7 @@ def sec_horizon(extra: dict, M: Macros) -> list[str]:
     if cheap:
         M.add("resHorizonCheapN", str(cheap["N"]))
         M.add("resHorizonCheapDt", fx(cheap["dt"], 2))
-        M.add("resHorizonCheapPtail", fx(cheap["p"], 1), "p95 della piu' economica [ms]")
+        M.add("resHorizonCheapPtail", fx(cheap["p"], 1), "p95 of the cheapest one [ms]")
 
     L = [
         r"\resSubsec{Prediction horizon and sampling time}",
@@ -1219,10 +1219,10 @@ def sec_horizon(extra: dict, M: Macros) -> list[str]:
         t_hi = sum(q["t"] for q in highb) / len(highb)
         c_lo, c_hi = min(q["c"] for q in lowb), min(q["c"] for q in highb)
         worse = t_hi > t_lo
-        # Dire "peggio su entrambi i fronti" quando la clearance migliora e'
-        # falso: sono due assi, e vanno letti separatamente. Se poi la clearance
-        # e' nulla in entrambe le fasce, quell'asse non discrimina affatto e
-        # spacciarlo per un vantaggio sarebbe peggio che tacerlo.
+        # Saying "worse on both fronts" when the clearance improves is
+        # false: they are two axes, and have to be read separately. And if the
+        # clearance is zero in both bands, that axis does not discriminate at all
+        # and passing it off as an advantage would be worse than staying silent.
         both_graze = c_lo < 0.02 and c_hi < 0.02
         if both_graze:
             coda = ("--- and the clearance axis does not discriminate: both groups "
@@ -1317,7 +1317,7 @@ def sec_pareto(extra: dict, M: Macros) -> list[str]:
         print(f"  [pareto_front.json ignorato: schema inatteso ({exc})]", file=sys.stderr)
         return []
     if len(nd) != len(pts):
-        print("  [pareto_front.json ignorato: punti e non_dominati di lunghezza diversa]",
+        print("  [pareto_front.json ignored: punti and non_dominati have different lengths]",
               file=sys.stderr)
         return []
 
@@ -1325,21 +1325,21 @@ def sec_pareto(extra: dict, M: Macros) -> list[str]:
         vals = [p[key] for p in pts]
         return max(vals) - min(vals), min(vals), max(vals)
 
-    M.group("fronte di Pareto multi-obiettivo")
+    M.group("multi-objective Pareto front")
     M.add("resParetoPoints", str(len(pts)), "scalarizzazioni provate")
-    M.add("resParetoNondom", str(sum(1 for b in nd if b)), "punti non dominati")
+    M.add("resParetoNondom", str(sum(1 for b in nd if b)), "non-dominated points")
     M.add("resParetoConvex", yesno(d.get("fronte_convesso")))
     M.add("resParetoChosen", "(" + ",\\ ".join(fx(a, 1) for a in chosen) + ")",
           "scalarizzazione scelta")
     sa, _, _ = spread("accuratezza")
     ss, _, _ = spread("sforzo")
     stt, _, _ = spread("tempo")
-    M.add("resParetoSpreadAcc", sci(sa), "escursione dell'accuratezza [m]")
+    M.add("resParetoSpreadAcc", sci(sa), "excursion of the accuracy [m]")
     M.add("resParetoSpreadEffort", sci(ss))
-    M.add("resParetoSpreadTime", fx(stt, 2), "escursione del tempo al goal [s]")
+    M.add("resParetoSpreadTime", fx(stt, 2), "excursion of the time to goal [s]")
 
-    # Escursione RELATIVA: e' la forma leggibile, ed e' quella che dice se il
-    # compromesso esiste davvero. Lo script dichiara anche il proprio verdetto.
+    # RELATIVE excursion: it is the readable form, and the one that says whether
+    # the trade-off really exists. The script also states its own verdict.
     esc_rel = d.get("escursione_relativa") or {}
     for key, name in (("accuratezza", "resParetoRelAcc"),
                       ("sforzo", "resParetoRelEffort"),
@@ -1349,8 +1349,8 @@ def sec_pareto(extra: dict, M: Macros) -> list[str]:
     informative = d.get("fronte_informativo")
     M.add("resParetoInformative", yesno(informative))
 
-    # Il baricentro del simplesso riproduce la taratura di partenza: se e' fra i
-    # punti campionati, sapere se e' dominato e' il risultato utile.
+    # The barycentre of the simplex reproduces the starting tuning: if it is among
+    # sampled points, knowing whether it is dominated is the useful result.
     bary = None
     if pts and "alpha" in pts[0]:
         k = len(pts[0]["alpha"])
@@ -1361,7 +1361,7 @@ def sec_pareto(extra: dict, M: Macros) -> list[str]:
         if sum((a - b) ** 2 for a, b in zip(pts[j]["alpha"], target)) < 0.02:
             bary = (j, bool(nd[j]))
             M.add("resParetoBaryNondom", yesno(bary[1]),
-                  "il baricentro (taratura attuale) e' non dominato")
+                  "the barycentre (current tuning) is non-dominated")
 
     if esc_rel:
         rel_txt = (
@@ -1446,9 +1446,9 @@ def sec_pareto(extra: dict, M: Macros) -> list[str]:
 # ---------------------------------------------------------------------------
 # Sezioni alimentate dagli script satellite
 #
-# Questi non passano da results.json: ogni script scrive il proprio file in
-# metrics/out/. Sono opzionali per costruzione — l'assenza di un file salta la sola
-# sezione, non il documento.
+# These do not go through results.json: every script writes its own file in
+# metrics/out/. They are optional by construction — a missing file skips only
+# section, not the document.
 # ---------------------------------------------------------------------------
 def sec_shooting(extra: dict, M: Macros) -> list[str]:
     rows_in = extra.get("shooting")
@@ -1469,16 +1469,16 @@ def sec_shooting(extra: dict, M: Macros) -> list[str]:
     Nref = Ndep if Ndep in per_N else max(per_N)
     mu, si = per_N[Nref]["multiple"], per_N[Nref]["single"]
 
-    M.group("single contro multiple shooting")
-    M.add("resShootN", str(Nref), "orizzonte del confronto")
+    M.group("single against multiple shooting")
+    M.add("resShootN", str(Nref), "horizon of the comparison")
     M.add("resShootVarMulti", str(mu["n_var"]))
     M.add("resShootVarSingle", str(si["n_var"]))
     M.add("resShootConMulti", str(mu["n_con"]))
     M.add("resShootConSingle", str(si["n_con"]))
-    M.add("resShootHessDensMulti", fx(100 * mu["hess_density"], 2), "densita' hessiana [%]")
+    M.add("resShootHessDensMulti", fx(100 * mu["hess_density"], 2), "Hessian density [%]")
     M.add("resShootHessDensSingle", fx(100 * si["hess_density"], 2))
-    # I minimi possono differire: il problema non e' convesso e le due
-    # parametrizzazioni hanno cammini diversi. Va detto, non nascosto.
+    # The minima may differ: the problem is not convex and the two
+    # parametrisations follow different paths. It has to be said, not hidden.
     disagreeing = [N for N, v in per_N.items()
                    if abs(v["multiple"]["J"] - v["single"]["J"]) >
                    1e-6 * max(1.0, abs(v["multiple"]["J"]))]
@@ -1489,10 +1489,10 @@ def sec_shooting(extra: dict, M: Macros) -> list[str]:
     for N in sorted(per_N):
         m_, s_ = per_N[N]["multiple"], per_N[N]["single"]
         win = "multiple" if m_["ms"] < s_["ms"] else "single"
-        # Lo Jacobiano esce: resta sparso in ENTRAMBE le parametrizzazioni, quindi
-        # non discrimina. Al suo posto le ITERAZIONI, che separano il lavoro del
-        # solutore dal costo della singola iterazione — ed e' il confronto fra le
-        # due a localizzare il costo nell'algebra lineare sull'Hessiana piena.
+        # The Jacobian drops out: it stays sparse in BOTH parametrisations, so it
+        # does not discriminate. In its place the ITERATIONS, which separate the
+        # work of the solver from the cost of a single iteration — and it is the
+        # two that localises the cost in the linear algebra on the full Hessian.
         rows.append([str(N),
                      f'{m_["n_var"]} / {s_["n_var"]}',
                      f'{m_["n_con"]} / {s_["n_con"]}',
@@ -1581,15 +1581,15 @@ def sec_solver_compare(extra: dict, M: Macros) -> list[str]:
         print(f"  [solver_compare.json ignorato: schema inatteso ({exc})]", file=sys.stderr)
         return []
 
-    M.group("interior point contro active set")
+    M.group("interior point against active set")
     n_lo, n_hi = rows_in[0]["n_ineq"], rows_in[-1]["n_ineq"]
     M.add("resSolverIneqLow", str(n_lo), "disuguaglianze, regime piccolo")
     M.add("resSolverIneqHigh", str(n_hi), "disuguaglianze, regime grande")
 
-    # Un rapporto di tempi ha senso solo se ENTRAMBI i solutori tornano una
-    # soluzione: dove l'SQP fallisce, il "tempo" e' tempo speso prima di
-    # arrendersi e il rapporto non e' uno speed-up. Le righe fallite entrano
-    # nel conteggio dei fallimenti, non nelle medie.
+    # A ratio of times only makes sense if BOTH solvers return a solution: where
+    # SQP fails, the "time" is time spent before giving up and the ratio is not a
+    # speed-up. The failed rows go into the failure count, not into the means.
+
     def _ratios(n_ineq):
         return [r["sqp"]["ms"] / r["ipopt"]["ms"] for r in rows_in
                 if r["n_ineq"] == n_ineq and r["ipopt"].get("ok") and r["sqp"].get("ok")]
@@ -1597,15 +1597,15 @@ def sec_solver_compare(extra: dict, M: Macros) -> list[str]:
     r_lo, r_hi = _ratios(n_lo), _ratios(n_hi)
     if r_lo:
         M.add("resSolverRatioMin", fx(min(r_lo), 1),
-              "vantaggio minimo del punto interno, regime piccolo")
+              "smallest interior-point advantage, small regime")
         M.add("resSolverRatioLow", fx(max(r_lo), 1),
-              "vantaggio del punto interno, regime piccolo")
+              "interior-point advantage, small regime")
     if r_hi:
         M.add("resSolverRatioHigh", fx(max(r_hi), 1),
-              "vantaggio del punto interno, regime grande")
+              "interior-point advantage, large regime")
     n_fail = sum(1 for r in rows_in if not r["sqp"].get("ok"))
-    M.add("resSolverSqpFail", str(n_fail), "run in cui l'SQP non risolve il QP")
-    M.add("resSolverRuns", str(len(rows_in)), "run del confronto")
+    M.add("resSolverSqpFail", str(n_fail), "runs where SQP does not solve the QP")
+    M.add("resSolverRuns", str(len(rows_in)), "runs of the comparison")
     all_same = all(r.get("stesso_minimo") for r in rows_in
                    if r["ipopt"].get("ok") and r["sqp"].get("ok"))
     M.add("resSolverSameMinima", yesno(all_same))
@@ -1614,8 +1614,8 @@ def sec_solver_compare(extra: dict, M: Macros) -> list[str]:
         t = fx(v, 0)
         return r"\textbf{" + t + "}" if vince else t
     def _sqp_cell(r):
-        """Un run fallito non ha ne' iterazioni ne' tempo di soluzione: va
-        marcato come fallimento, non stampato come se fosse un confronto."""
+        """A failed run has neither iterations nor solve time: it has to be marked
+        as a failure, not printed as if it were a comparison."""
         if not r["sqp"].get("ok"):
             ms = r["sqp"]["ms"]
             t = f"{ms/1000:.1f} s" if ms >= 1000 else f"{fx(ms, 0)} ms"
@@ -1689,8 +1689,8 @@ def sec_control_horizon(extra: dict, M: Macros) -> list[str]:
         print(f"  [control_horizon.json ignorato: schema inatteso ({exc})]", file=sys.stderr)
         return []
 
-    # Coppie (stesso scenario, stesso N) fra N_c minimo e N_c = N: e' li' che si
-    # legge quanto costano i gradi di liberta' a orizzonte invariato.
+    # Pairs (same scenario, same N) between the smallest N_c and N_c = N: that is
+    # reads what the degrees of freedom cost at a fixed horizon.
     by = {}
     for r in rows_in:
         by.setdefault((str(r.get("scenario", "")), int(r["N"])), []).append(r)
@@ -1708,9 +1708,10 @@ def sec_control_horizon(extra: dict, M: Macros) -> list[str]:
                       "same": same, "p95_full": full["p95"], "p95_red": red["p95"]})
     free = [g for g in gains if g["same"] and g["ratio"] > 1.0]
 
-    # La domanda diagnostica ("il degrado viene dalla predizione o dai gradi di
-    # liberta'?") ha senso solo se nello sweep c'e' davvero un orizzonte che
-    # degrada. Se non c'e', va detto invece di riportare la conclusione.
+    # The diagnostic question ("does the degradation come from the prediction or
+    # from the degrees of freedom?") only makes sense if the sweep really contains
+    # a horizon that degrades. If it does not, say so instead of reporting the
+    # conclusion.
     per_scen: dict[str, list] = {}
     for r in rows_in:
         per_scen.setdefault(str(r.get("scenario", "")), []).append(r)
@@ -1726,14 +1727,14 @@ def sec_control_horizon(extra: dict, M: Macros) -> list[str]:
                 degrading.append((scen, N))
     tight = [r for r in rows_in if float(r["clearance"]) < 0.01]
 
-    M.group("orizzonte di controllo N_c")
+    M.group("control horizon N_c")
     M.add("resNcCases", str(len(rows_in)), "configurazioni provate")
     if gains:
         best = max(gains, key=lambda g: g["ratio"])
-        M.add("resNcBestRatio", fx(best["ratio"], 1), "miglior risparmio di p95")
+        M.add("resNcBestRatio", fx(best["ratio"], 1), "best p95 saving")
         M.add("resNcBestN", str(best["N"]))
     M.add("resNcFreeCases", str(len(free)),
-          "casi in cui il taglio dei gradi di liberta' e' gratis")
+          "cases where cutting the degrees of freedom is free")
 
     rows = []
     for r in sorted(rows_in, key=lambda r: (str(r.get("scenario", "")), r["N"], r["N_c"])):
@@ -1846,20 +1847,20 @@ def sec_robust(extra: dict, M: Macros) -> list[str]:
     monotone = all(b <= a + 1e-12 for a, b in zip(beta[1:], beta[2:])) or \
         all(beta[i] <= beta[i + 1] + 1e-12 for i in range(len(beta) - 1))
 
-    M.group("vincoli robusti (constraint tightening)")
-    M.add("resBetaQuantile", fx(100 * q, 0), "quantile usato per il tubo [%]")
+    M.group("robust constraints (constraint tightening)")
+    M.add("resBetaQuantile", fx(100 * q, 0), "quantile used for the tube [%]")
     M.add("resBetaZero", fx(beta[0], 4), "margine a k=0 [m]")
     M.add("resBetaEnd", fx(beta[-1], 4), "margine a fine orizzonte [m]")
     M.add("resBetaMonotone", yesno(monotone))
     eff = [r for r in rows_in if "efficace" in str(r.get("esito", ""))]
     M.add("resRobustCases", str(len(rows_in)), "casi provati")
-    M.add("resRobustEffective", str(len(eff)), "casi in cui il tubo morde")
+    M.add("resRobustEffective", str(len(eff)), "cases where the tube bites")
     if eff:
         M.add("resRobustBestDelta", fx(max(r["delta"] for r in eff), 3),
-              "guadagno massimo di clearance [m]")
+              "largest clearance gain [m]")
 
-    # Ogni esito osservato ha una lettura diversa, e vanno raccontati solo
-    # quelli che i dati contengono davvero.
+    # Every observed outcome reads differently, and only those that
+    # the data really contain.
     kinds = {outcome(r.get("esito", "")) for r in rows_in}
     frasi = []
     if "constraint inactive" in kinds:
@@ -1946,13 +1947,13 @@ def sec_robust(extra: dict, M: Macros) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Assemblaggio del corpo
+# Body assembly
 #
-# L'ordine e' quello del report, non quello del codice: modello ->
-# discretizzazione -> NLP -> derivate -> ottimalita' -> regolarita' ->
-# riformulazioni -> campagne in anello chiuso. La tabella di corrispondenza in
-# testa al documento e' costruita da questa stessa lista, quindi non puo'
-# divergere dalle sezioni effettivamente presenti.
+# The order is that of the report, not that of the code: model ->
+# discretisation -> NLP -> derivatives -> optimality -> regularity ->
+# reformulations -> closed-loop campaigns. The correspondence table at the top
+# of the document is built from this same list, so it cannot diverge from the
+# sections actually present.
 # ---------------------------------------------------------------------------
 SPECS = [
     (sec_discretisation, "res:disc", "Model discretisation, truncation order",
@@ -1987,24 +1988,24 @@ _EXTRA_SECTIONS = {sec_horizon, sec_pareto, sec_solver_compare, sec_shooting,
 BODY_HEADER = r"""% ============================================================================
 % metrics_body.tex — GENERATO AUTOMATICAMENTE, NON MODIFICARE A MANO
 %
-%   rigenerare con:  python3 metrics/make_results.py
-%              o con: python3 metrics/results_tex.py
+%   regenerate with: python3 metrics/make_results.py
+%             or with: python3 metrics/results_tex.py
 %
-% Questo file non ha preambolo: e' pensato per \input{} dentro Report.tex.
-% Richiede i pacchetti gia' caricati dal report (booktabs, amsmath, amssymb).
+% This file has no preamble: it is meant to be \input{} inside Report.tex.
+% It requires the packages the report already loads (booktabs, amsmath, amssymb).
 %
-% AL MOMENTO DELL'INTEGRAZIONE NEL REPORT, tre righe bastano:
-%   \renewcommand{\resSec}[1]{\subsection{#1}}     % declassa i titoli
+% WHEN INTEGRATING INTO THE REPORT, three lines are enough:
+%   \renewcommand{\resSec}[1]{\subsection{#1}}     % demote the headings
 %   \renewcommand{\resSubsec}[1]{\subsubsection{#1}}
-%   \renewcommand{\resNote}[1]{}                   % toglie le note di servizio
+%   \renewcommand{\resNote}[1]{}                   % drop the service notes
 % ============================================================================
 
-% --- impalcatura: ridefinibile dall'esterno ---------------------------------
+% --- scaffolding: redefinable from outside ---------------------------------
 \providecommand{\resSec}[1]{\section{#1}}
 \providecommand{\resSubsec}[1]{\subsection{#1}}
 \providecommand{\resNote}[1]{{\small\itshape #1\par\medskip}}
 
-% --- simboli del report: \providecommand, quindi il report vince se li ha ---
+% --- report symbols: \providecommand, so the report wins if it has them ---
 \providecommand{\R}{\mathbb{R}}
 \providecommand{\Wobs}{W_{\mathrm{obs}}}
 \providecommand{\robs}{r_{\mathrm{obs}}}
@@ -2014,14 +2015,14 @@ BODY_HEADER = r"""% ============================================================
 """
 
 STANDALONE = r"""% ============================================================================
-% metrics_standalone.tex — GENERATO AUTOMATICAMENTE
+% metrics_standalone.tex — AUTOMATICALLY GENERATED
 %
-% Wrapper minimo per compilare le metriche DA SOLE, senza toccare Report.tex:
+% Minimal wrapper to compile the metrics ON THEIR OWN, without touching Report.tex:
 %
 %     pdflatex metrics_standalone.tex
 %
-% Quando le sezioni verranno spostate dentro il report, questo file si butta e
-% si tiene solo metrics_body.tex + metrics_macros.tex.
+% When the sections are moved into the report, this file is thrown away and
+% only metrics_body.tex + metrics_macros.tex are kept.
 % ============================================================================
 \documentclass[11pt,a4paper]{article}
 
@@ -2075,8 +2076,8 @@ def build_body(res: dict, extra: dict, M: Macros) -> str:
         rendered.append((label, title, target))
         tail += block
 
-    # Tabella di corrispondenza: costruita dalle sezioni effettivamente
-    # presenti, cosi' un --only classe1 non promette blocchi che non ci sono.
+    # Correspondence table: built from the sections actually
+    # present, so that a --only classe1 does not promise blocks that are missing.
     L += [
         r"\resSubsec{Where each block belongs in the report}",
         "",
@@ -2099,8 +2100,8 @@ def build_body(res: dict, extra: dict, M: Macros) -> str:
 # ---------------------------------------------------------------------------
 # Verifica sintattica minima
 #
-# Non sostituisce pdflatex: intercetta gli errori che un generatore commette
-# davvero (graffe sbilanciate, environment non chiusi, colonne che non tornano).
+# It does not replace pdflatex: it catches the mistakes a generator actually
+# makes (unbalanced braces, unclosed environments, columns that do not add up).
 # ---------------------------------------------------------------------------
 def check(text: str, name: str) -> list[str]:
     problems = []
@@ -2111,10 +2112,10 @@ def check(text: str, name: str) -> list[str]:
         elif ch == "}" and (i == 0 or text[i - 1] != "\\"):
             depth -= 1
             if depth < 0:
-                problems.append(f"{name}: graffa chiusa di troppo a offset {i}")
+                problems.append(f"{name}: one closing brace too many at offset {i}")
                 depth = 0
     if depth:
-        problems.append(f"{name}: {depth} graffe aperte non chiuse")
+        problems.append(f"{name}: {depth} braces opened and not closed")
 
     stack = []
     for m in re.finditer(r"\\(begin|end)\{([^}]+)\}", text):
@@ -2131,9 +2132,9 @@ def check(text: str, name: str) -> list[str]:
     for env in stack:
         problems.append(f"{name}: \\begin{{{env}}} mai chiuso")
 
-    # math mode: sci()/smart() producono \times e ^{...}, che fuori da $...$
-    # fermano LaTeX. Le righe di definizione sono escluse per convenzione: le
-    # macro si espandono gia' dentro $...$ nel testo che le usa.
+    # math mode: sci()/smart() produce \times and ^{...}, which outside $...$
+    # stop LaTeX. The definition lines are excluded by convention: the macros
+    # already expand inside $...$ in the text that uses them.
     _MATH = (r"\times", r"\ell", r"\mathrm", r"\lambda", r"\rho", r"\Delta",
              r"\mu", r"\alpha", r"\omega", r"\sqrt", r"\varepsilon", r"\mathcal")
     for ln, line in enumerate(text.splitlines(), 1):
@@ -2141,7 +2142,7 @@ def check(text: str, name: str) -> list[str]:
             continue
         dollars = [mm.start() for mm in re.finditer(r"(?<!\\)\$", line)]
         if len(dollars) % 2:
-            problems.append(f"{name}:{ln}: numero dispari di $")
+            problems.append(f"{name}:{ln}: odd number of $")
             continue
         def outside(pos):
             return sum(1 for d in dollars if d < pos) % 2 == 0
@@ -2156,12 +2157,12 @@ def check(text: str, name: str) -> list[str]:
                 problems.append(f"{name}:{ln}: ^ fuori da math mode: {line.strip()[:70]}")
                 break
 
-    # numero di colonne coerente fra specifica e righe
+    # column count consistent between the specification and the rows
     for m in re.finditer(r"\\begin\{tabular\}\{((?:[^{}]|\{[^{}]*\})*)\}(.*?)"
                          r"\\end\{tabular\}", text, re.S):
         spec, body = m.group(1), m.group(2)
-        # via il contenuto delle graffe (p{...}, >{...}, @{...}): dentro ci sono
-        # lettere che non sono colonne, \textwidth ne e' l'esempio classico
+        # strip the content of the braces (p{...}, >{...}, @{...}): inside there
+        # are letters that are not columns, \textwidth being the classic example
         bare, depth = [], 0
         for ch in spec:
             if ch == "{":
@@ -2171,9 +2172,9 @@ def check(text: str, name: str) -> list[str]:
             elif depth == 0:
                 bare.append(ch)
         ncol = len(re.findall(r"[lcrpmbX]", "".join(bare)))
-        # Una riga di tabella e' delimitata da \\, non dall'a-capo del sorgente:
-        # con colonne p{} il testo va a capo e ogni riga fisica sembrerebbe una
-        # riga di tabella con una cella sola. Si spezza quindi sul separatore.
+        # A table row is delimited by \\, not by the newline of the source: with
+        # p{} columns the text wraps and every physical line would look like a
+        # table row with a single cell. So it is split on the separator.
         senza_commenti = re.sub(r"(?<!\\)%.*", "", body)
         for chunk in re.split(r"\\\\(?:\[[^\]]*\])?", senza_commenti):
             chunk = chunk.strip()
@@ -2182,26 +2183,26 @@ def check(text: str, name: str) -> list[str]:
             got = len(re.split(r"(?<!\\)&", chunk))
             if got != ncol:
                 problems.append(
-                    f"{name}: riga con {got} celle in un tabular da {ncol} "
+                    f"{name}: row with {got} cells in a tabular of {ncol} "
                     f"colonne: {' '.join(chunk.split())[:70]}")
     return problems
 
 
 def check_cross(body: str, macros: str) -> list[str]:
     """
-    Controlli che richiedono i due file insieme.
+    Checks that need the two files together.
 
-    Il modo tipico in cui questo generatore puo' rompersi in silenzio e' un
-    refuso nel nome di una macro dentro la prosa: LaTeX si ferma con
-    "Undefined control sequence" e il file sembra a posto a occhio. Qui si
-    intercetta prima di scrivere.
+    The typical way this generator can break silently is a typo in the name of a
+    macro inside the prose: LaTeX stops with
+    "Undefined control sequence" and the file looks fine to the eye. Here it is
+    caught before writing.
     """
     problems = []
     scaffold = {"resSec", "resSubsec", "resNote", "resdef", "restab", "restabdir"}
     definite = set(re.findall(r"\\resdef\{(res[A-Za-z]+)\}", macros))
     usate = set(re.findall(r"\\(res[A-Za-z]+)", body)) - scaffold
     for name in sorted(usate - definite):
-        problems.append(f"macro usata nel corpo ma non definita: \\{name}")
+        problems.append(f"macro used in the body but not defined: \\{name}")
 
     labels = set(re.findall(r"\\label\{([^}]+)\}", body))
     for ref in sorted(set(re.findall(r"\\ref\{([^}]+)\}", body))):
@@ -2215,10 +2216,10 @@ def check_cross(body: str, macros: str) -> list[str]:
 # ---------------------------------------------------------------------------
 def load_extra(results_path: str) -> dict:
     """
-    Raccoglie i JSON prodotti dagli script satellite che stanno nella stessa
-    cartella. Sono opzionali per scelta: horizon_sweep.py e pareto_front.py
-    sono ancora in lavorazione, quindi la loro assenza non e' un errore e un
-    cambio di schema fa saltare la sola sezione interessata, non il file.
+    Collects the JSON files produced by the satellite scripts sitting in the same
+    folder. They are optional by choice: horizon_sweep.py and pareto_front.py
+    are still work in progress, so their absence is not an error and a change of
+    schema only drops the section concerned, not the file.
     """
     out = {}
     d = os.path.dirname(os.path.abspath(results_path))
@@ -2237,20 +2238,20 @@ def load_extra(results_path: str) -> dict:
         except Exception as exc:
             print(f"  [{fname} illeggibile: {exc}]", file=sys.stderr)
             continue
-        # I sette satellite NON sono ricalcolati da make_results: legge la loro
-        # cache. Se il profilo e' cambiato dopo che la cache e' stata scritta, il
-        # report accoppia numeri nuovi a tabelle misurate su un'altra
-        # configurazione, e nulla lo segnala. E' successo con l'inviluppo di
-        # ingresso. Confrontare le date non e' una prova, ma trasforma un
-        # silenzio in una domanda.
+        # The seven satellites are NOT recomputed by make_results: it reads their
+        # cache. If the profile changed after the cache was written, the numbers
+        # in the report belong to a different configuration, and nothing flags it.
+        # It has happened with the input envelope. Comparing the dates is not a
+        # proof, but it turns a silent failure into a warning.
+        # silent failure into a question.
         prof = os.path.join(os.path.dirname(os.path.dirname(d)),
                             "src", "a_star_mpc_planner", "config",
                             "planner_params_g1.yaml")
         if os.path.exists(prof) and os.path.getmtime(p) < os.path.getmtime(prof):
-            print(f"  [ATTENZIONE: {fname} e' PIU' VECCHIO del profilo "
-                  f"({_eta(p)} contro {_eta(prof)}). E' una cache: make_results "
-                  f"non la ricalcola. Rilanciare lo script satellite prima di "
-                  f"citarne i numeri.]", file=sys.stderr)
+            print(f"  [WARNING: {fname} is OLDER than the profile "
+                  f"({_eta(p)} against {_eta(prof)}). It is a cache: make_results "
+                  f"does not recompute it. Re-run the satellite script before "
+                  f"quoting its numbers.]", file=sys.stderr)
     return out
 
 
@@ -2261,7 +2262,7 @@ def _eta(path: str) -> str:
 
 
 def write_all(res: dict, out_dir: str, extra: dict | None = None) -> list[str]:
-    """Genera i tre file e ne restituisce i percorsi. Solleva se il .tex e' rotto."""
+    """Generate the three files and return their paths. Raises if the .tex is broken."""
     extra = extra or {}
     M = Macros()
     TABLES.clear()                      # rigenerazioni ripetute nello stesso processo
@@ -2272,16 +2273,16 @@ def write_all(res: dict, out_dir: str, extra: dict | None = None) -> list[str]:
     problems = check(body, "metrics_body.tex") + check(macros, "metrics_macros.tex")
     for k, t in tabelle.items():
         problems += check(t, f"tab/{k}.tex")
-    # il controllo incrociato deve vedere anche le didascalie: usano \resBag
+    # the cross-check must see the captions too: they use \resBag
     problems += check_cross(body + "\n".join(tabelle.values()), macros)
     if problems:
-        raise RuntimeError("LaTeX generato non valido:\n  " + "\n  ".join(problems))
+        raise RuntimeError("generated LaTeX is not valid:\n  " + "\n  ".join(problems))
 
     os.makedirs(out_dir, exist_ok=True)
     tab_dir = os.path.join(out_dir, "tab")
     os.makedirs(tab_dir, exist_ok=True)
-    # Le tabelle sparite da una rigenerazione all'altra vanno rimosse, o restano
-    # lassu' a farsi includere da un \restab che nessuno genera piu'.
+    # Tables that disappear from one regeneration to the next have to be removed,
+    # or they stay up there being included by a \restab nobody generates any more.
     for stale in os.listdir(tab_dir):
         if stale.endswith(".tex") and stale[:-4] not in tabelle:
             os.remove(os.path.join(tab_dir, stale))
@@ -2308,7 +2309,7 @@ def main() -> int:
     ap.add_argument("--results", default=os.path.join(_HERE, "out", "results.json"),
                     help="JSON prodotto da make_results.py")
     ap.add_argument("--out", default=os.path.join(_HERE, "out", "tex"),
-                    help="cartella di destinazione dei .tex")
+                    help="destination folder of the .tex files")
     ap.add_argument("--no-extra", action="store_true",
                     help="ignora horizon_sweep.json e pareto_front.json")
     ap.add_argument("--check", action="store_true",
@@ -2316,7 +2317,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if not os.path.exists(args.results):
-        print(f"manca {args.results}: eseguire prima  python3 metrics/make_results.py",
+        print(f"{args.results} is missing: run  python3 metrics/make_results.py  first",
               file=sys.stderr)
         return 1
     with open(args.results) as fh:
@@ -2324,9 +2325,9 @@ def main() -> int:
     extra = {} if args.no_extra else load_extra(args.results)
 
     if args.check:
-        # Stessa assemblata della scrittura, comprese le tabelle: le \label
-        # ora vivono nei file tab/, quindi un controllo sul solo corpo
-        # riporterebbe come orfani tutti i \ref alle tabelle.
+        # Same assembly as when writing, tables included: the \label now live in
+        # the tab/ files, so a check on the body alone
+        # would report every \ref to a table as an orphan.
         M = Macros()
         TABLES.clear()
         body = build_body(res, extra, M)
@@ -2342,12 +2343,12 @@ def main() -> int:
         return 1 if problems else 0
 
     paths = write_all(res, args.out, extra)
-    print("generati:")
+    print("generated:")
     for p in paths:
         print(f"  {os.path.relpath(p, _ROOT)}")
     if res["meta"].get("git_albero_sporco"):
-        print("\nATTENZIONE: results.json e' stato prodotto con l'albero sporco;")
-        print("il .tex lo dichiara in testa, ma la cosa giusta e' rigenerarlo pulito.")
+        print("\nWARNING: results.json was produced with a dirty tree;")
+        print("the .tex states it at the top, but the right thing is to regenerate it clean.")
     return 0
 
 

@@ -1,10 +1,10 @@
 """
-g1_a_star_mpc.launch.py — stack completo di navigazione autonoma del G1.
+g1_a_star_mpc.launch.py — the complete autonomous navigation stack of the G1.
 
-Impianto MuJoCo: in Gazebo il G1 non avrebbe alcuna sorgente di moto senza
-scriverne una da zero (vedi g1_sim/README.md).
+MuJoCo plant: in Gazebo the G1 would have no source of motion without writing one
+from scratch (see g1_sim/README.md).
 
-Catena
+Chain
 ------
     mujoco_sim  --/odom------------> odom_to_pose_node --/robot_pose--+
                 --/livox/lidar--> lidar_filter_node                   |
@@ -21,25 +21,25 @@ Catena
                                                                       |
                                                                  mujoco_sim
 
-Il robot entra nella catena solo attraverso il file di parametri e il nome del
-topic della posa: nessun nodo dello stack algoritmico dipende dalla piattaforma.
+The robot enters the chain only through the parameter file and the name of the
+pose topic: no node of the algorithmic stack depends on the platform.
 
-Il goal si manda su /global_goal (PoseStamped) oppure con lo strumento
-"2D Goal Pose" di RViz, che pubblica su /goal_pose (vedi argomento goal_relay).
+The goal is sent on /global_goal (PoseStamped) or with the "2D Goal Pose" tool
+of RViz, which publishes on /goal_pose (see the goal_relay argument).
 
-Argomenti
+Arguments
 ---------
-  params_file  : str  profilo del planner (default: planner_params_g1.yaml)
-  lidar_params : str  configurazione dell'adattatore LiDAR
-  sim_params   : str  configurazione del simulatore
-  robot_model  : bool (default true)   pubblica /robot_description per RViz
+  params_file  : str  planner profile (default: planner_params_g1.yaml)
+  lidar_params : str  configuration of the LiDAR adapter
+  sim_params   : str  configuration of the simulator
+  robot_model  : bool (default true)   publish /robot_description for RViz
   use_rviz     : bool (default true)
-  viewer       : bool (default true)   finestra MuJoCo
-  people       : str  (default '')     ostacoli dinamici: '' oppure 'default'
-  nav_graph    : bool (default false)  memoria globale topologica (Dijkstra)
-  goal_relay   : bool (default true)   /goal_pose -> /global_goal per RViz
-  use_mission  : bool (default false)  esegue una missione a waypoint
-  mission_file : str  YAML della missione (vedi robot_real_goal_manager)
+  viewer       : bool (default true)   MuJoCo window
+  people       : str  (default '')     dynamic obstacles: '' or 'default'
+  nav_graph    : bool (default false)  global topological memory (Dijkstra)
+  goal_relay   : bool (default true)   /goal_pose -> /global_goal for RViz
+  use_mission  : bool (default false)  run a waypoint mission
+  mission_file : str  mission YAML (see robot_real_goal_manager)
 """
 
 import os
@@ -66,9 +66,9 @@ def generate_launch_description():
 
     args = [
         DeclareLaunchArgument("params_file",  default_value=default_planner),
-        # Secondo file di parametri, fuso SOPRA params_file (ROS 2 applica i
-        # file nell'ordine della lista e l'ultimo vince). Serve a variare
-        # pochi parametri senza duplicare un profilo da 250 righe: vedi
+        # Second parameter file, merged ON TOP of params_file (ROS 2 applies the
+        # files in list order and the last one wins). It is there to vary a few
+        # parameters without duplicating a 250-line profile: see
         # config/overlay_nonconvex.yaml per i mondi concavi.
         DeclareLaunchArgument("planner_overlay", default_value=default_overlay),
         DeclareLaunchArgument("lidar_params", default_value=default_lidar),
@@ -76,23 +76,23 @@ def generate_launch_description():
         DeclareLaunchArgument("rviz_config",  default_value=default_rviz),
         DeclareLaunchArgument("use_rviz",     default_value="true"),
         DeclareLaunchArgument("robot_model",  default_value="true",
-                              description="pubblica /robot_description per vedere il G1 in RViz"),
+                              description="publish /robot_description to see the G1 in RViz"),
         DeclareLaunchArgument("viewer",       default_value="true"),
         DeclareLaunchArgument("people",       default_value=""),
-        # Geometria del mondo MuJoCo. "industrial" e' il magazzino;
-        # long_wall / horseshoe / dead_end sono i mondi con ostacoli non
-        # convessi (vedi g1_sim/mujoco_world.py, WORLDS). Cambiando mondo
-        # cambia anche la posa di spawn, presa dal mondo stesso.
+        # Geometry of the MuJoCo world. "industrial" is the warehouse;
+        # long_wall / horseshoe / dead_end are the worlds with non-convex
+        # obstacles (see g1_sim/mujoco_world.py, WORLDS). Changing world also
+        # changes the spawn pose, taken from the world itself.
         DeclareLaunchArgument("world",        default_value="industrial"),
         DeclareLaunchArgument("nav_graph",    default_value="false"),
         DeclareLaunchArgument("goal_relay",   default_value="true"),
         DeclareLaunchArgument("use_mission",  default_value="false"),
         DeclareLaunchArgument("mission_file", default_value=""),
-        # Ritardo prima che la missione pubblichi il PRIMO goal. Il default del
-        # nodo e' 3 s, troppo pochi: il goal partirebbe prima che si riesca ad
-        # avviare metrics/record_run.sh, e /global_goal e' pubblicato UNA SOLA
-        # volta — una bag che se lo perde e' inutilizzabile dagli strumenti
-        # di analisi. 20 s bastano per lanciare il recorder con calma.
+        # Delay before the mission publishes the FIRST goal. The node default is
+        # 3 s, too few: the goal would fire before one can start
+        # metrics/record_run.sh, and /global_goal is published ONLY ONCE — a bag
+        # that misses it is useless to the analysis tools. 20 s are enough to
+        # start the recorder without rushing.
         DeclareLaunchArgument("mission_delay", default_value="20.0"),
     ]
 
@@ -100,18 +100,18 @@ def generate_launch_description():
     lidar_params = LaunchConfiguration("lidar_params")
     sim_params   = LaunchConfiguration("sim_params")
 
-    # Il simulatore E' la sorgente di /clock, quindi e' l'unico nodo che NON usa
-    # use_sim_time; tutto il resto della catena lo usa.
+    # The simulator IS the source of /clock, so it is the only node that does NOT
+    # use use_sim_time; the rest of the chain does.
     sim_time = {"use_sim_time": True}
     planner  = [params_file, LaunchConfiguration("planner_overlay"), sim_time]
 
     nodes = [
-        # L'URDF ha come radice 'pelvis', mentre mujoco_sim pubblica la posa
-        # della base come 'base_link'. Senza questo ponte l'albero del robot
-        # resta staccato da odom: RViz non sa dove metterlo, impila i link
-        # nell'origine e li disegna bianchi con lo stato in errore.
-        # mujoco_sim impone la posa del giunto libero, che nel MJCF E' il
-        # bacino, quindi la trasformazione e' l'identita'.
+        # The URDF has 'pelvis' as its root, while mujoco_sim publishes the base
+        # pose as 'base_link'. Without this bridge the robot tree stays detached
+        # from odom: RViz does not know where to put it, stacks the links at the
+        # origin and draws them white with the status in error.
+        # mujoco_sim imposes the pose of the free joint, which in the MJCF IS the
+        # pelvis, so the transform is the identity.
         Node(
             package="tf2_ros", executable="static_transform_publisher",
             name="base_link_to_pelvis", output="log",
@@ -120,11 +120,11 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration("robot_model")),
         ),
 
-        # ── modello del robot: /joint_states -> TF dei 29 giunti -> RViz ──
-        # mujoco_sim pubblica gia' /joint_states; robot_state_publisher li
-        # trasforma nella catena TF completa e in /robot_description, che e' cio'
-        # che il display RobotModel di RViz consuma. Non serve alla navigazione:
-        # con robot_model:=false lo stack funziona identico, senza il modello.
+        # ── robot model: /joint_states -> TF of the 29 joints -> RViz ──
+        # mujoco_sim already publishes /joint_states; robot_state_publisher turns
+        # them into the full TF chain and into /robot_description, which is what
+        # the RobotModel display of RViz consumes. Navigation does not need it:
+        # with robot_model:=false the stack works identically, without the model.
         Node(
             package="robot_state_publisher", executable="robot_state_publisher",
             name="robot_state_publisher", output="log",
@@ -147,9 +147,9 @@ def generate_launch_description():
             ],
         ),
 
-        # ── percezione: nuvola dal frame sensore al frame di pianificazione ──
-        # L'adattatore e' completamente parametrico (topic, frame, range,
-        # altezze, voxel): il robot entra solo dal YAML.
+        # ── perception: cloud from the sensor frame to the planning frame ──
+        # The adapter is fully parametric (topic, frame, range, heights, voxel):
+        # the robot enters through the YAML only.
 
         Node(
             package="robot_real_lidar", executable="lidar_filter_node",
@@ -157,7 +157,7 @@ def generate_launch_description():
             parameters=[lidar_params, sim_time],
         ),
 
-        # ── posa: /odom -> PoseStamped nel frame di pianificazione ──────
+        # ── pose: /odom -> PoseStamped in the planning frame ───────────
         Node(
             package="a_star_mpc_planner", executable="odom_to_pose_node",
             name="odom_to_pose_node", output="screen",
@@ -186,9 +186,9 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration("nav_graph")),
         ),
 
-        # ── goal: lo strumento "2D Goal Pose" di RViz pubblica su /goal_pose,
-        #    lo stack ascolta /global_goal. Il relay e' parametrico e forza il
-        #    frame, cosi' si evita una dipendenza da topic_tools ──────────
+        # ── goal: the "2D Goal Pose" tool of RViz publishes on /goal_pose,
+        #    the stack listens on /global_goal. The relay is parametric and forces
+        #    the frame, which avoids a dependency on topic_tools ──────────
         Node(
             package="robot_real_goal_manager", executable="goal_relay_node",
             name="goal_relay_node", output="screen",
@@ -200,7 +200,7 @@ def generate_launch_description():
         ),
 
         # ── missione a waypoint per prove ripetibili (opzionale) ────────
-        # Serve agli esperimenti che richiedono scenari identici ripetuti:
+        # Needed by the experiments that require identical repeated scenarios:
         # vedi metrics/pareto_front.py (fronte di Pareto).
         Node(
             package="robot_real_goal_manager", executable="mission_runner_node",

@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 """
-Euler contro punto medio sugli orizzonti VERI di una bag.
+Euler against midpoint on the REAL horizons of a bag.
 
-Perche' non basta il test sintetico
+Why the synthetic test is not enough
 -----------------------------------
-tests/test_integrators.py misura l'ordine su un arco a velocita' costante. E'
-il modo corretto di stimare un ordine — che e' una proprieta' asintotica e
-richiede uno sweep su dt — e test_matches_nlp() verifica che lo schema misurato
-sia bit per bit quello che mpc_tracker costruisce dentro l'NLP. Ma quel regime
-non e' quello dell'MPC, che applica un ingresso DIVERSO a ogni nodo: lungo un
-orizzonte vero la velocita' angolare cambia segno e gli errori si cancellano in
-parte, invece di sommarsi lungo un unico arco.
+tests/test_integrators.py measures the order on a constant-velocity arc. That is
+the correct way to estimate an order — which is an asymptotic property and needs
+a sweep over dt — and test_matches_nlp() checks that the scheme measured is bit
+for bit the one mpc_tracker builds inside the NLP. But that regime is not the one
+of the MPC, which applies a DIFFERENT input at every node: along a real horizon
+the angular velocity changes sign and the errors partly cancel, instead of adding
+up along a single arc.
 
-Questo script rifa' la stessa misura sulla sequenza di ingressi ottima di
-orizzonti realmente risolti, ripresi da una bag del G1 nel magazzino MuJoCo.
+This script redoes the same measurement on the optimal input sequence of horizons
+actually solved, taken from a bag of the G1 in the MuJoCo warehouse.
 
 Cosa viene isolato
 ------------------
-Il canale di velocita' e' ZOH esatto a qualunque passo. La sequenza post-lag e'
-quindi calcolata una volta al passo deployato e tenuta ferma per tutti e tre i
-percorsi (Euler, punto medio, riferimento), cosi' l'unica differenza e' come si
-valuta R(psi) — che e' la domanda posta. Il riferimento e' l'arco esatto, non
+The velocity channel is exact ZOH at any step. The post-lag sequence is therefore
+computed once at the deployed step and held fixed for all three paths (Euler,
+midpoint, reference), so that the only difference is how R(psi) is evaluated —
+which is the question being asked. The reference is the exact arc, not
 un'integrazione fine: a velocita' costante sull'intervallo esiste in forma
-chiusa, quindi non c'e' nessun errore residuo di riferimento da giustificare.
+closed form, so there is no residual reference error to justify.
 
-Il passo di integrazione si fa variare suddividendo l'intervallo di predizione
-senza toccare l'ingresso, che resta costante su ciascun dt. E' cio' che rende
-misurabile un ORDINE su una traiettoria vera.
+The integration step is varied by subdividing the prediction interval without
+touching the input, which stays constant over each dt. That is what makes an
+ORDER measurable on a real trajectory.
 
     python3 metrics/integrator_bag.py metrics/bags/industrial_v6
 """
@@ -50,7 +50,7 @@ SUBS = (1, 2, 4, 8, 16)
 
 
 def measure(cfg, raw, bagpath: str, max_frames: int = 12, verbose: bool = True) -> dict:
-    """Errore dei due schemi su orizzonti risolti da bag. Ritorna un dict serializzabile."""
+    """Error of the two schemes on horizons solved from a bag. Returns a serialisable dict."""
     import bag_source
     import formulation_compare as FC
     import test_integrators as TI
@@ -59,8 +59,8 @@ def measure(cfg, raw, bagpath: str, max_frames: int = 12, verbose: bool = True) 
     frs = bag_source.frames(bag)
     idx = FC.moving_frames(frs)
     if not idx:
-        raise SystemExit("nessun ciclo utilizzabile: la bag non contiene cicli in "
-                         "movimento con un path A* abbastanza lungo")
+        raise SystemExit("no usable cycle: the bag contains no moving cycles with a "
+                         "long enough A* path")
     sel = [idx[i] for i in
            np.linspace(0, len(idx) - 1, min(max_frames, len(idx))).astype(int)]
 
@@ -85,14 +85,14 @@ def measure(cfg, raw, bagpath: str, max_frames: int = 12, verbose: bool = True) 
             for i, v in enumerate(h[s]):
                 err[s][i].append(v)
         lag.append(TI.lag_displacement(f.x0, U, cfg.dt, cfg.tau_v, cfg.tau_w))
-        # ampiezza della rotazione sull'orizzonte: e' cio' che distingue questi
-        # orizzonti dall'arco a omega costante del test sintetico
+        # amplitude of the rotation over the horizon: it is what distinguishes
+        # these horizons from the constant-omega arc of the synthetic test
         omega.append(float(np.ptp(U[:, 2])))
         usati += 1
 
     if usati == 0:
-        raise SystemExit("nessuno dei cicli selezionati e' stato risolto: "
-                         "profilo incompatibile con la bag?")
+        raise SystemExit("none of the selected cycles was solved: "
+                         "is the profile incompatible with the bag?")
 
     dts = [cfg.dt / s for s in SUBS]
     med = {s: [float(np.median(a)) for a in err[s]] for s in err}
@@ -109,7 +109,7 @@ def measure(cfg, raw, bagpath: str, max_frames: int = 12, verbose: bool = True) 
         "mediana": med,
         "p95": p95,
         "ordine": ordine,
-        # al passo deployato (sub = 1): e' la riga che il report cita
+        # at the deployed step (sub = 1): it is the row the report quotes
         "al_dt_deployato": {
             "dt": float(cfg.dt),
             "errore_euler_m": med["euler"][0],
@@ -134,23 +134,23 @@ def measure(cfg, raw, bagpath: str, max_frames: int = 12, verbose: bool = True) 
         print(f"al passo deployato dt={cfg.dt}: Euler {med['euler'][0]:.3e} m "
               f"(p95 {p95['euler'][0]:.3e}), punto medio {med['midpoint'][0]:.3e} m "
               f"(p95 {p95['midpoint'][0]:.3e})")
-        print(f"escursione mediana di omega sull'orizzonte: "
+        print(f"median excursion of omega over the horizon: "
               f"{out['omega_ptp_mediano']:.2f} rad/s "
-              f"(il test sintetico la tiene a 0)")
-        print(f"spostamento trascurato dal transitorio del lag: "
-              f"{out['lag_mediano_m']:.3e} m mediani — con tau={cfg.tau_v}s e' "
-              f"dello stesso ordine dell'errore del punto medio: sotto quel "
-              f"livello raffinare lo schema non compra piu' nulla.")
+              f"(the synthetic test keeps it at 0)")
+        print(f"displacement neglected by the lag transient: "
+              f"{out['lag_mediano_m']:.3e} m median — with tau={cfg.tau_v}s it is "
+              f"of the same order as the midpoint error: below that "
+              f"level, refining the scheme buys nothing more.")
     return out
 
 
 def closed_loop(cfg, raw, mondi=("u_trap", "narrow_gap"), verbose: bool = True) -> dict:
-    """Euler contro punto medio in ANELLO CHIUSO, a parita' di tutto il resto.
+    """Euler against midpoint in CLOSED LOOP, everything else being equal.
 
-    L'errore di predizione e' una cosa, il costo pagato in anello chiuso e'
-    un'altra: si applica solo il primo ingresso e A* ripianifica, quindi la
-    fedelta' della predizione entra solo di striscio. Questa e' la misura che
-    sostanzia l'affermazione, finora non generata da nessuno script.
+    The prediction error is one thing, the cost paid in closed loop is another:
+    only the first input is applied and A* replans, so the fidelity of the
+    prediction only enters marginally. This is the measurement that substantiates
+    the claim.
     """
     import dataclasses
     out = {}
@@ -191,7 +191,7 @@ def main() -> int:
     res = measure(cfg, raw, args.bag, args.frames)
     if not args.no_closed_loop:
         print()
-        print("anello chiuso (stesso profilo, solo l'integratore cambia):")
+        print("closed loop (same profile, only the integrator changes):")
         res["anello_chiuso"] = closed_loop(cfg, raw)
 
     os.makedirs(os.path.dirname(args.json), exist_ok=True)

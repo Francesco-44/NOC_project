@@ -1,39 +1,39 @@
 #!/usr/bin/env python3
 """
-PANNELLO 2 — il paesaggio nello spazio delle DECISIONI, con il percorso di IPOPT.
+PANEL 2 — the landscape in DECISION space, with the path of IPOPT.
 
-Il pannello 1 disegna c(x, y) sul piano del mondo: e' una visualizzazione di
-NAVIGAZIONE. Questo pannello disegna la funzione che il solutore minimizza
-davvero, nello spazio in cui la minimizza — 141 variabili con il profilo G1
-(X: 6x16, U: 3x15) — ed e' la controparte della Fig. 4.9 delle dispense.
+Panel 1 draws c(x, y) on the world plane: that is a NAVIGATION visualisation.
+This panel draws the function the solver really minimises, in the space where it
+minimises it — 141 variables with the G1 profile (X: 6x16, U: 3x15) — and is the
+counterpart of Fig. 4.9 of the lecture notes.
 
-Come si sceglie il piano
-------------------------
-Una sezione 2-D casuale di R^141 quasi certamente non contiene niente di
-interessante. Qui il piano e' costruito perche' contenga la struttura:
+How the plane is chosen
+-----------------------
+A random 2-D section of R^141 almost surely contains nothing of interest. Here
+the plane is built so that it contains the structure:
 
-  1. si risolve l'NLP due volte, con warm start sbilanciato a SINISTRA e a
+  1. the NLP is solved twice, with the warm start biased to the LEFT and to the
      DESTRA, ottenendo due minimi locali x*_L e x*_R (se esistono);
-  2. il terzo punto di ancoraggio e' l'iterato iniziale (il riferimento);
-  3. il piano affine per quei tre punti CONTIENE ENTRAMBI I MINIMI per
-     costruzione, quindi la biforcazione "passo a sinistra / passo a destra" e'
-     nell'inquadratura invece che sperare di beccarla.
+  2. the third anchor point is the initial iterate (the reference);
+  3. the affine plane through those three points CONTAINS BOTH MINIMA by
+     construction, so the "pass left / pass right" bifurcation is in frame,
+     instead of hoping to catch it.
 
-Coordinate: base ortonormale (e1, e2) del piano, con origine in x*_L.
-Gli iterati di IPOPT si proiettano ESATTAMENTE (proiezione ortogonale su un
-sottospazio affine); e' il motivo per cui questo pannello puo' mostrare il
-percorso x^0 -> x* e il pannello 1 no.
+Coordinates: orthonormal basis (e1, e2) of the plane, with origin at x*_L.
+The IPOPT iterates project EXACTLY (orthogonal projection onto an affine
+subspace); that is why this panel can show the path x^0 -> x* and panel 1
+cannot.
 
-Che cosa si disegna
--------------------
-  --merit  (default)  T1(x) = f(x) + sigma * ||violazione dei vincoli||_1
-                      la funzione di merito l1 della sezione 6.3.3 delle
-                      dispense. E' la scelta ONESTA: in multiple shooting X e U
-                      sono variabili indipendenti legate dai vincoli di
-                      dinamica, quindi un punto generico del piano NON e'
-                      ammissibile e disegnare il solo f darebbe un paesaggio in
-                      cui il minimo puo' cadere fuori dall'insieme ammissibile.
-  --objective         solo f(x), per confronto.
+What is drawn
+-------------
+  --merit  (default)  T1(x) = f(x) + sigma * ||constraint violation||_1
+                      the l1 merit function of section 6.3.3 of the lecture
+                      notes. It is the HONEST choice: in multiple shooting X and
+                      U are independent variables tied by the dynamics
+                      constraints, so a generic point of the plane is NOT
+                      feasible, and drawing f alone would give a landscape whose
+                      minimum can fall outside the feasible set.
+  --objective         f(x) only, for comparison.
 
 Uso
 ---
@@ -57,10 +57,10 @@ OUT = os.path.join(_REPO, "metrics", "out")
 
 
 # ---------------------------------------------------------------------------
-# Solve con warm start sbilanciato -> minimi locali distinti
+# Solve with a biased warm start -> distinct local minima
 # ---------------------------------------------------------------------------
 def rollout(cfg, x0, U):
-    """Traiettoria di stato coerente con U, secondo il modello dell'MPC."""
+    """State trajectory consistent with U, according to the MPC model."""
     lag_v = 1.0 - np.exp(-cfg.dt / max(cfg.tau_v, 1e-6))
     lag_w = 1.0 - np.exp(-cfg.dt / max(cfg.tau_w, 1e-6))
     X = np.zeros((cfg.N + 1, 6))
@@ -78,7 +78,7 @@ def rollout(cfg, x0, U):
 
 
 def solve_biased(cfg, sc, bias: float, raw=None, ref=None):
-    """Un solve con warm start che spinge verso un lato (bias in [-1, 1])."""
+    """One solve with a warm start pushing to one side (bias in [-1, 1])."""
     tracker = common.MPCTracker(cfg)
     tracker._build_nlp()
     x0 = np.array([sc.pose[0], sc.pose[1], sc.pose[2], 0.0, 0.0, 0.0])
@@ -94,16 +94,16 @@ def solve_biased(cfg, sc, bias: float, raw=None, ref=None):
 
 
 # ---------------------------------------------------------------------------
-# Funzioni di valutazione estratte dall'NLP vero
+# Evaluation functions extracted from the real NLP
 # ---------------------------------------------------------------------------
 def make_evaluators(tracker):
-    """f(x, p) e violazione dei vincoli, dall'espressione che IPOPT minimizza."""
+    """f(x, p) and constraint violation, from the expression IPOPT minimises."""
     o = tracker._opti
     f_fun = ca.Function("f", [o.x, o.p], [o.f])
     g_fun = ca.Function("g", [o.x, o.p], [o.g])
-    # In Opti i bound dei vincoli sono espressioni MX (qui dipendono davvero dai
+    # In Opti the constraint bounds are MX expressions (here they genuinely depend
     # parametri: i box sugli ingressi usano p_vx_max/p_vy_max/p_omega_max), quindi
-    # vanno VALUTATI dopo il set_value, non convertiti direttamente.
+    # they have to be EVALUATED after set_value, not converted directly.
     lbg = np.array(o.value(o.lbg)).ravel()
     ubg = np.array(o.value(o.ubg)).ravel()
     pval = np.array(o.value(o.p)).ravel()
@@ -132,23 +132,23 @@ def main() -> int:
     ap.add_argument("--scenario", default="centred_pillar",
                     choices=sorted(common.SCENARIOS))
     ap.add_argument("--profile", default=common.DEFAULT_PROFILE)
-    ap.add_argument("--n", type=int, default=90, help="lato della griglia sul piano")
+    ap.add_argument("--n", type=int, default=90, help="side of the grid on the plane")
     ap.add_argument("--span", type=float, default=1.6,
-                    help="estensione del piano, in unita' di |x*_R - x*_L|")
+                    help="extent of the plane, in units of |x*_R - x*_L|")
     ap.add_argument("--sigma", type=float, default=None,
-                    help="peso della penalita' l1 (default: scelto dai dati)")
+                    help="weight of the l1 penalty (default: chosen from the data)")
     ap.add_argument("--objective", action="store_true",
-                    help="disegna solo f(x) invece della funzione di merito")
+                    help="draw f(x) only instead of the merit function")
     ap.add_argument("--bag", default=None,
-                    help="rosbag di un run vero: ricostruisce ESATTAMENTE il "
-                         "problema risolto in un ciclo e lo ri-risolve")
+                    help="rosbag of a real run: reconstructs EXACTLY the problem "
+                         "solved in one cycle and re-solves it")
     ap.add_argument("--frame", type=int, default=None,
-                    help="con --bag: quale ciclo (default: quello a costo massimo)")
+                    help="with --bag: which cycle (default: the one with maximum cost)")
     ap.add_argument("--astar", action="store_true",
-                    help="usa il riferimento A* invece della retta al goal")
+                    help="use the A* reference instead of the straight line to the goal")
     ap.add_argument("--set", dest="overrides", action="append", default=[],
                     metavar="CHIAVE=VALORE",
-                    help="sovrascrive un parametro del profilo, ripetibile")
+                    help="override a parameter of the profile, repeatable")
     ap.add_argument("--no-show", action="store_true")
     args = ap.parse_args()
 
@@ -169,7 +169,7 @@ def main() -> int:
         ref = f.path
         print(f"bag: ciclo {k}/{len(frs)}  t={f.t:.1f} s  J*={f.cost:.0f}  "
               f"solve={f.solve_ms:.0f} ms  iterazioni={f.iterations}")
-        print(f"  x0 dal solutore: pos=({f.x0[0]:.3f},{f.x0[1]:.3f}) "
+        print(f"  x0 from the solver: pos=({f.x0[0]:.3f},{f.x0[1]:.3f}) "
               f"yaw={np.degrees(f.x0[2]):.1f} deg  v=({f.x0[3]:.3f},{f.x0[4]:.3f},{f.x0[5]:.3f})")
     else:
         sc = common.get_scenario(args.scenario)
@@ -186,17 +186,17 @@ def main() -> int:
     sep = float(np.linalg.norm(xR - xL))
     print(f"solve sbilanciato a SINISTRA: J*={resL.cost:9.2f}  iterazioni={len(itsL)}")
     print(f"solve sbilanciato a DESTRA  : J*={resR.cost:9.2f}  iterazioni={len(itsR)}")
-    print(f"distanza fra le due soluzioni in R^{xL.size}: {sep:.4f}")
+    print(f"distance between the two solutions in R^{xL.size}: {sep:.4f}")
     distinct = sep > 1e-3
     print("  ->", "DUE minimi locali distinti" if distinct
-          else "STESSO minimo: il paesaggio non biforca in questo scenario")
+          else "SAME minimum: the landscape does not bifurcate in this scenario")
 
-    # --- piano affine per x*_L, x*_R e l'iterato iniziale -------------------
+    # --- affine plane through x*_L, x*_R and the initial iterate ------------
     origin = xL
     d1 = xR - xL
-    if not distinct:                      # ripiego: direzione di imbardata
+    if not distinct:                      # fallback: yaw direction
         d1 = np.zeros_like(xL)
-        d1[6 * (cfg.N + 1) + 2::3] = 1.0  # componenti omega di U
+        d1[6 * (cfg.N + 1) + 2::3] = 1.0  # omega components of U
     e1 = d1 / np.linalg.norm(d1)
     third = itsL[0] if itsL else np.zeros_like(xL)
     d2 = (third - origin) - np.dot(third - origin, e1) * e1
@@ -213,7 +213,7 @@ def main() -> int:
     PL = np.array([proj(v) for v in itsL]) if itsL else np.zeros((0, 2))
     PR = np.array([proj(v) for v in itsR]) if itsR else np.zeros((0, 2))
 
-    # --- griglia sul piano ---------------------------------------------------
+    # --- grid on the plane ---------------------------------------------------
     scale = max(sep, 1e-6)
     lo, hi = -args.span * scale + aL, args.span * scale + aL
     allp = np.vstack([PL, PR, [[aL, bL], [aR, bR]]])
@@ -229,27 +229,27 @@ def main() -> int:
     f_of, viol_of, lam_max = make_evaluators(trL)
     F = f_of(XX)
     V = viol_of(XX)
-    # sigma NON si sceglie a occhio: il Teorema 6.3.1 delle dispense dice che la
-    # penalita' l1 e' ESATTA — cioe' il minimo della funzione di merito coincide
-    # con quello del problema vincolato — non appena sigma supera il modulo del
-    # moltiplicatore di Lagrange del vincolo corrispondente. Il moltiplicatore lo
-    # restituisce IPOPT, quindi sigma e' una quantita' LETTA dal problema, non un
-    # parametro da tarare. Con un sigma troppo piccolo il minimo della superficie
-    # cade fuori dall'insieme ammissibile: e' l'inesattezza contro cui il teorema
-    # mette in guardia, e si vede.
+    # sigma is NOT chosen by eye: Theorem 6.3.1 of the lecture notes says the l1
+    # penalty is EXACT — i.e. the minimum of the merit function coincides with
+    # that of the constrained problem — as soon as sigma exceeds the magnitude of
+    # the Lagrange multiplier of the corresponding constraint. IPOPT returns that
+    # multiplier, so sigma is a quantity READ from the problem, not a parameter to
+    # tune. With a sigma that is too small the minimum of the surface falls
+    # outside the feasible set: that is the inexactness the theorem warns about,
+    # and it shows.
     if args.sigma is not None:
         sigma = args.sigma
     elif lam_max > 0.0:
         sigma = 1.5 * lam_max
     else:
         sigma = float(np.percentile(F, 90) / max(np.percentile(V, 90), 1e-9))
-    print(f"  max|lambda| dai moltiplicatori di IPOPT: {lam_max:.4g}"
+    print(f"  max|lambda| from the IPOPT multipliers: {lam_max:.4g}"
           f"   ->   sigma = {sigma:.4g} "
           f"({'esatta (Thm 6.3.1)' if sigma > lam_max > 0 else 'euristica'})")
     Zfull = F if args.objective else F + sigma * V
     Z = Zfull.reshape(AA.shape)
     label = "f(x)" if args.objective else f"T1(x) = f(x) + {sigma:.3g}·‖viol‖₁"
-    print(f"\ngriglia {args.n}x{args.n} sul piano · {label}")
+    print(f"\ngrid {args.n}x{args.n} on the plane · {label}")
     print(f"  f in [{F.min():.1f}, {F.max():.1f}] · violazione in "
           f"[{V.min():.2e}, {V.max():.2e}] · sigma = {sigma:.4g}")
 
@@ -299,7 +299,7 @@ def main() -> int:
     ax2.legend(fontsize=7, loc="best")
 
     fig.suptitle(f"Panel 2 --- decision space $\\mathbb{{R}}^{{{xL.size}}}$ --- {sc.name} --- "
-                 f"{'obiettivo f' if args.objective else 'funzione di merito ℓ1'}",
+                 f"{'objective f' if args.objective else 'ℓ1 merit function'}",
                  fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.93])
     os.makedirs(OUT, exist_ok=True)

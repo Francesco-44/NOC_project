@@ -1,31 +1,31 @@
 """
-geodesic_field — distanza dal goal che RISPETTA gli ostacoli gia' visti.
+geodesic_field — distance from the goal that RESPECTS the obstacles already seen.
 
-PERCHE'. AStarPlanner sceglie il bersaglio locale con una distanza EUCLIDEA dal
-goal globale. Misurato su metrics/escape_test.py, con il robot 4 m dentro un vicolo
-cieco lungo 12 m, le tre candidate sul bordo della finestra valgono:
+WHY. AStarPlanner picks the local target using a EUCLIDEAN distance from the
+global goal. Measured with metrics/escape_test.py, with the robot 4 m inside a
+12 m dead end, the three candidates on the window border are worth:
 
-    candidata                euclidea   geodetica
-    (9.35,  0.00) nel vicolo   3.65 m    28.79 m
-    (9.60, -1.60) fuori sud    3.76 m     4.06 m
-    (9.72, +1.60) fuori nord   3.65 m     3.98 m
+    candidate                  euclidean   geodesic
+    (9.35,  0.00) in the alley    3.65 m     28.79 m
+    (9.60, -1.60) outside south   3.76 m      4.06 m
+    (9.72, +1.60) outside north   3.65 m      3.98 m
 
-L'euclidea le dichiara equivalenti (~3.7 m) e il pianificatore ne sceglie una a
-caso: una su tre lo rimanda nella trappola, e a ogni ripianificazione cambia
-idea. E' quello il ciclo limite, non la mancanza di memoria — il robot HA gia'
-visto il fondo del vicolo, semplicemente la metrica con cui valuta i bersagli
-butta via quell'informazione.
+The euclidean metric declares them equivalent (~3.7 m) and the planner picks one
+at random: one in three sends it back into the trap, and at every replan it
+changes its mind. That is the limit cycle, not a lack of memory — the robot HAS
+already seen the back of the alley, it is the metric it judges targets with that
+throws that information away.
 
-La geodetica la usa: e' un fronte d'onda (Dijkstra) propagato DAL GOAL sulle
-celle libere della mappa accumulata. Costa un solo campo scalare per
-ripianificazione, senza estrarre percorsi.
+The geodesic uses it: it is a wavefront (Dijkstra) propagated FROM THE GOAL over
+the free cells of the accumulated map. It costs one scalar field per replan, with
+no path extraction.
 
-SPAZIO NON ESPLORATO = LIBERO. E' la scelta ottimistica standard
-dell'esplorazione a frontiera: cio' che non si e' ancora visto potrebbe essere
-passabile, e vale la pena andare a guardare. La conseguenza voluta e' che il
-campo si CORREGGE da solo man mano che il LiDAR scopre: finche' il fondo del
-vicolo e' ignoto la geodetica ci passa attraverso ed e' giusto entrare; appena
-il fondo e' visto, la geodetica salta a 29 m e il bersaglio viene scartato.
+UNEXPLORED SPACE = FREE. This is the standard optimistic choice of frontier
+exploration: what has not been seen yet might be passable, and it is worth going
+to look. The intended consequence is that the field CORRECTS itself as the LiDAR
+discovers: while the back of the alley is unknown the geodesic goes through it
+and entering is right; as soon as the back is seen, the geodesic jumps to 29 m
+and the target is discarded.
 """
 
 from __future__ import annotations
@@ -42,32 +42,32 @@ _NEIGH = ((1, 0, 1.0), (-1, 0, 1.0), (0, 1, 1.0), (0, -1, 1.0),
 
 
 def block_radius(grid_std: float, obstacle_threshold: float) -> float:
-    """Raggio di blocco implicato dalla griglia gaussiana di A*.
+    """Blocking radius implied by the Gaussian grid of A*.
 
-    La probabilita' e' P = 1 - Phi(d/sigma), quindi la soglia tau corrisponde a
-    d_block = sigma * Phi^-1(1 - tau). E' la stessa formula documentata in
-    planner_params_g1.yaml; ricalcolarla qui tiene il campo geodetico COERENTE
-    con cio' che A* considera bloccato, invece di introdurre una seconda nozione
-    di ostacolo che diverge in silenzio.
+    The probability is P = 1 - Phi(d/sigma), so the threshold tau corresponds to
+    d_block = sigma * Phi^-1(1 - tau). It is the same formula documented in
+    planner_params_g1.yaml; recomputing it here keeps the geodesic field
+    CONSISTENT with what A* considers blocked, instead of introducing a second
+    notion of obstacle that silently diverges.
     """
     tau = min(max(float(obstacle_threshold), 1e-6), 1.0 - 1e-6)
     return float(grid_std) * NormalDist().inv_cdf(1.0 - tau)
 
 
 class GeodesicField:
-    """Campo di distanza dal goal, propagato sulla mappa nota.
+    """Distance field from the goal, propagated over the known map.
 
     Parameters
     ----------
-    known_xy    : (K, 2) punti ostacolo accumulati (frame mondo).
-    goal_xy     : (2,) goal globale.
-    robot_xy    : (2,) posa del robot; serve solo a dimensionare il riquadro.
-    reso        : lato cella [m].
-    r_block     : raggio di inflazione degli ostacoli [m] (vedi block_radius).
-    margin      : margine attorno al riquadro robot+goal+ostacoli noti [m]. Deve
-                  essere generoso: il percorso d'uscita da una concavita' esce
-                  spesso dal rettangolo che contiene robot e goal, e un riquadro
-                  stretto lo dichiarerebbe irraggiungibile.
+    known_xy    : (K, 2) accumulated obstacle points (world frame).
+    goal_xy     : (2,) global goal.
+    robot_xy    : (2,) robot pose; only used to size the bounding box.
+    reso        : cell side [m].
+    r_block     : obstacle inflation radius [m] (see block_radius).
+    margin      : margin around the robot+goal+known-obstacles box [m]. It has to
+                  be generous: the way out of a concavity often leaves the
+                  rectangle containing robot and goal, and a tight box would
+                  declare it unreachable.
     """
 
     def __init__(self, known_xy, goal_xy, robot_xy, reso=0.20,
@@ -99,7 +99,7 @@ class GeodesicField:
             r = int(math.ceil(r_block / self.reso))
             ix = np.clip(((known[:, 0] - self.minx) / self.reso).astype(int), 0, nx - 1)
             iy = np.clip(((known[:, 1] - self.miny) / self.reso).astype(int), 0, ny - 1)
-            # disco di inflazione, precalcolato una volta
+            # inflation disc, precomputed once
             off = [(di, dj) for di in range(-r, r + 1) for dj in range(-r, r + 1)
                    if math.hypot(di, dj) * self.reso <= r_block]
             for di, dj in off:
@@ -125,10 +125,10 @@ class GeodesicField:
         if gi is None:
             return D
         if self.occ[gi, gj]:
-            # Il goal e' dentro l'inflazione di un ostacolo (capita quando sta
-            # rasente a un muro): si parte dalla cella libera piu' vicina,
-            # altrimenti il campo resterebbe tutto infinito e il meccanismo
-            # fallirebbe in silenzio proprio nei casi stretti.
+            # The goal is inside the inflation of an obstacle (which happens when
+            # it sits right against a wall): start from the nearest free cell,
+            # otherwise the field would stay infinite everywhere and the mechanism
+            # would fail silently exactly in the tight cases.
             free = np.argwhere(~self.occ)
             if not len(free):
                 return D
@@ -157,13 +157,13 @@ class GeodesicField:
     # ------------------------------------------------------------------
 
     def distance(self, x, y) -> float:
-        """Distanza geodetica dal goal, o +inf se irraggiungibile/fuori riquadro."""
+        """Geodesic distance from the goal, or +inf if unreachable/out of the box."""
         i, j = self._idx(x, y)
         if i is None:
             return math.inf
         return float(self.D[i, j])
 
     def reachable_fraction(self) -> float:
-        """Diagnostica: frazione di celle libere raggiunte dal fronte d'onda."""
+        """Diagnostics: fraction of free cells reached by the wavefront."""
         libere = int((~self.occ).sum())
         return float(np.isfinite(self.D).sum()) / libere if libere else 0.0

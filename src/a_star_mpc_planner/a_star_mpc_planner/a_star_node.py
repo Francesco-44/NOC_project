@@ -84,18 +84,18 @@ class AStarNode(Node):
         )
         self._max_lidar_range = float(self.get_parameter('max_lidar_range').value)
 
-        # ── Algorithm objects ─────────────────────────────────────────
-        # ── selezione del bersaglio locale ────────────────────────────
-        # false = comportamento storico (proiezione del goal sul bordo della
-        # finestra lungo il raggio robot->goal). true = argmin della geodetica.
+        # ── local target selection ────────────────────────────────────
+        # false = original behaviour (projection of the goal onto the window
+        # border along the robot->goal ray). true = argmin of the geodesic
+        # distance.
         self.declare_parameter('use_geodesic_target', False)
-        # Margine [m] attorno al riquadro robot+goal+mappa nota su cui si
-        # propaga il fronte d'onda. Generoso di proposito: la via d'uscita da
-        # una concavita' esce spesso dal rettangolo che contiene robot e goal.
+        # Margin [m] around the robot+goal+known-map box the wavefront is
+        # propagated over. Generous on purpose: the way out of a concavity often
+        # leaves the rectangle containing robot and goal.
         self.declare_parameter('geodesic_margin', 6.0)
-        # Isteresi: quanto deve migliorare una rotta alternativa per cambiare
-        # idea. Senza, due rotte simmetriche (i due lati di un corridoio) si
-        # alternano a ogni ripianificazione e il robot dondola sul posto.
+        # Hysteresis: how much an alternative route has to improve to change the
+        # decision. Without it, two symmetric routes (the two sides of a corridor)
+        # alternate at every replan and the robot sways on the spot.
         self.declare_parameter('target_switch_margin', 0.0)
         self.declare_parameter('commit_to_side', False)
 
@@ -110,11 +110,11 @@ class AStarNode(Node):
             switch_margin=float(self.get_parameter('target_switch_margin').value),
             commit_to_side=bool(self.get_parameter('commit_to_side').value),
         )
-        # Selettore del bersaglio locale basato sulla distanza GEODETICA sulla
-        # mappa accumulata, invece che euclidea. Vedi geodesic_field.py: con
-        # l'euclidea una cella in fondo a una tasca chiusa sembra a 3.65 m dal
-        # goal mentre ne dista 28.79 di cammino, e il pianificatore ci rimanda
-        # il robot ciclo dopo ciclo.
+        # Local target selector based on the GEODESIC distance over the
+        # accumulated map instead of the euclidean one. See geodesic_field.py:
+        # with the euclidean distance a cell at the bottom of a closed pocket
+        # looks 3.65 m from the goal while it is 28.79 m away along a path, and
+        # the planner sends the robot back in cycle after cycle.
         self._use_geodesic = bool(self.get_parameter('use_geodesic_target').value)
         self._geo_margin = float(self.get_parameter('geodesic_margin').value)
         self._r_block = block_radius(
@@ -140,17 +140,17 @@ class AStarNode(Node):
         )
 
         # ── Subscribers ───────────────────────────────────────────────
-        # Nome del topic della posa: parametrico, e' l'unico punto in cui
-        # il robot entra in questo nodo. Il G1 pubblica su /robot_pose.
+        # Name of the pose topic: parametric, it is the only point where the robot
+        # enters this node. The G1 publishes on /robot_pose.
         self.declare_parameter('pose_topic', '/robot_pose')
         _pose_topic = self.get_parameter('pose_topic').value
 
-        # Frame in cui vengono pubblicati path, griglia e goal locale. Era
-        # cablato a 'map', che esiste solo se a monte gira una SLAM: in questo
-        # stack non c'e' mappa a priori e il frame di pianificazione e' 'odom'.
-        # Con il frame sbagliato i messaggi vengono pubblicati regolarmente ma
-        # RViz non li puo' trasformare, quindi non si vede NULLA e nessuno
-        # segnala un errore.
+        # Frame the path, the grid and the local goal are published in. It used to
+        # be hard-wired to 'map', which only exists if a SLAM runs upstream: in
+        # this stack there is no prior map and the planning frame is 'odom'. With
+        # the wrong frame the messages are published normally but RViz cannot
+        # transform them, so NOTHING is displayed and nobody reports an error.
+
         self.declare_parameter('planning_frame', 'odom')
         self._frame = self.get_parameter('planning_frame').value
 
@@ -314,10 +314,10 @@ class AStarNode(Node):
         # or pull the robot backward when a new goal is sent.
         geo = None
         if self._use_geodesic:
-            # Il campo si propaga su TUTTA la mappa accumulata, non sulla sola
-            # finestra di A*: e' proprio l'informazione fuori finestra (il fondo
-            # del vicolo, la fine del muro) che rende la geodetica diversa
-            # dall'euclidea, e restringerla alla finestra la renderebbe inutile.
+            # The field is propagated over the WHOLE accumulated map, not just the
+            # A* window: it is precisely the information outside the window (the
+            # back of the alley, the end of the wall) that makes the geodesic
+            # different from the euclidean, and restricting it would make it useless.
             _t0 = time.perf_counter()
             known = self._persistent_map.get_points_in_window(
                 -1e6, -1e6, 1e6, 1e6)
@@ -327,7 +327,7 @@ class AStarNode(Node):
                         np.asarray(known)[:, :2], self._goal[:2], drone_xy,
                         reso=self._grid_map.reso, r_block=self._r_block,
                         margin=self._geo_margin)
-                except Exception as exc:      # non deve mai fermare la nav
+                except Exception as exc:      # must never stop navigation
                     self.get_logger().warn(
                         f'[A*] campo geodetico non calcolabile: {exc}',
                         throttle_duration_sec=5.0)

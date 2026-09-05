@@ -1,32 +1,32 @@
-# Adattatore LiDAR per il G1 in MuJoCo.
-# Riusa robot_real_lidar/lidar_filter_node, che e' gia' completamente parametrico:
-# nessuna riga di codice nuova, solo questi valori.
+# LiDAR adapter for the G1 in MuJoCo.
+# It reuses robot_real_lidar/lidar_filter_node, which is already fully
+# parametric: no new line of code, only these values.
 #
-# La nuvola arriva nel frame del sensore (mid360_link) e va riportata nel frame
-# di pianificazione (odom), che e' cio' che a_star_node e mpc_node si aspettano
-# su /lidar/points_filtered.
+# The cloud arrives in the sensor frame (mid360_sim) and has to be brought back
+# into the planning frame (odom), which is what a_star_node and mpc_node expect
+# on /lidar/points_filtered.
 /**:
   ros__parameters:
     raw_topic:        /livox/lidar
     filtered_topic:   /lidar/points_filtered
-    source_frame:     mid360_sim    # frame del LiDAR simulato (vedi g1_sim.yaml)
+    source_frame:     mid360_sim    # frame of the simulated LiDAR (see g1_sim.yaml)
     target_frame:     odom
 
-    r_min:            0.30    # [m] scarta i ritorni troppo vicini al sensore
-    r_max:            8.00    # [m] coerente con max_lidar_range del profilo G1
+    r_min:            0.30    # [m] discard returns too close to the sensor
+    r_max:            8.00    # [m] consistent with max_lidar_range of the G1 profile
 
-    # z_min/z_max sono valutati nel frame TARGET (odom), cioe' altezze assolute
-    # dal pavimento. Il bacino del G1 sta a 0.793 m e il Mid-360 ~0.40 m piu' su.
-    #   z_min 0.15  esclude i ritorni sul pavimento
-    #   z_max 1.60  esclude il soffitto e le scaffalature alte, tenendo tutto
-    #               cio' con cui il robot puo' collidere
-    # Da rivedere se si vuole vedere un pallet basso (roadmap: fascia di altezza).
+    # z_min/z_max are evaluated in the TARGET frame (odom), i.e. absolute heights
+    # from the floor. The G1 pelvis sits at 0.793 m and the Mid-360 ~0.40 m above.
+    #   z_min 0.15  excludes returns from the floor
+    #   z_max 1.60  excludes the ceiling and the tall racks, keeping everything
+    #               the robot can collide with
+    # To be revisited if a low pallet has to be seen (a height band would do it).
     z_min:           0.15
     z_max:           1.60
 
-    # Il Mid-360 simulato spara 360x24 = 8640 raggi a 10 Hz: il voxel e'
-    # volutamente grosso per tenere basso il costo del filtro, che gira in
-    # Python sulla stessa CPU di IPOPT.
+    # The simulated Mid-360 casts 360x24 = 8640 rays at 10 Hz: the voxel is
+    # deliberately coarse to keep down the cost of the filter, which runs in
+    # Python on the same CPU as IPOPT.
     voxel_size:      0.08
     publish_rate_hz: 10.0
     tf_lookup_timeout: 0.05

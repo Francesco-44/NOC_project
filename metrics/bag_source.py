@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 """
-Sorgente dati dai run VERI: legge una rosbag registrata mentre il G1 naviga nel
-magazzino e la trasforma in fotogrammi utilizzabili dai due pannelli.
+Data source from REAL runs: reads a rosbag recorded while the G1 navigates the
+warehouse and turns it into frames the two panels can use.
 
-Perche' da bag e non in diretta
--------------------------------
-Il pannello 2 deve RI-RISOLVERE l'NLP per ottenere gli iterati di IPOPT: farlo
-in diretta ruberebbe CPU al solutore che si sta misurando, falsando proprio la
-grandezza di interesse. In replay il costo di calcolo non disturba nulla, e lo
-stesso run si puo' analizzare quante volte si vuole cambiando i parametri.
+Why from a bag and not live
+---------------------------
+Panel 2 has to RE-SOLVE the NLP to obtain the IPOPT iterates: doing that live
+would steal CPU from the solver being measured, distorting the very quantity of
+interest. In replay the computation cost disturbs nothing, and the same run can
+be analysed as many times as one likes with different parameters.
 
-Il fotogramma
--------------
-I fotogrammi sono ancorati ai messaggi di /mpc/diagnostics, cioe' UNO PER CICLO
-DI CONTROLLO: per ciascuno si prende il valore piu' recente di ogni altro topic,
-che e' esattamente cio' che il nodo aveva a disposizione in quell'istante.
+The frame
+---------
+Frames are anchored to the /mpc/diagnostics messages, i.e. ONE PER CONTROL
+CYCLE: for each of them the most recent value of every other topic is taken,
+which is exactly what the node had available at that instant.
 
-Ricostruzione esatta di x0
+Exact reconstruction of x0
 --------------------------
-/mpc/diagnostics porta gli elementi [7..12] con lo stato iniziale passato al
-solutore. Senza quelli, posizione e yaw si dedurrebbero da /mpc/predicted_path,
-ma le VELOCITA' — stimate dentro mpc_node con una media esponenziale sulle
-differenze di posa — non uscirebbero mai, e il solve ricostruito sarebbe un
-problema diverso da quello risolto davvero.
+/mpc/diagnostics carries elements [7..12] with the initial state passed to the
+solver. Without those, position and yaw could be deduced from
+/mpc/predicted_path, but the VELOCITIES — estimated inside mpc_node with an
+exponential moving average on pose differences — would never come out, and the
+reconstructed solve would be a different problem from the one actually solved.
 
-Uso
----
-    python3 metrics/bag_source.py <bag>              # riepilogo del contenuto
+Usage
+-----
+    python3 metrics/bag_source.py <bag>              # summary of the contents
 """
 from __future__ import annotations
 
@@ -53,8 +53,8 @@ TOPICS = {
 
 @dataclass
 class Frame:
-    """Uno stato completo del problema, in un ciclo di controllo."""
-    t: float                      # [s] dall'inizio della bag
+    """A complete state of the problem, in one control cycle."""
+    t: float                      # [s] since the start of the bag
     x0: np.ndarray                # (6,) stato passato al solutore
     obstacles: np.ndarray         # (M, 2) punti LiDAR in odom
     path: np.ndarray | None       # (K, 2) riferimento A*
@@ -78,7 +78,7 @@ def _quat_yaw(q) -> float:
 
 
 def read_bag(path: str) -> dict:
-    """{chiave: [(t_ns, msg), ...]} per i topic di interesse."""
+    """{key: [(t_ns, msg), ...]} for the topics of interest."""
     import rosbag2_py
     from rclpy.serialization import deserialize_message
     from rosidl_runtime_py.utilities import get_message
@@ -89,7 +89,7 @@ def read_bag(path: str) -> dict:
     types = {t.name: t.type for t in reader.get_all_topics_and_types()}
     wanted = {v: k for k, v in TOPICS.items() if v in types}
     if not wanted:
-        raise SystemExit(f"la bag non contiene nessuno dei topic attesi:\n"
+        raise SystemExit(f"the bag contains none of the expected topics:\n"
                          f"  attesi:  {sorted(TOPICS.values())}\n"
                          f"  trovati: {sorted(types)}")
 
@@ -104,7 +104,7 @@ def read_bag(path: str) -> dict:
 
 
 def _latest(series, t_ns):
-    """Ultimo messaggio non successivo a t_ns."""
+    """Last message not later than t_ns."""
     if not series:
         return None
     i = bisect_right([s[0] for s in series], t_ns) - 1
@@ -116,17 +116,17 @@ def frames(bag: dict) -> list[Frame]:
 
     diag = bag["diag"]
     if not diag:
-        raise SystemExit("la bag non contiene /mpc/diagnostics: senza quello non "
-                         "si sa in quali istanti l'MPC ha risolto")
+        raise SystemExit("the bag does not contain /mpc/diagnostics: without it there "
+                         "is no way to know when the MPC solved")
     t0 = diag[0][0]
     out = []
     for t_ns, d in diag:
         v = list(d.data)
         if len(v) < 14:
             raise SystemExit(
-                f"/mpc/diagnostics ha {len(v)} campi, ne servono 14. La bag e' "
-                "stata registrata con una versione precedente di mpc_node, che "
-                "non pubblicava lo stato iniziale del solutore: va rifatta.")
+                f"/mpc/diagnostics has {len(v)} fields, 14 are needed. The bag was "
+                "recorded with an earlier version of mpc_node, which did not "
+                "publish the initial state of the solver: it has to be redone.")
         x0 = np.array(v[7:13], dtype=float)
 
         cloud = _latest(bag["scan"], t_ns)
@@ -162,7 +162,7 @@ def frames(bag: dict) -> list[Frame]:
 
 
 def to_scenario(f: Frame, name="bag", margin=2.0):
-    """Un Frame come Scenario, cosi' i pannelli non cambiano di una riga."""
+    """A Frame as a Scenario, so the panels do not change by a single line."""
     import common
     pts = [f.x0[:2]]
     if f.goal is not None:
@@ -182,21 +182,21 @@ def main() -> int:
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
     bag = read_bag(sys.argv[1])
-    print("messaggi per topic:")
+    print("messages per topic:")
     for k, v in TOPICS.items():
         print(f"  {v:28s} {len(bag[k]):6d}")
     fr = frames(bag)
     ok = sum(f.success for f in fr)
     sms = np.array([f.solve_ms for f in fr])
     it = np.array([f.iterations for f in fr], dtype=float)
-    print(f"\ncicli di controllo: {len(fr)}  ({fr[-1].t:.1f} s)")
+    print(f"\ncontrol cycles: {len(fr)}  ({fr[-1].t:.1f} s)")
     print(f"  successi: {100*ok/len(fr):.0f}%")
     print(f"  solve_ms: media {sms.mean():.1f}  p95 {np.percentile(sms,95):.1f}  max {sms.max():.1f}")
     if (it >= 0).any():
         print(f"  iterazioni IPOPT: media {it[it>=0].mean():.1f}  max {int(it.max())}")
-    print(f"  punti LiDAR per ciclo: media {np.mean([len(f.obstacles) for f in fr]):.0f}")
+    print(f"  LiDAR points per cycle: mean {np.mean([len(f.obstacles) for f in fr]):.0f}")
     npath = sum(f.path is not None for f in fr)
-    print(f"  cicli con riferimento A*: {npath}/{len(fr)}")
+    print(f"  cycles with an A* reference: {npath}/{len(fr)}")
     return 0
 
 
@@ -206,13 +206,13 @@ if __name__ == "__main__":
 
 def hardest_frame(frs: list) -> int:
     """
-    Indice del ciclo piu' impegnativo fra quelli REALMENTE risolti.
+    Index of the most demanding cycle among those ACTUALLY solved.
 
-    Il criterio ingenuo argmax(cost) sceglie sistematicamente un ciclo fallito:
-    quelli hanno cost=inf pur non avendo mai invocato IPOPT, e sono i meno
+    The naive criterion argmax(cost) systematically picks a failed cycle: those
+    have cost=inf without ever having invoked IPOPT, and are the least
     informativi (nessun iterato da mostrare, nessun minimo da spiegare).
-    Si filtra quindi su success e costo finito, con ripiego progressivo se la
-    bag non contiene nemmeno un ciclo risolto.
+    So it filters on success and finite cost, with a progressive fallback if the
+    bag does not contain a single solved cycle.
     """
     cost = np.array([f.cost for f in frs], dtype=float)
     ok   = np.array([bool(f.success) for f in frs])

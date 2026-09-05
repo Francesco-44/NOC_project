@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Analisi KKT dell'NLP risolto dall'MPC — dispense §6.1.
+KKT analysis of the NLP solved by the MPC — lecture notes §6.1.
 
-Verifica su un ciclo di controllo reale (estratto da una bag) le condizioni che
-il corso enuncia in astratto:
+On a real control cycle (extracted from a bag) it checks the conditions the
+course states in the abstract:
 
-  §6.1.1  LICQ (Def. 6.1.5)  — i gradienti dei vincoli attivi sono indipendenti
-  §6.1.2  KKT (eq. 6.8)      — stazionarieta' della lagrangiana e complementarita'
-  §6.1.3  SOC-C-2 (Thm 6.1.6)— Hessiana della lagrangiana definita positiva sul
-                               cono critico  =>  certificato di minimo LOCALE
+  §6.1.1  LICQ (Def. 6.1.5)  — the gradients of the active constraints are
+                               independent
+  §6.1.2  KKT (eq. 6.8)      — stationarity of the Lagrangian and complementarity
+  §6.1.3  SOC-C-2 (Thm 6.1.6)— Hessian of the Lagrangian positive definite on the
+                               critical cone  =>  certificate of a LOCAL minimum
 
 Uso:
     python3 metrics/kkt_analysis.py --bag metrics/bags/industrial_plant_fix
@@ -27,31 +28,33 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common  # noqa: E402
 
-# Un moltiplicatore sotto questa soglia si considera nullo: IPOPT e' un metodo di
-# punto interno, i mu dei vincoli inattivi tendono a zero ma non ci arrivano.
+# A multiplier below this threshold is taken as zero: IPOPT is an interior-point
+# method, the mu of inactive constraints tend to zero but never quite get there.
 TOL_MU = 1e-6
-# Un vincolo si considera attivo se dista da un suo limite meno di questa soglia.
-# IPOPT si ferma sulla central path: all'ottimo i vincoli attivi distano ~1e-8
-# dal bordo, non zero.
+# A constraint counts as active if it is closer than this threshold to one of its
+# bounds. IPOPT stops on the central path: at the optimum the active constraints
+# sit ~1e-8 from the boundary, not zero.
 TOL_ACT = 1e-6
 
 
 def solve_and_extract(tracker, x0, path, obstacles):
-    """Risolve e restituisce (opti, soluzione) con i duali disponibili."""
+    """Solve and return (opti, solution) with the duals available."""
     res = tracker.solve(np.asarray(x0, float), path, obstacle_points_2d=obstacles)
     if not res.success:
-        print("ATTENZIONE: il solve non e' riuscito; l'analisi usa opti.debug")
+        print("WARNING: the solve did not succeed; the analysis uses opti.debug")
     return tracker._opti, res
 
 
 def classify_constraints(opti):
     """
-    Separa uguaglianze e disuguaglianze leggendo i LIMITI, non l'espressione.
+    Separates equalities and inequalities by reading the BOUNDS, not the
+    expression.
 
-    Opti canonizza ogni vincolo come  lbg <= g(x) <= ubg,  e quando il membro
-    destro e' un parametro lo assorbe nei limiti: `X[:,0] == p_x0` diventa
-    g = X[:,0] con lbg = ubg = p_x0. Valutare |g| su quelle righe restituisce
-    quindi LO STATO, non il residuo. Il residuo e' sempre g - lbg.
+    Opti canonises every constraint as  lbg <= g(x) <= ubg,  and when the right
+    hand side is a parameter it absorbs it into the bounds: `X[:,0] == p_x0`
+    becomes g = X[:,0] with lbg = ubg = p_x0. Evaluating |g| on those rows
+    therefore returns THE STATE, not the residual. The residual is always
+    g - lbg.
 
     Restituisce (g, lbg, ubg, lam, is_eq).
     """
@@ -65,11 +68,11 @@ def classify_constraints(opti):
 
 def active_mask(g, lbg, ubg, is_eq, tol=TOL_ACT):
     """
-    True dove una disuguaglianza tocca uno dei suoi limiti finiti.
+    True where an inequality touches one of its finite bounds.
 
-    Due righe distinte possono condividere la stessa espressione g con limiti
-    diversi (`U[0,k] >= 0` e `U[0,k] <= vx_max` sono entrambe la riga U[0,k]):
-    e' per questo che l'attivazione va decisa sul limite, non sul valore.
+    Two distinct rows can share the same expression g with different bounds
+    (`U[0,k] >= 0` and `U[0,k] <= vx_max` are both the row U[0,k]): that is why
+    activation has to be decided on the bound, not on the value.
     """
     at_lo = np.isfinite(lbg) & (np.abs(g - lbg) < tol)
     at_hi = np.isfinite(ubg) & (np.abs(ubg - g) < tol)
@@ -78,12 +81,12 @@ def active_mask(g, lbg, ubg, is_eq, tol=TOL_ACT):
 
 def analyze(cfg, x0, path, obs) -> dict:
     """
-    Tutte le grandezze KKT di UN ciclo, in forma strutturata.
+    Every KKT quantity of ONE cycle, in structured form.
 
-    Separata da main() apposta: il generatore di risultati
-    (metrics/make_results.py) deve poter riusare esattamente questo calcolo, non
-    una sua copia — due implementazioni della stessa misura divergono al primo
-    ritocco, ed e' cosi' che i numeri di un report smettono di corrispondere al
+    Deliberately separated from main(): the results generator
+    (metrics/make_results.py) has to reuse exactly this computation, not a copy
+    of it — two implementations of the same measurement diverge at the first
+    edit, and that is how the numbers of a report stop matching the
     codice.
     """
     tracker = common.make_tracker(cfg)
@@ -101,14 +104,14 @@ def analyze(cfg, x0, path, obs) -> dict:
     strong = act_i & (np.abs(mu_i) > TOL_MU)
     weak = act_i & (np.abs(mu_i) <= TOL_MU)
 
-    # Jacobiano dei vincoli attivi -> LICQ e cono critico
+    # Jacobian of the active constraints -> LICQ and critical cone
     idx_att = list(np.nonzero(is_eq | active_all)[0])
     J = ca.Function("J", [opti.x, opti.p], [ca.jacobian(opti.g, opti.x)])
     xv, pv = opti.debug.value(opti.x), opti.debug.value(opti.p)
     A = np.array(J(xv, pv))[idx_att, :]
     rank = int(np.linalg.matrix_rank(A))
 
-    # stazionarieta' e Hessiana della lagrangiana
+    # stationarity and Hessian of the Lagrangian
     lam_s = ca.MX.sym("lam", opti.g.shape[0])
     L = opti.f + ca.dot(lam_s, opti.g)
     gL = ca.Function("gL", [opti.x, opti.p, lam_s], [ca.gradient(L, opti.x)])
@@ -126,7 +129,7 @@ def analyze(cfg, x0, path, obs) -> dict:
         ev = np.linalg.eigvalsh(0.5 * (ns.T @ Hv @ ns + (ns.T @ Hv @ ns).T))
         ev_min, ev_max = float(ev.min()), float(ev.max())
 
-    # ripartizione dei box attivi: per ogni k l'ordine e'
+    # breakdown of the active box constraints: for each k the order is
     # [vx>=0, vx<=vx_max, |vy|<=vy_max, |w|<=omega_max]
     etichette = ["vx>=0", "vx<=vx_max", "|vy|<=vy_max", "|w|<=omega_max"]
     ripart = {}
@@ -171,7 +174,7 @@ def main() -> int:
     ap.add_argument("--scenario", default="centred_pillar")
     ap.add_argument("--profile", default=common.DEFAULT_PROFILE)
     ap.add_argument("--set", dest="overrides", action="append", default=[],
-                    help="override di un parametro del YAML, es. mpc_W_obs_sigmoid=600")
+                    help="override a parameter of the YAML, e.g. mpc_W_obs_sigmoid=600")
     args = ap.parse_args()
 
     cfg, raw = common.load_profile(args.profile, args.overrides)
@@ -216,7 +219,7 @@ def main() -> int:
     print(f"vincoli m = {n_tot}   ({n_eq} uguaglianze, {n_ineq} disuguaglianze)")
     print(f"residuo massimo sulle uguaglianze |g - lbg|: {resid_eq.max():.3e}")
 
-    # ── Active set fra le disuguaglianze ────────────────────────────────
+    # ── Active set among the inequalities ───────────────────────────────
     idx_ineq = np.nonzero(~is_eq)[0]
     act_i = active_all[idx_ineq]
     mu_i = lam[idx_ineq]
@@ -231,17 +234,18 @@ def main() -> int:
     print(f"  fortemente attive (mu > 0) : {int(strong.sum())}")
     print(f"  debolmente attive (mu = 0) : {int(weak.sum())}")
     if weak.any():
-        print("  -> complementarita' NON stretta: il cono critico (§6.1.3) non")
-        print("     degenera in un sottospazio, e la verifica di SOC-C-2 sul solo")
-        print("     nucleo dei vincoli attivi e' NECESSARIA ma non sufficiente.")
+        print("  -> complementarity NOT strict: the critical cone (§6.1.3) does not")
+        print("     degenerate into a subspace, and checking SOC-C-2 on the kernel of")
+        print("     the active constraints alone is NECESSARY but not sufficient.")
     else:
-        print("  -> complementarita' stretta: il cono critico coincide con il")
-        print("     nucleo del Jacobiano attivo, e SOC-C-2 si verifica esattamente.")
+        print("  -> strict complementarity: the critical cone coincides with the")
+        print("     kernel of the active Jacobian, and SOC-C-2 is checked exactly.")
 
-    # I box sono aggiunti in ordine, per ogni k: U0>=0, U0<=vx, |U1|<=vy, |U2|<=w
+    # The box constraints are added in order, for each k: U0>=0, U0<=vx,
+    # |U1|<=vy, |U2|<=w
     etichette = ["vx >= 0", "vx <= vx_max", "|vy| <= vy_max", "|w| <= omega_max"]
     print()
-    print("  ripartizione dei vincoli attivi lungo l'orizzonte:")
+    print("  breakdown of the active constraints along the horizon:")
     for j, e in enumerate(etichette):
         sel = np.arange(len(idx_ineq)) % 4 == j
         n_a = int(act_i[sel].sum())
@@ -260,14 +264,14 @@ def main() -> int:
     A = Jv[idx_att, :]
     rank = np.linalg.matrix_rank(A)
     print(f"vincoli attivi (uguaglianze + disuguaglianze attive): {len(idx_att)}")
-    print(f"rango del Jacobiano attivo: {rank}")
+    print(f"rank of the active Jacobian: {rank}")
     if rank == len(idx_att):
-        print("  -> LICQ VERIFICATA: i gradienti attivi sono indipendenti,")
-        print("     quindi i moltiplicatori KKT esistono e sono UNICI.")
+        print("  -> LICQ HOLDS: the active gradients are independent,")
+        print("     so the KKT multipliers exist and are UNIQUE.")
     else:
         print(f"  -> LICQ VIOLATA: {len(idx_att) - rank} dipendenze lineari.")
 
-    # ── Stazionarieta' della lagrangiana ────────────────────────────────
+    # ── Stationarity of the Lagrangian ──────────────────────────────────
     print()
     print("=" * 74)
     print("STAZIONARIETA'  (§6.1.2, eq. 6.8a)")
@@ -279,8 +283,8 @@ def main() -> int:
     print(f"|| grad_x L(x*, lambda*) ||_inf = {np.abs(r).max():.3e}")
     print(f"|| grad_x f(x*) ||_inf          = "
           f"{np.abs(np.array(ca.Function('gf',[opti.x,opti.p],[ca.gradient(opti.f,opti.x)])(opti.debug.value(opti.x), opti.debug.value(opti.p))).ravel()).max():.3e}")
-    print("  (il residuo va confrontato con la tolleranza di IPOPT, non con zero:")
-    print("   un metodo di punto interno si ferma sulla central path)")
+    print("  (the residual is to be compared with the IPOPT tolerance, not zero:")
+    print("   an interior-point method stops on the central path)")
 
     # ── Moltiplicatori ──────────────────────────────────────────────────
     print()
@@ -294,28 +298,28 @@ def main() -> int:
         print(f"disuguaglianze: max|mu| = {np.abs(mu_i[strong]).max():.3e}   "
               f"mediana = {np.median(np.abs(mu_i[strong])):.3e}")
         print()
-        print("  Questi mu sono il dato che serve alla penalita' esatta l1")
-        print("  (Thm 6.3.1): rho > max|mu*| rende lo slack esattamente nullo.")
+        print("  These mu are the datum the exact l1 penalty needs")
+        print("  (Thm 6.3.1): rho > max|mu*| makes the slack exactly zero.")
         print(f"  soglia suggerita: rho > {np.abs(mu_i[strong]).max():.3e}")
     else:
         print("disuguaglianze: nessun vincolo fortemente attivo")
 
-    # ── SOC-C-2: Hessiana proiettata sul cono critico ───────────────────
+    # ── SOC-C-2: Hessian projected on the critical cone ─────────────────
     print()
     print("=" * 74)
-    print("SOC-C-2  (Thm 6.1.6) — Hessiana proiettata sul cono critico")
+    print("SOC-C-2  (Thm 6.1.6) — Hessian projected on the critical cone")
     print("=" * 74)
     H = ca.Function("H", [opti.x, opti.p, lam_s], [ca.hessian(L, opti.x)[0]])
     Hv = np.array(H(opti.debug.value(opti.x), opti.debug.value(opti.p), lam))
     Hv = 0.5 * (Hv + Hv.T)
-    # Base del nucleo di A: le direzioni critiche (con complementarita' stretta
-    # il cono coincide con ker A).
+    # Basis of the kernel of A: the critical directions (with strict
+    # complementarity the cone coincides with ker A).
     _, s_val, Vt = np.linalg.svd(A)
     tol = max(A.shape) * (s_val.max() if s_val.size else 0.0) * np.finfo(float).eps
     ns = Vt[np.sum(s_val > tol):].T          # (n, n - rank)
-    print(f"dimensione del cono critico: {ns.shape[1]}")
+    print(f"dimension of the critical cone: {ns.shape[1]}")
     if ns.shape[1] == 0:
-        print("  cono banale: la soluzione e' determinata dai soli vincoli attivi")
+        print("  trivial cone: the solution is determined by the active constraints alone")
     else:
         Hp = ns.T @ Hv @ ns
         ev = np.linalg.eigvalsh(0.5 * (Hp + Hp.T))
@@ -323,20 +327,20 @@ def main() -> int:
         print(f"autovalore massimo: {ev.max():.6e}")
         if ev.min() > 0:
             print("  -> SOC-C-2 SODDISFATTA: x* e' un minimo locale STRETTO.")
-            print("     E' il massimo certificabile: il problema non e' convesso,")
-            print("     quindi l'ottimalita' globale non e' dimostrabile (§4.3.3).")
+            print("     It is the most that can be certified: the problem is not convex,")
+            print("     so global optimality cannot be proven (§4.3.3).")
         else:
-            print("  -> SOC-C-2 NON soddisfatta: direzione a curvatura non positiva.")
+            print("  -> SOC-C-2 NOT satisfied: direction with non-positive curvature.")
         if ev.min() > 0:
             cond = ev.max() / ev.min()
             c_rate = (ev.max() - ev.min()) / (ev.max() + ev.min())
-            print(f"numero di condizionamento sul cono: {cond:.3e}")
-            print(f"  costante di contrazione c = (l_max-l_min)/(l_max+l_min) "
+            print(f"condition number on the cone: {cond:.3e}")
+            print(f"  contraction constant c = (l_max-l_min)/(l_max+l_min) "
                   f"= {c_rate:.6f}")
-            print("  (§4.4.3: piu' c e' vicino a 1, piu' lenta la convergenza lineare)")
+            print("  (§4.4.3: the closer c is to 1, the slower the linear convergence)")
         else:
-            print("  condizionamento non definito: l'Hessiana proiettata non e'")
-            print("  definita positiva, quindi non e' un operatore invertibile sul cono.")
+            print("  condition number undefined: the projected Hessian is not")
+            print("  positive definite, so it is not an invertible operator on the cone.")
 
     return 0
 

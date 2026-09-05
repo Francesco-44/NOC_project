@@ -150,8 +150,8 @@ def warehouse_geoms():
     g += [_box(0, 10, 1.5, 30, 0.2, 3, _WALL), _box(0, -10, 1.5, 30, 0.2, 3, _WALL),
           _box(15, 0, 1.5, 0.2, 20, 3, _WALL), _box(-15, 0, 1.5, 0.2, 20, 3, _WALL)]
 
-    # ── cancello 1, x = -10: due scaffalature, varco CENTRALE ──────────
-    # Scaffalatura = 6 m: ruotata di 90 gradi copre 6 m in y.
+    # ── gate 1, x = -10: two racks, CENTRAL gap ──────────────────
+    # Rack = 6 m: rotated by 90 degrees it spans 6 m in y.
     g += [_box(-10, 5.5, 1.25, 6, 0.6, 2.5, _RACK, yaw=math.pi / 2),   # y 2.5..8.5
           _box(-10, -5.5, 1.25, 6, 0.6, 2.5, _RACK, yaw=math.pi / 2)]  # y -8.5..-2.5
     # gaps: y in [-2.5, 2.5] in the middle, plus two 1.5 m ones at the edges
@@ -328,54 +328,55 @@ def dead_end_geoms():
 
 
 # ---------------------------------------------------------------------------
-# Secondo gruppo: trappole con occlusione, ambiguita' destra/sinistra, e
-# controlli PERCORRIBILI (che servono a scoprire i falsi positivi: un
-# meccanismo di fuga che fa deviare anche dove si passa e' un peggioramento).
+# Second group: traps with occlusion, left/right ambiguity, and PASSABLE
+# controls (which are there to expose false positives: an escape mechanism
+# that detours even where one can walk through is a regression).
 # ---------------------------------------------------------------------------
 
 
 def l_corridor_geoms():
-    """Corridoio a L largo 3 m, imbuto d'ingresso, DUE chiusure annidate.
+    """3 m wide L-shaped corridor, funnel entrance, TWO nested closures.
 
-      imbuto       due diagonali da (-4,+-3.5) a (-2,+-1.5)
-      braccio est  x da -2 a 6, y in [-1.5, 1.5]   — chiuso a x=6
-      piede nord   x in [3, 6], y da 1.5 a 10      — chiuso a y=10, lungo 8.5 m
+      funnel     two diagonals from (-4,+-3.5) to (-2,+-1.5)
+      east arm   x from -2 to 6, y in [-1.5, 1.5]   — closed at x=6
+      north foot x in [3, 6], y from 1.5 to 10      — closed at y=10, 8.5 m long
 
-    [FIX] La L e' COMPATTA di proposito, per non dover allargare la finestra di
-    A*. Il vincolo e' geometrico: dalla cima del piede il robot deve avere
-    l'imbocco (-2, 0) DENTRO la finestra di pianificazione, altrimenti A* non
-    trova via d'uscita, a_star_node non pubblica nulla e il robot resta FERMO in
-    fondo al piede. Con la cima a (6.5, 12) servivano 11 m in y e la finestra da
-    10 non bastava; ora la cima e' a (4.5, 10), cioe' 6.5 m in x e 10 m in y.
+    The L is deliberately COMPACT, so that the A* window does not have to be
+    widened. The constraint is geometric: from the top of the foot the robot
+    must have the entrance (-2, 0) INSIDE the planning window, otherwise A*
+    finds no way out, a_star_node publishes nothing and the robot STOPS at the
+    bottom of the foot. With the top at (6.5, 12) that meant 11 m in y and a
+    window of 10 was not enough; the top is now at (4.5, 10), i.e. 6.5 m in x
+    and 10 m in y.
 
-    Il piede resta lungo 8.5 m: dall'angolo (~4.5, 1.5) la chiusura a y=10 dista
-    8.5 m, appena oltre max_lidar_range (8 m). La cecita' si conserva — va
-    percorso per sapere che e' chiuso — senza costringere A* a pianificare
-    lontano.
+    The foot stays 8.5 m long: from the corner (~4.5, 1.5) the closure at y=10
+    is 8.5 m away, just past max_lidar_range (8 m). The blindness is preserved
+    — it has to be walked to know it is closed — without forcing A* to plan far
+    ahead.
 
-    Le sole DIAGONALI dell'imbuto restano: convogliano verso l'imbocco quando il
-    robot arriva disallineato, senza pero' chiudere l'alternativa esterna. La
-    scelta di entrare resta una DECISIONE del pianificatore e non un obbligo
-    geometrico — che e' cio' che si vuole misurare.
+    Only the funnel DIAGONALS remain: they steer towards the entrance when the
+    robot arrives misaligned, without closing off the outside alternative.
+    Entering stays a DECISION of the planner rather than a geometric
+    obligation — which is what is being measured.
 
-    Sequenza attesa: entra nella L, trova chiuso il braccio est, si butta nel
-    piede, trova chiuso anche quello, torna indietro ed esce. E' l'unico mondo
-    con due trappole annidate: se il tabu serve da qualche parte serve qui,
-    perche' uscendo dal piede per rientrare nel braccio d_best non migliora.
+    Expected sequence: enter the L, find the east arm closed, commit to the
+    foot, find that closed too, turn around and leave. It is the only world
+    with two nested traps: if tabu memory is useful anywhere it is useful here,
+    because leaving the foot to re-enter the arm does not improve d_best.
     """
     g = _arena_box(-11.0, 12.0, -8.0, 12.0)
-    # Imbuto corto (punte a x=-4, non -5): le diagonali formano barriera con le
-    # pareti del braccio, quindi per uscire dalla L verso sud o nord bisogna
-    # aggirarne la punta. Con la punta a x=-5, dal fondo del braccio (x=5) quel
-    # giro cadeva ESATTAMENTE sul bordo della finestra da 10 e A* non trovava
-    # percorso. A x=-4 il margine c'e'.
-    g += [_seg(-4.0, 3.5, -2.0, 1.5, 2.5, 0.30),    # imbuto nord
-          _seg(-4.0, -3.5, -2.0, -1.5, 2.5, 0.30),  # imbuto sud
-          _seg(-2.0, -1.5, 6.0, -1.5, 2.5, 0.30),   # parete sud del braccio est
-          _seg(-2.0, 1.5, 3.0, 1.5, 2.5, 0.30),     # LATO ALTO accorciato: apre a x=3
-          _seg(3.0, 1.5, 3.0, 10.0, 2.5, 0.30),     # parete ovest del piede
-          _seg(6.0, -1.5, 6.0, 10.0, 2.5, 0.30),    # parete est: chiude verso il goal
-          _seg(3.0, 10.0, 6.0, 10.0, 2.5, 0.30)]    # FONDO CHIUSO in cima al piede
+    # Short funnel (tips at x=-4, not -5): the diagonals form a barrier with the
+    # arm walls, so leaving the L north or south means going around a tip. With
+    # the tip at x=-5, from the bottom of the arm (x=5) that detour fell EXACTLY
+    # on the edge of the 10 m window and A* found no path. At x=-4 there is
+    # margin.
+    g += [_seg(-4.0, 3.5, -2.0, 1.5, 2.5, 0.30),    # north funnel
+          _seg(-4.0, -3.5, -2.0, -1.5, 2.5, 0.30),  # south funnel
+          _seg(-2.0, -1.5, 6.0, -1.5, 2.5, 0.30),   # south wall of the east arm
+          _seg(-2.0, 1.5, 3.0, 1.5, 2.5, 0.30),     # TOP SIDE shortened: opens at x=3
+          _seg(3.0, 1.5, 3.0, 10.0, 2.5, 0.30),     # west wall of the foot
+          _seg(6.0, -1.5, 6.0, 10.0, 2.5, 0.30),    # east wall: closes towards the goal
+          _seg(3.0, 10.0, 6.0, 10.0, 2.5, 0.30)]    # CLOSED END at the top of the foot
     g += [_marker(-6.0, 0.0, [0.2, 0.4, 0.9, 1]),
           _marker(10.0, 0.0, [0.2, 0.8, 0.3, 1])]
     return g
@@ -383,11 +384,12 @@ def l_corridor_geoms():
 
 
 def long_wall_south_geoms():
-    """Speculare di long_wall: varco a SUD, muro fino al perimetro NORD.
+    """Mirror image of long_wall: gap to the SOUTH, wall up to the NORTH border.
 
-    Stessa regola di lunghezza: l'estremita' sud sta a y=-9, cioe' 9.0 m dal
-    robot arrivato al centro. Serve in coppia con long_wall — con un mondo solo
-    non si distingue una scelta ragionata da una preferenza fissa per un lato.
+    Same length rule: the south end sits at y=-9, i.e. 9.0 m from the robot once
+    it has reached the middle. It is needed as a pair with long_wall — with a
+    single world one cannot tell a reasoned choice from a fixed preference for
+    one side.
     """
     g = _arena_box(-8.0, 10.0, -12.0, 12.0)
     g += [_seg(0.0, -9.0, 0.0, 12.0, 2.5, 0.30)]
@@ -397,35 +399,36 @@ def long_wall_south_geoms():
 
 
 def long_wall_false_north_geoms():
-    """Muro lungo; il varco nord sembra sbarrato ma cela un passaggio laterale.
+    """Long wall; the north gap looks sealed but hides a side passage.
 
-      muro principale  x=0, y in [-9, 9]      estremita' fuori portata
-      varco nord       y in [9, 12]           3 m
-      varco sud        y in [-12, -9]         3 m, passante senza sorprese
-      aletta           x=2, y da 7.6 a 12     4.4 m: SUPERA il varco (3 m)
+      main wall    x=0, y in [-9, 9]      ends out of range
+      north gap    y in [9, 12]           3 m
+      south gap    y in [-12, -9]         3 m, passable with no surprises
+      baffle       x=2, y from 7.6 to 12  4.4 m: WIDER than the gap (3 m)
 
-    La scelta iniziale fra nord e sud e' cieca: da (-0.5, 0) le estremita' del
-    muro principale distano 9.0 m, oltre max_lidar_range.
+    The initial north/south choice is blind: from (-0.5, 0) the ends of the main
+    wall are 9.0 m away, beyond max_lidar_range.
 
-    Chi sceglie NORD passa il varco e trova l'aletta a 1 m, PIU' LARGA del varco
-    stesso: di fronte sembra un muro pieno, e l'errore da evitare e' concludere
-    alla prima parete. La via c'e', ma va cercata di lato — l'aletta scende fino
-    a y=7.6, sotto il bordo del varco, quindi si passa aggirandone la punta sud
-    nel varco fra il muro principale (x=0) e l'aletta (x=1). Il canale libero
-    netto e' ~0.9 m: stretto, percorribile.
+    Whoever picks NORTH goes through the gap and meets the baffle 1 m later,
+    WIDER than the gap itself: head on it looks like a solid wall, and the
+    mistake to avoid is concluding at the first obstacle. There is a way, but it
+    has to be looked for sideways — the baffle reaches down to y=7.6, below the
+    edge of the gap, so one passes around its south tip through the gap between
+    the main wall (x=0) and the baffle (x=1). The net free channel is ~0.9 m:
+    narrow, but passable.
 
-    [NOTA GEOMETRICA — VERIFICATA] L'aletta NON puo' essere avvicinata oltre
-    x=2. Provata a x=1: fra la faccia del muro principale (x=0.15) e quella
-    dell'aletta (x=0.85) restavano 0.70 m di luce grezza, e con un raggio di
-    blocco di 0.397 m PER LATO il canale libero diventa negativo — A* non trova
-    piu' alcun percorso dal lato nord e il mondo e' risolvibile solo da sud, che
-    e' il contrario di cio' che questo mondo deve provare. A x=2 la luce e'
-    1.70 m, cioe' 0.91 m netti: stretta e percorribile. Per stringerla ancora va
-    abbassato prima grid_std.
+    GEOMETRIC NOTE (verified). The baffle canNOT be moved closer than x=2. Tried
+    at x=1: between the face of the main wall (x=0.15) and that of the baffle
+    (x=0.85) there were 0.70 m of raw clearance, and with a blocking radius of
+    0.397 m PER SIDE the free channel goes negative — A* no longer finds any
+    path on the north side and the world is solvable only from the south, which
+    is the opposite of what this world must test. At x=2 the clearance is 1.70 m,
+    i.e. 0.91 m net: narrow and passable. Tightening it further means lowering
+    grid_std first.
     """
     g = _arena_box(-8.0, 10.0, -12.0, 12.0)
-    g += [_seg(0.0, -9.0, 0.0, 9.0, 2.5, 0.30),        # muro principale
-          _seg(2.0, 7.6, 2.0, 12.0, 2.5, 0.30)]        # aletta: 4.4 m, piu' lunga del varco (3 m)
+    g += [_seg(0.0, -9.0, 0.0, 9.0, 2.5, 0.30),        # main wall
+          _seg(2.0, 7.6, 2.0, 12.0, 2.5, 0.30)]        # baffle: 4.4 m, longer than the gap (3 m)
     g += [_marker(-6.0, 0.0, [0.2, 0.4, 0.9, 1]),
           _marker(6.0, 0.0, [0.2, 0.8, 0.3, 1])]
     return g
@@ -433,12 +436,12 @@ def long_wall_false_north_geoms():
 
 
 def open_corridor_geoms():
-    """CONTROLLO: identico a dead_end ma con il fondo APERTO.
+    """CONTROL: identical to dead_end but with the far end OPEN.
 
-    Non e' una trappola: e' il test dei falsi positivi. Un meccanismo che fa
-    uscire dal vicolo cieco ma fa deviare anche da un corridoio percorribile
-    peggiora il sistema invece di migliorarlo. Qui l'esito atteso e' il
-    passaggio diretto, ~19 m, senza inversioni di marcia.
+    It is not a trap: it is the false-positive test. A mechanism that gets the
+    robot out of a dead end but also detours it out of a passable corridor makes
+    the system worse rather than better. The expected outcome here is a direct
+    crossing, ~19 m, with no reversals.
     """
     g = _arena(16.0, 8.0)
     g += [_seg(-2.0, 1.0, 10.0, 1.0, 2.5, 0.30),
@@ -449,56 +452,57 @@ def open_corridor_geoms():
 
 
 def zigzag_geoms():
-    """CONTROLLO percorribile: corridoio largo 6 m con tre setti sfalsati.
+    """Passable CONTROL: 6 m wide corridor with three staggered baffles.
 
-    Nessun setto chiude del tutto: restano varchi di 2 m alternati a nord e a
-    sud, quindi si passa a zig-zag senza mai dover uscire. Verifica due cose
-    insieme: che il pianificatore non scambi un setto per una chiusura, e che
-    l'MPC regga tre cambi di direzione ravvicinati con l'orizzonte a 5.25 s.
+    No baffle closes completely: 2 m gaps are left, alternating north and south,
+    so one zig-zags through without ever having to come out. It checks two things
+    at once: that the planner does not mistake a baffle for a closure, and that
+    the MPC copes with three direction changes in quick succession on a 5.25 s
+    horizon.
 
-    Varco di 2.0 m contro un raggio di blocco di 0.397 m: restano 1.2 m di
-    canale libero, percorribile con margine.
+    A 2.0 m gap against a blocking radius of 0.397 m: 1.2 m of free channel are
+    left, passable with margin.
     """
     g = _arena(16.0, 8.0)
-    g += [_seg(-2.0, 3.0, 14.0, 3.0, 2.5, 0.30),    # parete nord
-          _seg(-2.0, -3.0, 14.0, -3.0, 2.5, 0.30),  # parete sud
-          _seg(2.0, -3.0, 2.0, 1.0, 2.5, 0.30),     # setto 1, varco a nord
-          _seg(6.0, 3.0, 6.0, -1.0, 2.5, 0.30),     # setto 2, varco a sud
-          _seg(10.0, -3.0, 10.0, 1.0, 2.5, 0.30)]   # setto 3, varco a nord
+    g += [_seg(-2.0, 3.0, 14.0, 3.0, 2.5, 0.30),    # north wall
+          _seg(-2.0, -3.0, 14.0, -3.0, 2.5, 0.30),  # south wall
+          _seg(2.0, -3.0, 2.0, 1.0, 2.5, 0.30),     # baffle 1, gap north
+          _seg(6.0, 3.0, 6.0, -1.0, 2.5, 0.30),     # baffle 2, gap south
+          _seg(10.0, -3.0, 10.0, 1.0, 2.5, 0.30)]   # baffle 3, gap north
     g += [_marker(-6.0, 0.0, [0.2, 0.4, 0.9, 1]),
           _marker(15.0, 0.0, [0.2, 0.8, 0.3, 1])]
     return g
 
 
 def door_room_geoms():
-    """CONTROLLO al limite: parete piena da un capo all'altro, con UNA porta.
+    """Borderline CONTROL: solid wall from side to side, with ONE door.
 
-    La parete tocca entrambi i lati del perimetro: non esiste alcun modo di
-    aggirarla, l'unico passaggio e' la porta al centro, larga 1.6 m. Con
-    grid_std 0.31 e obstacle_threshold 0.10 il raggio di blocco implicato e'
-    0.397 m, quindi restano 0.81 m di canale libero contro un ingombro del
-    robot di ~0.35 m di raggio: si passa, con poco margine.
+    The wall touches both sides of the perimeter: there is no way around it, the
+    only passage is the door in the middle, 1.6 m wide. With grid_std 0.31 and
+    obstacle_threshold 0.10 the implied blocking radius is 0.397 m, so 0.81 m of
+    free channel are left against a robot footprint of ~0.35 m in radius: it
+    passes, with little margin.
 
-    L'ARCHITRAVE sopra la porta e' geometria REALE ma invisibile al
-    pianificatore: sta fra z=1.80 e z=2.40, cioe' interamente sopra lo z_max del
-    filtro LiDAR (1.60 m nel frame odom, vedi lidar_filter_g1.yaml). Serve
-    perche' nel viewer si veda una porta e non una fessura fra due muri; il
-    ray-cast la colpisce, il filtro la scarta, e la nuvola che arriva ad A* e'
-    identica a quella di un'apertura passante. E' anche un promemoria utile: la
-    fascia di quota del filtro decide cosa ESISTE per il pianificatore, e un
-    ostacolo fuori da quella fascia semplicemente non c'e'.
+    The LINTEL above the door is REAL geometry but invisible to the planner: it
+    sits between z=1.80 and z=2.40, entirely above the LiDAR filter's z_max
+    (1.60 m in the odom frame, see lidar_filter_g1.yaml). It is there so that the
+    viewer shows a door and not a slit between two walls; the ray-cast hits it,
+    the filter discards it, and the cloud reaching A* is identical to the one of
+    an open passage. It is also a useful reminder: the filter's height band
+    decides what EXISTS for the planner, and an obstacle outside that band simply
+    is not there.
 
-    Questo mondo NON testa la fuga, testa la taratura della griglia: sugli
-    scenari sintetici A* rifiutava varchi da 0.9 m preferendo giri di 7 m, quindi
-    la soglia di passabilita' sta fra 0.9 e 1.6 m. Se il G1 gira intorno invece
-    di passare, il parametro e' grid_std — e conta piu' di qualunque meccanismo
-    di escape, perche' un pianificatore che non passa dalle porte non serve in
-    un magazzino.
+    This world does NOT test escaping, it tests the grid tuning: on the synthetic
+    scenarios A* refused 0.9 m gaps and preferred 7 m detours, so the
+    passability threshold lies between 0.9 and 1.6 m. If the G1 walks around
+    instead of through, the parameter to look at is grid_std — and it matters
+    more than any escape mechanism, because a planner that does not go through
+    doors is of no use in a warehouse.
     """
     g = _arena_box(-10.0, 10.0, -8.0, 8.0)
-    g += [_seg(0.0, -8.0, 0.0, -0.8, 2.5, 0.30),     # stipite sud
-          _seg(0.0, 0.8, 0.0, 8.0, 2.5, 0.30)]       # stipite nord
-    # architrave: sopra la fascia del filtro, quindi solo visiva
+    g += [_seg(0.0, -8.0, 0.0, -0.8, 2.5, 0.30),     # south jamb
+          _seg(0.0, 0.8, 0.0, 8.0, 2.5, 0.30)]       # north jamb
+    # lintel: above the filter band, so visual only
     g += [_box(0.0, 0.0, 2.1, 0.30, 1.6, 0.6, _WALL)]
     g += [_marker(-6.0, 0.0, [0.2, 0.4, 0.9, 1]),
           _marker(6.0, 0.0, [0.2, 0.8, 0.3, 1])]
@@ -509,48 +513,48 @@ def door_room_geoms():
 WORLDS = {
     "industrial": dict(geoms=warehouse_geoms, spawn=(-12.0, 0.0, 0.0),
                        goal=(10.0, 0.0),
-                       desc="magazzino industriale (ostacoli convessi, sparsi)"),
+                       desc="industrial warehouse (convex, scattered obstacles)"),
     "long_wall":  dict(geoms=long_wall_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(6.0, 0.0), timeout=420.0,
-                       desc="muro 21 m, estremita' fuori portata, varco a NORD"),
+                       desc="21 m wall, ends out of range, gap to the NORTH"),
     "horseshoe":  dict(geoms=horseshoe_geoms, spawn=(-7.0, 0.0, 0.0),
                        goal=(14.0, 0.0),
-                       desc="U profonda 12 m aperta verso il robot, goal oltre il fondo"),
-    # Goal sull'ASSE del corridoio: senza le alette perpendicolari (rimosse su
-    # richiesta) un goal spostato a nord rende l'aggiramento esterno piu' corto
-    # dell'imbocco, e A* non entra proprio — verificato. Sull'asse, entrare e' la
-    # rotta apparente piu' breve. Il piede viene esplorato lo stesso: una volta
-    # dentro e trovato chiuso il braccio est, e' l'unica continuazione che resta.
+                       desc="12 m deep U opening towards the robot, goal past its back"),
+    # Goal on the corridor AXIS. With no perpendicular baffles, a goal shifted
+    # north makes the outside detour shorter than the entrance and A* does not go
+    # in at all — verified. On the axis, entering is the apparently shortest
+    # route. The foot gets explored all the same: once inside, with the east arm
+    # closed, it is the only continuation left.
     "l_corridor": dict(geoms=l_corridor_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(10.0, 0.0), timeout=600.0,
-                       desc="L larga 3 m, due chiusure annidate, goal verso il piede"),
-    # Goal spostato a NORD di proposito: il varco vero e' a sud, quindi il lato
-    # nord sembra il piu' breve e il robot ci si dirige. Serve a provare proprio
-    # il caso "esplora, scopre che non si passa, torna indietro e prende l'altro
-    # lato" — con il goal sull'asse la scelta iniziale sarebbe un lancio di
-    # moneta e l'esito non ripetibile fra un run e l'altro.
+                       desc="3 m wide L, two nested closures, goal towards the foot"),
+    # Goal shifted NORTH on purpose: the real gap is south, so the north side
+    # looks shorter and the robot heads there. It is meant to test exactly the
+    # "explore, discover it is blocked, come back and take the other side" case
+    # — with the goal on the axis the initial choice would be a coin flip and the
+    # outcome would not repeat from one run to the next.
     "long_wall_south": dict(geoms=long_wall_south_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(6.0, 4.0), timeout=480.0,
-                       desc="varco a SUD ma goal a nord: costringe a esplorare prima a sinistra"),
-    # Goal a NORD: il varco vero e' a sud, quindi il lato nord sembra il piu'
-    # breve e il robot ci va SUBITO. Serve a rendere ripetibile la prova — con il
-    # goal sull'asse la scelta iniziale e' un lancio di moneta.
+                       desc="gap SOUTH but goal north: forces an exploration to the left first"),
+    # Goal NORTH: the real gap is south, so the north side looks shorter and the
+    # robot goes there IMMEDIATELY. It makes the trial repeatable — with the goal
+    # on the axis the initial choice is a coin flip.
     "long_wall_false_north": dict(geoms=long_wall_false_north_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(6.0, 4.0),
                        timeout=540.0,
-                       desc="muro 18 m; il varco nord sembra chiuso ma cela una strettoia"),
+                       desc="18 m wall; the north gap looks closed but hides a narrow passage"),
     "open_corridor": dict(geoms=open_corridor_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(13.0, 0.0),
-                       desc="CONTROLLO: come dead_end ma APERTO in fondo"),
+                       desc="CONTROL: like dead_end but OPEN at the far end"),
     "zigzag":     dict(geoms=zigzag_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(15.0, 0.0),
-                       desc="CONTROLLO: corridoio largo con 3 setti sfalsati, si passa"),
+                       desc="CONTROL: wide corridor with 3 staggered baffles, passable"),
     "door_room":  dict(geoms=door_room_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(6.0, 0.0),
-                       desc="CONTROLLO al limite: parete con una sola porta da 1.6 m"),
+                       desc="borderline CONTROL: wall with a single 1.6 m door"),
     "dead_end":   dict(geoms=dead_end_geoms, spawn=(-6.0, 0.0, 0.0),
                        goal=(13.0, 0.0),
-                       desc="corridoio 2.0x12 m chiuso in fondo, goal appena oltre"),
+                       desc="2.0x12 m corridor closed at the end, goal just beyond"),
 }
 
 
@@ -561,7 +565,7 @@ def world_names():
 def world_info(name):
     if name not in WORLDS:
         raise ValueError(
-            f"mondo sconosciuto: {name!r}. Disponibili: {', '.join(world_names())}")
+            f"unknown world: {name!r}. Available: {', '.join(world_names())}")
     return WORLDS[name]
 
 
@@ -593,10 +597,10 @@ def _add_person(wb, idx, color):
 def build_model(g1_xml_path, n_people=0, people_colors=None, world="industrial"):
     """Build the combined MuJoCo model (G1 + world). Returns (model, info).
 
-    `world` sceglie la geometria fra quelle di WORLDS (industrial, long_wall,
-    horseshoe, dead_end). info["world"] e info["world_spawn"] riportano la
-    scelta al chiamante, cosi' mujoco_sim puo' posizionare il robot dove quel
-    mondo ha senso senza che l'utente debba ricordarsi le coordinate.
+    `world` picks the geometry from WORLDS (industrial, long_wall, horseshoe,
+    dead_end, ...). info["world"] and info["world_spawn"] report the choice back
+    to the caller, so mujoco_sim can place the robot where that world makes
+    sense without the user having to remember the coordinates.
 
     If n_people > 0, that many mocap "person" bodies are added (parked below the
     floor at z=-5 until the sim places them); mujoco_sim teleports them along

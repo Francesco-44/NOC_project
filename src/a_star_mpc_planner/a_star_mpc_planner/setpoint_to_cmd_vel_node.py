@@ -55,28 +55,28 @@ class SetpointToCmdVelNode(Node):
         self.declare_parameter('cmd_kp_xy', 1.0)
         self.declare_parameter('cmd_kp_yaw', 1.5)
         self.declare_parameter('cmd_max_vx', 0.8)
-        # Limite INFERIORE su vx. NaN = simmetrico (-cmd_max_vx), che era il
-        # comportamento storico. Va tenuto allineato a mpc_vx_min: il YAML
-        # richiede che i clamp non eccedano i limiti del modello dell'MPC,
-        # altrimenti l'anello esterno chiede piu' di quanto il piano preveda.
+        # LOWER bound on vx. NaN = symmetric (-cmd_max_vx), which was the original
+        # behaviour. It has to be kept aligned with mpc_vx_min: the YAML requires
+        # the clamps not to exceed the limits of the MPC model, otherwise the outer
+        # loop asks for more than the plan provides for.
         self.declare_parameter('cmd_min_vx', float('nan'))
-        # "Gira prima, poi vai": sopra questo disallineamento di prua la
-        # componente LONGITUDINALE del comando viene sfumata verso zero, cosi'
-        # il robot ruota (quasi) sul posto invece di percorrere metri con la
-        # prua storta. 0 disattiva.
+        # "Turn first, then go": above this heading misalignment the LONGITUDINAL
+        # component of the command is faded towards zero, so the robot turns
+        # (almost) on the spot instead of covering metres with the wrong heading.
+        # 0 disables it.
         #
-        # Serve perche' il costo dell'MPC NON puo' risolverlo: penalizzare la
-        # retromarcia con un termine asimmetrico e' inefficace finche' Q_xy=200
-        # domina (misurato: nessun effetto fino a R~10^3, dove pero' equivale a
-        # vietarla). E l'MPC gia' ruota al massimo, |wz| saturato: una virata di
-        # 180 gradi a omega_max=0.3 richiede 10.5 s, il DOPPIO dell'orizzonte di
-        # 5.25 s. Dentro l'orizzonte indietreggiare insegue il riferimento
-        # meglio che girarsi, e la scelta e' corretta per il problema che l'MPC
-        # vede — solo che il problema e' troncato.
+        # It is needed because the MPC cost canNOT solve it: penalising reverse
+        # with an asymmetric term is ineffective while Q_xy=200 dominates
+        # (measured: no effect up to R~10^3, where it amounts to forbidding it).
+        # And the MPC already turns as fast as it can, |wz| saturated: a 180-degree
+        # turn at omega_max=0.3 takes 10.5 s, TWICE the 5.25 s horizon. Within the
+        # horizon, reversing tracks the reference better than turning, and the
+        # choice is right for the problem the MPC sees — except that the problem is
+        # truncated.
         self.declare_parameter('cmd_turn_first_deg', 0.0)
-        # Quanto resta della velocita' longitudinale a prua completamente
-        # invertita. 0 = rotazione pura sul posto; un valore piccolo lascia lo
-        # sgancio all'indietro che serve a staccarsi da un muro.
+        # How much of the longitudinal velocity is left when facing completely
+        # backwards. 0 = pure rotation on the spot; a small value keeps the
+        # backward unsticking needed to come off a wall.
         self.declare_parameter('cmd_turn_first_floor', 0.25)
         self.declare_parameter('cmd_max_vy', 0.4)
         self.declare_parameter('cmd_max_omega', 1.2)
@@ -114,8 +114,8 @@ class SetpointToCmdVelNode(Node):
         self._last_cmd = Twist()
         self._has_last_cmd = False
 
-        # Nome del topic della posa: parametrico, e' l'unico punto in cui
-        # il robot entra in questo nodo. Il G1 pubblica su /robot_pose.
+        # Name of the pose topic: parametric, it is the only point where the robot
+        # enters this node. The G1 publishes on /robot_pose.
         self.declare_parameter('pose_topic', '/robot_pose')
         _pose_topic = self.get_parameter('pose_topic').value
 
@@ -198,9 +198,9 @@ class SetpointToCmdVelNode(Node):
         ex = math.cos(self._yaw) * dx_world + math.sin(self._yaw) * dy_world
         ey = -math.sin(self._yaw) * dx_world + math.cos(self._yaw) * dy_world
 
-        # Errore di prua rispetto all'ORIENTAMENTO del setpoint. Calcolato qui,
-        # prima del blocco lineare, perche' serve anche alla sfumatura
-        # "gira prima, poi vai"; il canale di imbardata piu' sotto lo riusa.
+        # Heading error with respect to the setpoint ORIENTATION. Computed here,
+        # before the linear block, because the "turn first, then go" fade needs it
+        # too; the yaw channel below reuses it.
         yaw_sp = _quat_to_yaw(self._setpoint.pose.orientation.x,
                               self._setpoint.pose.orientation.y,
                               self._setpoint.pose.orientation.z,
@@ -215,10 +215,10 @@ class SetpointToCmdVelNode(Node):
             vx_cmd = _clamp(self._kp_xy * ex, self._min_vx, self._max_vx)
             vy_cmd = _clamp(self._kp_xy * ey, -self._max_vy, self._max_vy)
 
-            # Sfumatura "gira prima, poi vai". Il fattore va da 1 (prua
-            # allineata) al pavimento (prua invertita) con un coseno rialzato:
-            # e' liscio, quindi non introduce gradini nel twist, che e' l'asse
-            # su cui un umanoide perde l'equilibrio per primo.
+            # "Turn first, then go" fade. The factor goes from 1 (heading aligned)
+            # to the floor (heading reversed) with a raised cosine: it is smooth, so
+            # it introduces no steps in the twist, which is the axis a humanoid
+            # loses its balance on first.
             if self._turn_first > 0.0:
                 a = abs(math.atan2(math.sin(yaw_err), math.cos(yaw_err)))
                 if a > self._turn_first:

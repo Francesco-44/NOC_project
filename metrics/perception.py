@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """
-perception — modello di percezione LIMITATA per l'harness offline.
+perception — model of LIMITED perception for the offline harness.
 
-PERCHE' SERVE. metrics/common.closed_loop passa ad A* gli ostacoli NOTI PER INTERO
-fin dal primo ciclo. Su geometrie convesse la differenza col robot vero e'
-piccola, ma su un ostacolo concavo e' tutto: offline A* sa gia' che il vicolo
-e' chiuso e non ci entra, quindi il fallimento che si osserva in MuJoCo — il
-robot che entra, scopre il fondo e comincia a rimpallare — non e' riproducibile
-e non c'e' niente da misurare.
+WHY IT IS NEEDED. metrics/common.closed_loop passes A* the obstacles KNOWN IN
+FULL from the first cycle. On convex geometry the difference from the real robot
+is small, but on a concave obstacle it is everything: offline, A* already knows
+the alley is closed and does not go in, so the failure observed in MuJoCo — the
+robot going in, finding the back and starting to bounce — is not reproducible and
+there is nothing to measure.
 
-Qui si modella cio' che il G1 vede DAVVERO:
+Here what the G1 REALLY sees is modelled:
 
-  portata     max_lidar_range (8 m nel profilo G1);
-  occlusione  solo il primo bersaglio lungo ciascun azimut, come un ray-cast;
-  memoria     PersistentOccupancyMap del repo, la stessa classe di a_star_node,
-              cosi' l'accumulo (e il suo decay) e' quello di produzione.
+  range      max_lidar_range (8 m in the G1 profile);
+  occlusion  only the first target along each azimuth, like a ray-cast;
+  memory     PersistentOccupancyMap of the repository, the same class as
+             a_star_node, so the accumulation (and its decay) is the production
+             one.
 
-Cio' che NON si modella, e va tenuto presente leggendo i risultati: rumore di
-distanza, la fascia di elevazione (qui il mondo e' 2D, quindi ogni ostacolo e'
-alto quanto basta), il ritardo del filtro e il voxel a 0.08 m.
+What is NOT modelled, and has to be kept in mind when reading the results: range
+noise, the elevation band (the world is 2D here, so every obstacle is tall
+enough), the filter delay and the 0.08 m voxel.
 """
 from __future__ import annotations
 
@@ -36,13 +37,13 @@ from a_star_mpc_planner.persistent_map import PersistentOccupancyMap  # noqa: E4
 
 
 class LimitedLidar:
-    """Ray-cast 2D con occlusione, su una nuvola di punti-superficie.
+    """2D ray-cast with occlusion, on a cloud of surface points.
 
-    L'occlusione si ottiene raggruppando i punti per azimut e tenendo, per ogni
-    settore, SOLO IL PIU' VICINO. E' l'equivalente discreto del primo colpo del
-    raggio: cio' che sta dietro a un muro non viene visto, che e' esattamente la
-    proprieta' che rende un vicolo cieco indistinguibile da un corridoio aperto
-    finche' non lo si percorre.
+    Occlusion is obtained by grouping the points by azimuth and keeping, for each
+    sector, ONLY THE NEAREST ONE. It is the discrete equivalent of the first hit
+    of the ray: what lies behind a wall is not seen, which is exactly the property
+    that makes a dead end indistinguishable from an open corridor until it is
+    walked.
     """
 
     def __init__(self, max_range: float = 8.0, n_bearings: int = 360,
@@ -52,7 +53,7 @@ class LimitedLidar:
         self.n_bearings = int(n_bearings)
 
     def scan(self, pose_xy, obstacles: np.ndarray) -> np.ndarray:
-        """(M, 2) punti visibili dal punto dato, in frame mondo."""
+        """(M, 2) points visible from the given point, in the world frame."""
         if obstacles is None or len(obstacles) == 0:
             return np.zeros((0, 2))
         d = obstacles - np.asarray(pose_xy, dtype=float)[None, :2]
@@ -67,9 +68,9 @@ class LimitedLidar:
         idx = np.floor((b + np.pi) / (2 * np.pi) * self.n_bearings).astype(int)
         idx = np.clip(idx, 0, self.n_bearings - 1)
 
-        # per ogni settore il piu' vicino: ordinando per raggio decrescente e
-        # scrivendo in un array indicizzato per settore, l'ultimo scritto (il
-        # piu' vicino) sopravvive.
+        # the nearest one per sector: sorting by decreasing radius and writing
+        # into an array indexed by sector, the last one written (the nearest)
+        # survives.
         order = np.argsort(-r)
         first = np.full(self.n_bearings, -1, dtype=int)
         first[idx[order]] = order
@@ -78,17 +79,18 @@ class LimitedLidar:
 
 
 class PerceivedWorld:
-    """LiDAR limitato + memoria persistente: la vista del mondo che ha il robot.
+    """Limited LiDAR + persistent memory: the view of the world the robot has.
 
-    `known()` restituisce i punti accumulati, ed e' cio' che va passato al
-    pianificatore al posto degli ostacoli veri.
+    `known()` returns the accumulated points, and that is what has to be passed
+    to the planner instead of the real obstacles.
     """
 
     def __init__(self, obstacles: np.ndarray, grid_reso: float = 0.20,
                  max_range: float = 8.0, decay_sec: float = 0.0):
-        # decay_sec = 0 -> non si dimentica nulla. E' il caso statico di questi
-        # mondi; con decay > 0 il robot dimentica il fondo del vicolo e ci
-        # rientra per un motivo DIVERSO dal ciclo limite, confondendo la misura.
+        # decay_sec = 0 -> nothing is forgotten. It is the static case of these
+        # worlds; with decay > 0 the robot forgets the back of the alley and goes
+        # back in for a reason DIFFERENT from the limit cycle, confusing the
+        # measurement.
         self.truth = np.asarray(obstacles, dtype=float)
         self.lidar = LimitedLidar(max_range=max_range)
         self.memory = PersistentOccupancyMap(grid_reso=grid_reso,
@@ -104,15 +106,15 @@ class PerceivedWorld:
         return self._n_seen
 
     def known(self) -> np.ndarray:
-        """(K, 2) tutto cio' che il robot ha visto finora."""
+        """(K, 2) everything the robot has seen so far."""
         big = 1e6
         pts = self.memory.get_points_in_window(-big, -big, big, big)
         return np.zeros((0, 2)) if pts is None else np.asarray(pts)[:, :2]
 
     @property
     def coverage(self) -> float:
-        """Frazione della geometria vera gia' scoperta — utile per capire se un
-        fallimento e' d'ignoranza o di decisione."""
+        """Fraction of the real geometry already discovered — useful to tell a
+        failure of ignorance from a failure of decision."""
         if not len(self.truth):
             return 1.0
         return min(1.0, self.memory.size * 1.0 / len(self.truth))

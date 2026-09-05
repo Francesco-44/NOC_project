@@ -1,12 +1,12 @@
 """
-g1_sim.launch.py — solo l'impianto: MuJoCo + G1 + magazzino.
+g1_sim.launch.py — the plant only: MuJoCo + G1 + warehouse.
 
-Serve a verificare il simulatore da solo, guidandolo a mano:
+For checking the simulator on its own, driving it by hand:
 
     ros2 launch g1_sim g1_sim.launch.py
     ros2 run g1_sim key_teleop
 
-Argomenti
+Arguments
 ---------
   params_file : str  (default: config/g1_sim.yaml del pacchetto)
   viewer      : bool (default: true)  finestra MuJoCo
@@ -44,7 +44,7 @@ def generate_launch_description():
             {
                 "viewer": ParameterValue(LaunchConfiguration("viewer"), value_type=bool),
                 "people": LaunchConfiguration("people"),
-                "use_sim_time": False,   # il nodo E' la sorgente di /clock
+                "use_sim_time": False,   # the node IS the source of /clock
             },
         ],
     )

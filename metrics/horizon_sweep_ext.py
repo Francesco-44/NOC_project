@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
 """
-Orizzonte, parte II: (N, dt) x N_c x parametrizzazione del riferimento.
+Horizon, part II: (N, dt) x N_c x reference parametrisation.
 
-horizon_sweep.py sweepa (N, dt) e trova che oltre ~5 s l'orizzonte PEGGIORA
+horizon_sweep.py sweeps (N, dt) and finds that beyond ~5 s the horizon MAKES
 tempo al goal e clearance. Quella conclusione e' pero' condizionata a due
-scelte che il profilo G1 non ha mai variato:
+choices the G1 profile has never varied:
 
-  N_c = N        ogni passo di predizione ha il suo ingresso libero, quindi
+  N_c = N        every prediction step has its own free input, so
                  allungare l'orizzonte compra predizione E variabili decisionali
-                 insieme, e non si puo' sapere quale delle due costa.
+                 together, and there is no way to know which of the two costs.
 
-  path_mode      'time': il riferimento avanza a v_ref [m/s] a prescindere da
-                 cosa fa il robot. Se il robot devia per scansare un ostacolo il
-                 riferimento gli scappa avanti e il termine di tracking (Q=200)
-                 combatte la barriera. E' il meccanismo che rende dannosi gli
-                 orizzonti lunghi: il nodo k=N insegue un punto che A*
-                 ridisegnera' entro un ciclo di replan.
-                 'theta': l'ascissa curvilinea e' una variabile decisionale,
-                 v_ref sparisce, e l'MPC sceglie QUANTO avanzare invece di
+  path_mode      'time': the reference advances at v_ref [m/s] regardless of
+                 what the robot does. If the robot deviates to dodge an obstacle
+                 the reference runs away from it and the tracking term (Q=200)
+                 fights the barrier. It is the mechanism that makes long horizons
+                 harmful: node k=N tracks a point A* will redraw within one
+                 replanning cycle.
+                 'theta': the arc length is a decision variable, v_ref
+                 disappears, and the MPC chooses HOW MUCH to advance instead of
                  subirlo. Dispense §7.2.4-7.2.5.
 
-Le due cose sono accoppiate: separare l'orizzonte di predizione da quello di
-controllo ha senso solo se il riferimento lontano non e' rumore, ed e'
-esattamente cio' che la riparametrizzazione in theta sistema. Vanno quindi
-misurate sulla stessa griglia, non una dopo l'altra.
+The two are coupled: separating the prediction horizon from the control horizon
+only makes sense if the far reference is not noise, and that is exactly what the
+theta reparametrisation fixes. So they have to be measured on the same grid, not
+one after the other.
 
 Uso:
     python3 metrics/horizon_sweep_ext.py --quick
@@ -44,11 +44,11 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import common  # noqa: E402
 
-T_MISSIONE = 30.0   # default; sovrascrivibile con --T
+T_MISSIONE = 30.0   # default; can be overridden with --T
 
 
 def valuta(cfg, raw, sc, N, dt, N_c, mode, T_miss=T_MISSIONE) -> dict:
-    """Una missione in anello chiuso con un dato (N, dt, N_c, path_mode)."""
+    """One closed-loop mission with a given (N, dt, N_c, path_mode)."""
     c = dataclasses.replace(cfg, N=int(N), dt=float(dt),
                             N_c=(None if N_c is None else int(N_c)),
                             path_mode=str(mode))
@@ -57,7 +57,7 @@ def valuta(cfg, raw, sc, N, dt, N_c, mode, T_miss=T_MISSIONE) -> dict:
     try:
         tr = common.make_tracker(c)
         h = common.closed_loop(tr, sc, steps=steps, raw=raw)
-    except Exception as exc:                       # NLP non costruibile / non risolto
+    except Exception as exc:                       # NLP not buildable / not solved
         return {"N": int(N), "dt": float(dt), "N_c": N_c, "path_mode": mode,
                 "errore": f"{type(exc).__name__}: {exc}", "goal_raggiunto": False}
     wall = time.perf_counter() - t0
@@ -68,20 +68,20 @@ def valuta(cfg, raw, sc, N, dt, N_c, mode, T_miss=T_MISSIONE) -> dict:
     raggiunto = bool(len(P) < steps)
     lung = float(np.linalg.norm(np.diff(P[:, :2], axis=0), axis=1).sum())
     diretta = float(np.linalg.norm(sc.goal - sc.pose[:2]))
-    # variabili decisionali: stati + ingressi LIBERI (N_c colonne, non N)
+    # decision variables: states + FREE inputs (N_c columns, not N)
     nc_eff = int(N if N_c is None else N_c)
     return {
         "N": int(N), "dt": float(dt), "N_c": N_c, "path_mode": mode,
         "T_orizzonte": float(N * dt),
-        # in modo 'theta' l'arco non e' v_ref*T: e' scelto dal solutore
+        # in 'theta' mode the arc is not v_ref*T: it is chosen by the solver
         "arco_nominale_m": (float(cfg.v_ref * N * dt) if mode == "time" else None),
         "n_var": int(6 * (N + 1) + 3 * nc_eff + (N + 1 if mode == "theta" else 0)),
         "passi": int(len(P)),
         "goal_raggiunto": raggiunto,
         "tempo_al_goal_s": float(len(P) * dt) if raggiunto else None,
         "clearance_min": float(common.clearance(P[:, :2], sc.obstacles)),
-        # Un goal raggiunto attraversando un ostacolo non e' un successo:
-        # l'impianto dell'harness non ha collisioni. Vedi common.check_collisions.
+        # A goal reached by going through an obstacle is not a success: the
+        # harness plant has no collisions. See common.check_collisions.
         "attraversamento": bool(
             common.check_collisions(P[:, :2], sc.obstacles)["attraversamento"]),
         "lunghezza_percorso": lung,
@@ -111,7 +111,7 @@ def main() -> int:
     ap.add_argument("--N_c", nargs="*", default=None)
     ap.add_argument("--path-mode", nargs="*", default=["time", "theta"])
     ap.add_argument("--T", type=float, default=T_MISSIONE,
-                    help="durata della missione simulata [s]")
+                    help="duration of the simulated mission [s]")
     ap.add_argument("--quick", action="store_true")
     args = ap.parse_args()
 
@@ -126,7 +126,7 @@ def main() -> int:
     combos = [(N, dt, nc, m) for N in Ns for dt in dts for nc in Ncs
               for m in modes if nc is None or nc <= N]
     print(f"{len(combos)} combinazioni x {len(args.scenari)} scenari · "
-          f"missione {args.T:.0f} s · budget di ciclo {budget:.0f} ms")
+          f"mission {args.T:.0f} s · cycle budget {budget:.0f} ms")
     print(f"deployato: N={cfg.N} dt={cfg.dt} N_c={cfg.N_c} path_mode={cfg.path_mode} "
           f"(orizzonte {cfg.N*cfg.dt:.1f} s, arco {cfg.v_ref*cfg.N*cfg.dt:.2f} m)")
     print(f"cinematica: vx in [{cfg.vx_min:+.2f},{cfg.vx_max:+.2f}] "
@@ -147,26 +147,26 @@ def main() -> int:
             else:
                 print(f"  {nome:12s} N={N:3d} dt={dt:.2f} N_c={str(nc):>4} "
                       f"{m:5s}  T={r['T_orizzonte']:4.1f}s "
-                      f"goal={'si ' if r['goal_raggiunto'] else 'NO '} "
+                      f"goal={'yes' if r['goal_raggiunto'] else 'NO '} "
                       f"clear={r['clearance_min']:.3f} "
                       f"p95={r['solve_ms_p95']:6.1f}ms", flush=True)
     print(f"\ndurata totale {time.perf_counter()-t0:.0f} s")
 
     # ── aggregazione sugli scenari ──────────────────────────────────────
-    # Scenari risolti da OGNI configurazione: e' su questi che il tempo al goal
-    # e' confrontabile. Uno scenario che nessuno risolve non deve azzerare
-    # l'analisi (lo faceva il filtro goal>0.99), e uno che solo alcuni
-    # risolvono falserebbe la media a favore di chi si ferma prima.
+    # Scenarios solved by EVERY configuration: it is on those that the time to
+    # goal is comparable. A scenario nobody solves must not void the analysis, and
+    # one only some of them solve would bias the mean in favour of whoever stops
+    # earlier.
     comune = [nome for nome in args.scenari
               if all(r["goal_raggiunto"] for r in righe
                      if r["scenario"] == nome and "errore" not in r)]
     mai = [nome for nome in args.scenari if nome not in comune]
     print()
-    print(f"scenari risolti da tutte le configurazioni: "
+    print(f"scenarios solved by every configuration: "
           f"{', '.join(comune) if comune else 'NESSUNO'}")
     if mai:
-        print(f"scenari NON risolti da tutte in {args.T:.0f} s (esclusi dal tempo "
-              f"al goal, contano ancora per clearance e lunghezza): "
+        print(f"scenarios NOT solved by all within {args.T:.0f} s (excluded from the "
+              f"time to goal, still counted for clearance and length): "
               f"{', '.join(mai)}")
         for nome in mai:
             for m in sorted({r["path_mode"] for r in righe}):
@@ -213,7 +213,7 @@ def main() -> int:
         print(f"| {a['N']} | {a['dt']:g} | {a['N_c'] if a['N_c'] else 'N'} | "
               f"{a['path_mode']} | {a['T']:.1f} | {a['n_var']} | {a['goal']*100:.0f}% | "
               f"{tg} | {a['clearance']:.3f} | {a['lung']:.2f} | {a['p95']:.1f} | "
-              f"{'si' if a['entro_budget'] else 'NO'} |")
+              f"{'yes' if a['entro_budget'] else 'NO'} |")
 
     # ── letture ─────────────────────────────────────────────────────────
     def media(sel, key):
@@ -228,8 +228,8 @@ def main() -> int:
     scartate = [a for a in agg.values() if a["attraversamenti"]]
     if scartate:
         print()
-        print(f"  {len(scartate)} combinazioni ESCLUSE per attraversamento di un "
-              f"ostacolo (l'impianto dell'harness non ha collisioni):")
+        print(f"  {len(scartate)} combinations EXCLUDED for going through an "
+              f"obstacle (the harness plant has no collisions):")
         for a in scartate:
             print(f"    N={a['N']} dt={a['dt']:g} N_c={a['N_c']} {a['path_mode']}: "
                   f"{a['attraversamenti']} scenari, clearance {a['clearance']:.3f} m")
@@ -261,8 +261,8 @@ def main() -> int:
     nd = [a for a in fatt if not any(domina(b, a) for b in fatt if b is not a)]
     print()
     if nd:
-        print(f"Insieme NON DOMINATO su (tempo al goal, clearance, p95), "
-              f"fra le {len(fatt)} ammissibili:")
+        print(f"NON-DOMINATED set over (time to goal, clearance, p95), "
+              f"among the {len(fatt)} admissible ones:")
         print("  | N | dt | N_c | mode | T [s] | t goal [s] | clear [m] | p95 [ms] |")
         print("  |---|---|---|---|---|---|---|---|")
         for a in sorted(nd, key=lambda z: z["t_goal"]):
@@ -274,7 +274,7 @@ def main() -> int:
         print()
         print(f"Deployata (N={cfg.N}, dt={cfg.dt:g}, N_c={cfg.N_c}, "
               f"{cfg.path_mode}): "
-              f"{'NON DOMINATA' if dep in nd else 'DOMINATA'} — "
+              f"{'NON-DOMINATED' if dep in nd else 'DOMINATED'} — "
               f"t={dep['t_goal'] if dep['t_goal'] else float('nan'):.1f} s, "
               f"clearance {dep['clearance']:.3f} m, p95 {dep['p95']:.1f} ms")
 

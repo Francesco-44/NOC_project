@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Errore di predizione: modello dell'MPC contro impianto — dispense §7.2.5.
+Prediction error: MPC model against plant — lecture notes §7.2.5.
 
-L'MPC predice con un modello nominale (uniciclo piu' un lag del primo ordine);
-l'impianto e' il G1 a 29 gradi di liberta' che cammina in MuJoCo. Il
-disallineamento e' reale e strutturale — passi discreti, oscillazione del
-bacino, ritardo del controllore di camminata — e non e' modellato da nessuna
+The MPC predicts with a nominal model (unicycle plus a first-order lag); the
+plant is the 29-DoF G1 walking in MuJoCo. The mismatch is real and structural —
+discrete steps, pelvis oscillation, delay of the walking controller — and is not
+modelled by any
 parte.
 
-Questo script lo QUANTIFICA dai dati gia' registrati, senza nuovi esperimenti:
-per ogni ciclo confronta la traiettoria predetta (/mpc/predicted_path, salvata
-al tempo t) con quella effettivamente percorsa (/robot_pose ai tempi t+k*dt).
+This script QUANTIFIES it from data already recorded, with no new experiments:
+for every cycle it compares the predicted trajectory (/mpc/predicted_path, saved
+at time t) with the one actually travelled (/robot_pose at times t+k*dt).
 
     errore(k) = || predetto(k) - percorso(t + k*dt) ||
 
@@ -34,14 +34,14 @@ import bag_source   # noqa: E402
 
 def pose_series(bag):
     """
-    (t in secondi, array (M,3) di [x, y, yaw]) da /robot_pose.
+    (t in seconds, (M,3) array of [x, y, yaw]) from /robot_pose.
 
-    I tempi sono RELATIVI al primo messaggio di /mpc/diagnostics, perche' e'
-    cosi' che bag_source.Frame definisce il proprio `t`. Usare qui i timestamp
-    assoluti farebbe cadere ogni confronto fuori intervallo, in silenzio.
+    Times are RELATIVE to the first /mpc/diagnostics message, because that is how
+    bag_source.Frame defines its own `t`. Using absolute timestamps here would
+    silently push every comparison out of range.
     """
     if not bag["diag"]:
-        raise SystemExit("la bag non contiene /mpc/diagnostics")
+        raise SystemExit("the bag does not contain /mpc/diagnostics")
     t0 = bag["diag"][0][0]
     ts, ps = [], []
     for t_ns, m in bag["pose"]:
@@ -65,7 +65,7 @@ def pose_at(ts, ps, t):
         return ps[i]
     w = (t - t0) / (t1 - t0)
     out = ps[i - 1] + w * (ps[i] - ps[i - 1])
-    # lo yaw va interpolato sull'angolo, non sul valore grezzo
+    # yaw has to be interpolated on the angle, not on the raw value
     d = np.arctan2(np.sin(ps[i][2] - ps[i - 1][2]), np.cos(ps[i][2] - ps[i - 1][2]))
     out[2] = ps[i - 1][2] + w * d
     return out
@@ -84,12 +84,12 @@ def main() -> int:
     frs = bag_source.frames(bag)
     ts, ps = pose_series(bag)
     if len(ts) < 2:
-        raise SystemExit("la bag non contiene abbastanza messaggi /robot_pose")
+        raise SystemExit("the bag does not contain enough /robot_pose messages")
 
     nome = os.path.basename(args.bag.rstrip("/"))
     print(f"bag {nome}: {len(frs)} cicli, {len(ts)} pose, dt = {cfg.dt} s")
 
-    # errore[k] su tutti i cicli, per k = 0..N
+    # error[k] over all cycles, for k = 0..N
     N = cfg.N
     acc = [[] for _ in range(N + 1)]
     acc_yaw = [[] for _ in range(N + 1)]
@@ -104,9 +104,9 @@ def main() -> int:
             if vera is None:
                 continue
             acc[k].append(float(np.linalg.norm(pred[k, :2] - vera[:2])))
-            # /mpc/predicted_path porta anche l'orientamento, ma bag_source lo
-            # scarta tenendo solo (x, y): il confronto sullo yaw e' disponibile
-            # solo se in futuro verra' conservato.
+            # /mpc/predicted_path carries the orientation too, but bag_source
+            # discards it keeping only (x, y): a comparison on yaw is only
+            # available if it is preserved in the future.
             if pred.shape[1] >= 3:
                 d = np.arctan2(np.sin(pred[k, 2] - vera[2]),
                                np.cos(pred[k, 2] - vera[2]))
@@ -115,7 +115,7 @@ def main() -> int:
         usati += int(ok)
     print(f"cicli utilizzabili: {usati}")
     if usati == 0:
-        raise SystemExit("nessun ciclo confrontabile: la bag copre un intervallo "
+        raise SystemExit("no comparable cycle: the bag covers an interval "
                          "troppo corto, oppure /mpc/predicted_path e' assente")
     print()
 
@@ -134,23 +134,24 @@ def main() -> int:
     fin = np.isfinite(med)
     print()
     print("Lettura (§7.2.5):")
-    # A k=0 lo stato predetto E' x0, imposto come vincolo di uguaglianza: in
-    # teoria l'errore e' nullo. Quello che si misura e' quindi un OFFSET di
-    # allineamento temporale (l'istante in cui la predizione viene pubblicata
-    # non coincide con l'istante in cui /robot_pose viene campionata), e va
-    # sottratto per isolare la divergenza vera del modello.
+    # At k=0 the predicted state IS x0, imposed as an equality constraint: in
+    # theory the error is zero. What is measured is therefore a time-alignment
+    # OFFSET (the instant the prediction is published does not coincide with the
+    # instant /robot_pose is sampled), and it has to be subtracted to isolate the
+    # true divergence of the model.
     off = med[0]
     v_tip = float(np.median(np.abs(np.diff(ps[:, :2], axis=0)).sum(1) /
                             np.maximum(np.diff(ts), 1e-9)))
-    print(f"  offset a k=0: {off:.4f} m. Non e' errore di modello — a k=0 lo stato")
-    print("  predetto E' x0, imposto come vincolo di uguaglianza. Misura il")
-    print("  disallineamento fra l'istante di pubblicazione della predizione e")
-    print(f"  quello di campionamento della posa: a ~{v_tip:.2f} m/s corrisponde a")
-    print(f"  circa {off/max(v_tip,1e-9)*1000:.0f} ms, coerente con il periodo di ciclo misurato.")
-    # Errore di troncamento al passo deployato. Erano COSTANTI SCRITTE A MANO
-    # (1.74e-2 / 8.70e-5), misurate a dt=0.20 e stampate sotto l'etichetta del dt
-    # corrente: appena il profilo si e' spostato a 0.35 la riga ha cominciato a
-    # mentire. La finestra e' 8*dt perche' integrate() pretende che dt la divida.
+    print(f"  offset at k=0: {off:.4f} m. It is not model error — at k=0 the predicted")
+    print("  state IS x0, imposed as an equality constraint. It measures the")
+    print("  misalignment between the instant the prediction is published and")
+    print(f"  the instant the pose is sampled: at ~{v_tip:.2f} m/s that corresponds to")
+    print(f"  about {off/max(v_tip,1e-9)*1000:.0f} ms, consistent with the measured cycle period.")
+    # Truncation error at the deployed step. These used to be HAND-WRITTEN
+    # CONSTANTS (1.74e-2 / 8.70e-5), measured at dt=0.20 and printed under the
+    # label of the current dt: as soon as the profile moved to 0.35 the line
+    # started lying. The window is 8*dt because integrate() requires dt to divide
+    # it.
     import sys as _sys, os as _os
     _sys.path.insert(0, _os.path.join(
         _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "tests"))
@@ -162,23 +163,23 @@ def main() -> int:
     print()
     if fin.sum() > 2:
         kk = np.arange(N + 1)[fin]
-        div = med[fin] - off          # divergenza al netto dell'offset
+        div = med[fin] - off          # divergence net of the offset
         pend = np.polyfit(kk[1:] * cfg.dt, div[1:], 1)[0]
-        print(f"  DIVERGENZA (al netto dell'offset): cresce di ~{pend:.3f} m/s di")
+        print(f"  DIVERGENCE (net of the offset): it grows by ~{pend:.3f} m per second of")
         print(f"  predizione, arrivando a {med[N]-off:.3f} m a fine orizzonte "
               f"({N*cfg.dt:.1f} s).")
         print()
-        print("  Confronto con l'errore di DISCRETIZZAZIONE (tests/test_integrators.py):")
+        print("  Comparison with the DISCRETISATION error (tests/test_integrators.py):")
         print(f"  a dt={cfg.dt} su {_T:.2f} s, Euler sbaglia {e_eul:.2e} m, "
-              f"il punto medio {e_mid:.2e} m.")
+              f"the midpoint {e_mid:.2e} m.")
         rap = (med[N] - off) / e_eul
         if rap > 2:
-            print(f"  Qui la divergenza e' {rap:.0f}x l'errore di Euler e "
-                  f"{(med[N]-off)/e_mid:.0f}x quello del punto medio:")
-            print("  il termine dominante NON e' l'integratore ma il disallineamento")
-            print("  di modello (uniciclo contro G1 a 29 gdl che cammina).")
-            print("  E' la spiegazione quantitativa del perche' passare a RK2 migliori")
-            print("  la predizione di 200x ma l'anello chiuso di appena l'1%.")
+            print(f"  Here the divergence is {rap:.0f}x the Euler error and "
+                  f"{(med[N]-off)/e_mid:.0f}x the midpoint one:")
+            print("  the dominant term is NOT the integrator but the model mismatch")
+            print("  (unicycle against a 29-DoF G1 that walks).")
+            print("  It is the quantitative explanation of why moving to RK2 improves the")
+            print("  prediction by 200x but the closed loop by barely 1%.")
 
     common.ensure_mpl3d()
     import matplotlib

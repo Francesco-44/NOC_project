@@ -4,21 +4,21 @@
   <name>g1_sim</name>
   <version>0.1.0</version>
   <description>
-    Simulatore MuJoCo dell'Unitree G1 in un magazzino industriale, usato come
-    impianto per lo stack A*+MPC: in Gazebo il G1 non avrebbe alcuna sorgente di
-    moto senza scriverne una da zero.
+    MuJoCo simulator of the Unitree G1 in an industrial warehouse, used as the
+    plant for the A*+MPC stack: in Gazebo the G1 would have no source of motion
+    without writing one from scratch.
 
-    In modalita' cinematica (default) la base viene integrata da /cmd_vel con
+    In kinematic mode (default) the base is integrated from /cmd_vel with
       x_{k+1} = x_k + (vx cos(yaw) - vy sin(yaw)) dt
       y_{k+1} = y_k + (vx sin(yaw) + vy cos(yaw)) dt
       yaw_{k+1} = yaw_k + wz dt
-    cioe' esattamente il modello SE(2) olonomico su cui l'MPC ottimizza: il
-    disadattamento modello/impianto e' nullo, quindi gli esperimenti di
-    ottimizzazione misurano il solutore e non l'andatura.
+    which is exactly the holonomic SE(2) model the MPC optimises over: the
+    model/plant mismatch is nil, so the optimization experiments measure the
+    solver and not the gait.
 
-    Derivato dal materiale didattico del laboratorio CIHR (pacchetto
-    policypilot), ridotto alla sola parte di simulazione: Nav2, slam_toolbox e
-    le mappe non servono perche' questo stack pianifica senza mappa a priori.
+    Derived from the teaching material of the CIHR laboratory (policypilot
+    package), reduced to the simulation part only: Nav2, slam_toolbox and maps
+    are not needed because this stack plans without a prior map.
   </description>
   <maintainer email="franci.pedrini@gmail.com">Francesco Pedrini</maintainer>
   <license>Apache-2.0</license>

@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-Scelta dell'orizzonte: sweep su N e dt — dispense §7.2.5.
+Choice of the horizon: sweep over N and dt — lecture notes §7.2.5.
 
-L'orizzonte di predizione e' N passi da dt secondi. I due parametri non sono
-intercambiabili, perche' agiscono su tre grandezze diverse:
+The prediction horizon is N steps of dt seconds. The two parameters are not
+interchangeable, because they act on three different quantities:
 
     orizzonte temporale   T = N*dt          -> quanto lontano l'MPC vede
-    numero di variabili   ~ N               -> quanto costa risolvere
-    errore di troncamento ~ dt^p            -> quanto e' fedele la predizione
-                                               (p = 1 con Euler, 2 col punto medio)
+    number of variables   ~ N               -> how expensive the solve is
+    truncation error      ~ dt^p            -> how faithful the prediction is
+                                               (p = 1 with Euler, 2 with midpoint)
 
 Allungare l'orizzonte alzando N costa calcolo; alzando dt costa accuratezza.
-Lo sweep bidimensionale serve a vedere dove sta il compromesso, invece di
-ereditare N = 15 e dt = 0.2 da una taratura mai giustificata.
+The two-dimensional sweep is there to see where the trade-off lies, instead of
+inheriting N = 15 and dt = 0.2 from a tuning that was never justified.
 
-METODO. Ogni combinazione (N, dt) e' valutata in ANELLO CHIUSO su scenari con
-ostacoli. La durata della missione e' tenuta costante IN SECONDI, non in passi:
-in questo simulatore dt e' anche il periodo di controllo e il passo
-dell'impianto, quindi confrontare a parita' di passi darebbe a dt piccoli una
-missione piu' corta e falserebbe tutto.
+METHOD. Every combination (N, dt) is evaluated in CLOSED LOOP on scenarios with
+obstacles. The duration of the mission is kept constant IN SECONDS, not in steps:
+in this simulator dt is also the control period and the plant step, so comparing
+at an equal number of steps would give small dt a shorter mission and distort
+everything.
 
 Uso:
     python3 metrics/horizon_sweep.py                 # griglia completa (~10 min)
@@ -40,14 +40,14 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
 import common  # noqa: E402
 
-# Durata della missione simulata [s]. Costante fra tutte le combinazioni.
+# Duration of the simulated mission [s]. Constant across all combinations.
 T_MISSIONE = 30.0
-# Soglia di "goal raggiunto" usata da common.closed_loop
+# "goal reached" threshold used by common.closed_loop
 R_GOAL = 0.3
 
 
 def valuta(cfg, raw, sc, N, dt) -> dict:
-    """Una missione in anello chiuso con un dato (N, dt)."""
+    """One closed-loop mission with a given (N, dt)."""
     c = dataclasses.replace(cfg, N=int(N), dt=float(dt))
     tr = common.make_tracker(c)
     steps = max(5, int(round(T_MISSIONE / dt)))
@@ -59,12 +59,12 @@ def valuta(cfg, raw, sc, N, dt) -> dict:
     ms = np.asarray(h["solve_ms"], dtype=float)
     ok = np.asarray(h["success"], dtype=float)
     d_fin = float(np.linalg.norm(P[-1, :2] - sc.goal))
-    # closed_loop registra la posa PRIMA di muovere e poi esce: l'ultima posa
-    # salvata e' sempre un passo prima del goal, quindi d_fin risulta appena
-    # sopra la soglia anche quando il goal e' stato raggiunto. Il segnale
-    # affidabile e' l'uscita anticipata dal ciclo.
+    # closed_loop records the pose BEFORE moving and then exits: the last pose
+    # saved is always one step short of the goal, so d_fin comes out just above
+    # the threshold even when the goal was reached. The reliable signal is the
+    # early exit from the loop.
     raggiunto = bool(len(P) < steps)
-    # lunghezza percorsa e efficienza rispetto alla distanza in linea d'aria
+    # travelled length and efficiency with respect to the straight-line distance
     lung = float(np.linalg.norm(np.diff(P[:, :2], axis=0), axis=1).sum())
     diretta = float(np.linalg.norm(sc.goal - sc.pose[:2]))
     return {
@@ -106,7 +106,7 @@ def main() -> int:
     budget = 1000.0 / rate
 
     print(f"griglia {len(Ns)}x{len(dts)} su {len(args.scenari)} scenari · "
-          f"missione {T_MISSIONE:.0f} s · budget di ciclo {budget:.0f} ms")
+          f"mission {T_MISSIONE:.0f} s · cycle budget {budget:.0f} ms")
     print(f"deployato: N={cfg.N} dt={cfg.dt} (orizzonte {cfg.N*cfg.dt:.1f} s)")
     print()
 
@@ -121,7 +121,7 @@ def main() -> int:
                 righe.append(r)
                 print(f"  {nome:12s} N={N:3d} dt={dt:.2f}  "
                       f"T={r['T_orizzonte']:4.1f}s  "
-                      f"goal={'si' if r['goal_raggiunto'] else 'NO'}  "
+                      f"goal={'yes' if r['goal_raggiunto'] else 'NO'}  "
                       f"clear={r['clearance_min']:.3f}  "
                       f"p95={r['solve_ms_p95']:6.1f}ms", flush=True)
     print(f"\ndurata totale {time.perf_counter()-t0:.0f} s")
@@ -156,7 +156,7 @@ def main() -> int:
             print(f"| {N} | {dt:.2f} | {a['T']:.1f} | {a['n_var']} | "
                   f"{a['goal']*100:.0f}% | {tg} | {a['clearance']:.3f} | "
                   f"{a['lung']:.2f} | {a['p95']:.1f} | "
-                  f"{'si' if a['entro_budget'] else 'NO'} |")
+                  f"{'yes' if a['entro_budget'] else 'NO'} |")
 
     # ── lettura ─────────────────────────────────────────────────────────
     print()
@@ -166,22 +166,22 @@ def main() -> int:
     fatt = [a for a in agg.values() if a["entro_budget"] and a["goal"] > 0.99]
 
     if nogoal:
-        print(f"  {len(nogoal)} combinazioni non raggiungono il goal su tutti gli "
+        print(f"  {len(nogoal)} combinations do not reach the goal on all the "
               f"scenari: " + ", ".join(f"N={a['N']}/dt={a['dt']:g}" for a in nogoal))
     if fuori:
-        print(f"  {len(fuori)} su {len(agg)} sforano il budget di {budget:.0f} ms sul "
+        print(f"  {len(fuori)} out of {len(agg)} exceed the {budget:.0f} ms budget on the "
               f"p95: " + ", ".join(f"N={a['N']}/dt={a['dt']:g}" for a in fuori))
-        print("  (il vincolo real-time lo viola la CODA, non il caso tipico: la")
-        print("   mediana nasconderebbe il problema)")
+        print("  (the real-time constraint is violated by the TAIL, not by the typical")
+        print("   case: the median would hide the problem)")
 
-    # Gli obiettivi sono in CONFLITTO — arrivare presto, stare lontano dagli
-    # ostacoli, calcolare in fretta — quindi non esiste un "migliore": esiste un
-    # insieme non dominato. Sceglierne uno per il solo massimo di clearance
-    # premierebbe configurazioni che impiegano il doppio del tempo.
+    # The objectives are in CONFLICT — arrive early, stay away from obstacles,
+    # compute fast — so there is no "best": there is a non-dominated set. Picking
+    # one by maximum clearance alone would reward configurations that take twice
+    # as long.
     def domina(a, b):
-        """a domina b: non peggiore su tutto e migliore su almeno un criterio."""
+        """a dominates b: not worse on anything and better on at least one criterion."""
         crit = [(a["t_goal"], b["t_goal"], -1),      # meno e' meglio
-                (a["clearance"], b["clearance"], +1),  # piu' e' meglio
+                (a["clearance"], b["clearance"], +1),  # more is better
                 (a["p95"], b["p95"], -1)]
         if any(x is None or y is None for x, y, _ in crit):
             return False
@@ -192,7 +192,7 @@ def main() -> int:
     nd = [a for a in fatt if not any(domina(b, a) for b in fatt if b is not a)]
     print()
     if nd:
-        print(f"  Insieme NON DOMINATO su (tempo al goal, clearance, p95), fra le "
+        print(f"  NON-DOMINATED set over (time to goal, clearance, p95), among the "
               f"{len(fatt)} combinazioni ammissibili:")
         print("  | N | dt | T [s] | t al goal [s] | clearance | p95 [ms] |")
         print("  |---|---|---|---|---|---|")
@@ -201,13 +201,13 @@ def main() -> int:
                   f"{a['clearance']:.3f} | {a['p95']:.1f} |")
     dep = agg.get((cfg.N, cfg.dt))
     if dep:
-        stato = "NON DOMINATA" if dep in nd else "dominata"
+        stato = "NON-DOMINATED" if dep in nd else "dominated"
         print()
-        print(f"  La configurazione deployata (N={cfg.N}, dt={cfg.dt:g}) e' **{stato}**: "
+        print(f"  The deployed configuration (N={cfg.N}, dt={cfg.dt:g}) is **{stato}**: "
               f"t={dep['t_goal'] if dep['t_goal'] is not None else float('nan'):.1f} s, "
               f"clearance {dep['clearance']:.3f} m, p95 {dep['p95']:.1f} ms.")
 
-    # Il fenomeno piu' istruttivo: orizzonti lunghi PEGGIORANO.
+    # The most instructive phenomenon: long horizons make things WORSE.
     lunghi = [a for a in agg.values() if a["T"] >= 6.0 and a["t_goal"] is not None]
     corti = [a for a in agg.values() if a["T"] < 6.0 and a["t_goal"] is not None]
     if lunghi and corti:
@@ -216,9 +216,9 @@ def main() -> int:
               f"clearance {np.mean([a['clearance'] for a in corti]):.3f} m")
         print(f"  Orizzonte >= 6 s: tempo al goal {np.mean([a['t_goal'] for a in lunghi]):.1f} s, "
               f"clearance {np.mean([a['clearance'] for a in lunghi]):.3f} m")
-        print("  Allungare l'orizzonte oltre ~5 s PEGGIORA entrambe le metriche: il")
-        print("  riferimento si estende su un percorso che A* ripianifichera' comunque,")
-        print("  e l'MPC si impegna a inseguire un obiettivo che cambiera'.")
+        print("  Lengthening the horizon beyond ~5 s makes both metrics WORSE: the")
+        print("  reference extends over a path A* will replan anyway, and the MPC")
+        print("  commits to tracking a target that is going to change.")
 
     out_dir = os.path.join(_HERE, "out")
     os.makedirs(out_dir, exist_ok=True)
@@ -243,8 +243,8 @@ def main() -> int:
                 C[i, j] = a["p95"]
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.3))
-    for ax, D, tit, cmap in ((axes[0], M, "clearance minima [m]\n(più alto è meglio)", "viridis"),
-                             (axes[1], C, "solve p95 [ms]\n(più basso è meglio)", "magma_r")):
+    for ax, D, tit, cmap in ((axes[0], M, "minimum clearance [m]\n(higher is better)", "viridis"),
+                             (axes[1], C, "solve p95 [ms]\n(lower is better)", "magma_r")):
         im = ax.imshow(D, origin="lower", aspect="auto", cmap=cmap)
         ax.set_xticks(range(len(dts))); ax.set_xticklabels([f"{d:g}" for d in dts])
         ax.set_yticks(range(len(Ns))); ax.set_yticklabels(Ns)
@@ -255,7 +255,7 @@ def main() -> int:
                 if np.isfinite(D[i, j]):
                     ax.text(j, i, f"{D[i,j]:.2f}", ha="center", va="center",
                             fontsize=8, color="w")
-        # marca il punto deployato
+        # mark the deployed point
         if cfg.N in Ns and cfg.dt in dts:
             ax.plot(dts.index(cfg.dt), Ns.index(cfg.N), "s", ms=18, mfc="none",
                     mec="#d62728", mew=2.5)

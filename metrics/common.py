@@ -1,11 +1,11 @@
 """
-Infrastruttura condivisa dai due pannelli di visualizzazione.
+Shared infrastructure of the two visualisation panels.
 
-Regola di progetto: **il costo non viene mai reimplementato a mano**. Il termine
-di ostacolo e' replicato riga per riga da MPCTracker._build_nlp (ed e' verificato
-da metrics/test_fidelity.py), e il costo completo del pannello 2 e' estratto
-direttamente dall'espressione CasADi che IPOPT minimizza. Una visualizzazione
-che disegna una funzione diversa da quella ottimizzata non serve a niente.
+Design rule: **the cost is never reimplemented by hand**. The obstacle term is
+replicated line by line from MPCTracker._build_nlp (and checked by
+metrics/test_fidelity.py), and the full cost of panel 2 is extracted directly
+from the CasADi expression IPOPT minimises. A visualisation that draws a
+function different from the one being optimised is of no use.
 """
 from __future__ import annotations
 
@@ -35,10 +35,10 @@ DEFAULT_PROFILE = os.path.join(
 def load_profile(path: str = DEFAULT_PROFILE,
                  overrides: list[str] | None = None) -> tuple[MPCConfig, dict]:
     """
-    Legge un planner_params*.yaml e ne ricava un MPCConfig.
+    Reads a planner_params*.yaml and builds an MPCConfig from it.
 
-    `overrides` e' una lista "chiave=valore" con le chiavi del YAML, per gli
-    studi parametrici senza duplicare il file (es. mpc_W_obs_sigmoid=600).
+    `overrides` is a list of "key=value" strings with the keys of the YAML, for
+    parametric studies without duplicating the file (e.g. mpc_W_obs_sigmoid=600).
     """
     raw = yaml.safe_load(open(path))["/**"]["ros__parameters"]
     for item in overrides or []:
@@ -77,16 +77,16 @@ def load_profile(path: str = DEFAULT_PROFILE,
 # ---------------------------------------------------------------------------
 def time_call(fn, repeats: int = 200, blocks: int = 5, warmup: int = 20) -> float:
     """
-    Tempo per chiamata [s], robusto al rumore.
+    Time per call [s], robust to noise.
 
-    Un singolo ciclo cronometrato da' misure inaffidabili: la prima chiamata
-    paga allocazioni e cache fredde, e lo scheduler introduce code lunghe. Con
-    la media si e' arrivati a misurare un gradiente AD piu' veloce di una
-    valutazione della funzione — un rapporto impossibile.
+    A single timed loop gives unreliable measurements: the first call pays for
+    allocations and cold caches, and the scheduler introduces long tails. With the
+    mean, an AD gradient once came out faster than a function evaluation — an
+    impossible ratio.
 
-    Si scarta quindi un warm-up e si prende il MINIMO fra piu' blocchi: il
-    minimo e' lo stimatore giusto per un tempo di calcolo, perche' il rumore
-    puo' solo rallentare, mai accelerare.
+    So a warm-up is discarded and the MINIMUM over several blocks is taken: the
+    minimum is the right estimator for a computation time, because noise can only
+    slow things down, never speed them up.
     """
     import time as _t
     for _ in range(warmup):
@@ -101,31 +101,31 @@ def time_call(fn, repeats: int = 200, blocks: int = 5, warmup: int = 20) -> floa
 
 
 # ---------------------------------------------------------------------------
-# Termine di ostacolo — replica ESATTA di MPCTracker._build_nlp
+# Obstacle term — EXACT replica of MPCTracker._build_nlp
 # ---------------------------------------------------------------------------
 def _blocchi(m: int, k: int, byte_max: float = 64e6):
-    """Righe di P da trattare per volta perche' il temporaneo (blocco, K, 2)
-    resti sotto byte_max.
+    """Rows of P to process at a time so that the temporary (block, K, 2) stays
+    below byte_max.
 
-    Serve perche' P[:, None, :] - obs[None, :, :] materializza un array (M, K, 2)
-    INTERO prima di ridurlo: con la griglia del pannello 1 a res 0.04 su una bag
-    del magazzino (M = 221806, K = 954) sono 3.4 GB per temporaneo, e la catena
-    diff -> **2 -> sum ne tiene tre vivi insieme. Su una macchina da 7 GB
-    l'OOM killer interviene (misurato: 6.05 GB di anon-rss prima del SIGKILL).
-    A blocchi il risultato e' IDENTICO — la riduzione e' per riga di P, quindi
-    separabile — e la memoria e' limitata a prescindere dalla griglia."""
+    It is needed because P[:, None, :] - obs[None, :, :] materialises a WHOLE
+    (M, K, 2) array before reducing it: with the panel-1 grid at res 0.04 on a
+    warehouse bag (M = 221806, K = 954) that is 3.4 GB per temporary, and the
+    chain diff -> **2 -> sum keeps three of them alive at once. On a 7 GB machine
+    the OOM killer steps in (measured: 6.05 GB of anon-rss before the SIGKILL).
+    In blocks the result is IDENTICAL — the reduction is per row of P, hence
+    separable — and the memory is bounded regardless of the grid."""
     n = max(1, int(byte_max / max(1.0, k * 2 * 8)))
     return range(0, m, n), n
 
 
 def obstacle_cost(P: np.ndarray, obs: np.ndarray, cfg: MPCConfig) -> np.ndarray:
     """
-    Barriera ibrida sigmoide + hinge quadratica, valutata su un insieme di punti.
+    Hybrid sigmoid + quadratic hinge barrier, evaluated on a set of points.
 
         J_obs(p) = W * [ 0.5*(1 - tanh(0.5*alpha*(d - r))) + 2*max(0, r - d)^2 ]
 
-    con d = sqrt(dx^2 + dy^2 + 1e-6), esattamente come nell'NLP (l'epsilon serve
-    a rendere la radice differenziabile nell'origine e va replicato).
+    with d = sqrt(dx^2 + dy^2 + 1e-6), exactly as in the NLP (the epsilon makes
+    the square root differentiable at the origin and has to be replicated).
 
     P   : (M, 2) punti     obs : (K, 2) ostacoli     ->  (M,) costi
     """
@@ -147,11 +147,11 @@ def obstacle_cost(P: np.ndarray, obs: np.ndarray, cfg: MPCConfig) -> np.ndarray:
 
 def tracking_cost(P: np.ndarray, path: np.ndarray, cfg: MPCConfig) -> np.ndarray:
     """
-    Costo di inseguimento ridotto alla posizione: per ogni punto, l'errore
-    quadratico pesato rispetto al waypoint piu' vicino del riferimento.
+    Tracking cost restricted to position: for every point, the weighted squared
+    error with respect to the nearest waypoint of the reference.
 
-    E' la restrizione alla posizione del termine ||x - x_ref||^2_Q dell'MPC:
-    fedele, a differenza di una attrazione inventata verso il goal.
+    It is the position restriction of the MPC term ||x - x_ref||^2_Q: faithful,
+    unlike an invented attraction towards the goal.
     """
     P = np.atleast_2d(P)
     path = np.atleast_2d(path)[:, :2]
@@ -165,21 +165,21 @@ def tracking_cost(P: np.ndarray, path: np.ndarray, cfg: MPCConfig) -> np.ndarray
 
 
 def goal_cost(P: np.ndarray, goal: np.ndarray, cfg: MPCConfig) -> np.ndarray:
-    """Attrazione quadratica verso il goal, pesata come il tracking."""
+    """Quadratic attraction towards the goal, weighted like the tracking term."""
     P = np.atleast_2d(P)
     w = np.array([cfg.Q_x, cfg.Q_y])
     return (((P - np.asarray(goal)[:2]) ** 2) * w).sum(1)
 
 
 # ---------------------------------------------------------------------------
-# Insieme raggiungibile: il termine di manovra NON si somma, definisce il dominio
+# Reachable set: the manoeuvre term is NOT summed, it defines the domain
 # ---------------------------------------------------------------------------
 def reach_time(P: np.ndarray, pose: np.ndarray, cfg: MPCConfig) -> np.ndarray:
     """
-    Tempo minimo per raggiungere ogni punto con la politica "ruota, poi avanza",
-    sotto i limiti di U_Sigma. Per il G1, che non puo' indietreggiare
-    (vx >= 0 e' imposto nell'NLP) ne' traslare, questo rende visibile
-    l'asimmetria dell'insieme ammissibile.
+    Minimum time to reach every point with the "turn, then go" policy, under the
+    limits of U_Sigma. For the G1, which can neither reverse (vx >= 0 is imposed
+    in the NLP) nor strafe, this makes the asymmetry of the admissible set
+    visible.
     """
     P = np.atleast_2d(P)
     rel = P - pose[:2]
@@ -190,7 +190,7 @@ def reach_time(P: np.ndarray, pose: np.ndarray, cfg: MPCConfig) -> np.ndarray:
 
 
 def reachable_mask(P, pose, cfg: MPCConfig) -> np.ndarray:
-    """True dove il punto e' raggiungibile entro un orizzonte."""
+    """True where the point is reachable within one horizon."""
     return reach_time(P, pose, cfg) <= cfg.N * cfg.dt
 
 
@@ -203,11 +203,11 @@ class Scenario:
     pose: np.ndarray                      # (3,) [x, y, yaw]
     obstacles: np.ndarray                 # (K, 2)
     goal: np.ndarray                      # (2,)
-    path: np.ndarray = field(default=None)  # (M, 2) riferimento A*; None -> retta
+    path: np.ndarray = field(default=None)  # (M, 2) A* reference; None -> straight line
     extent: tuple = (-1.5, 5.0, -2.5, 2.5)
 
     def reference(self) -> np.ndarray:
-        """Riferimento geometrico: il path A* se c'e', altrimenti la retta al goal."""
+        """Geometric reference: the A* path if there is one, else the line to the goal."""
         if self.path is not None:
             return np.atleast_2d(self.path)[:, :2]
         n = 40
@@ -231,8 +231,8 @@ def _reg(fn):
 
 @_reg
 def u_trap() -> Scenario:
-    """Ostacolo concavo aperto verso il robot: la trappola classica dei campi di
-    potenziale. Il goal sta oltre il fondo della U."""
+    """Concave obstacle opening towards the robot: the classic potential-field
+    trap. The goal lies past the back of the U."""
     obs = np.vstack([_wall((2.4, -1.2), (2.4, 1.2)),
                      _wall((1.2, 1.2), (2.4, 1.2)),
                      _wall((1.2, -1.2), (2.4, -1.2))])
@@ -242,22 +242,22 @@ def u_trap() -> Scenario:
 @_reg
 def centred_pillar() -> Scenario:
     """
-    Un pilastro esattamente sulla retta verso il goal: e' il caso in cui il costo
-    DOVREBBE avere due minimi (passo a sinistra / passo a destra).
+    A pillar exactly on the straight line to the goal: the case where the cost
+    SHOULD have two minima (pass left / pass right).
 
-    Il pilastro sta a 0.55 m perche' l'orizzonte del profilo G1 era N=15,
-    dt=0.20, v_ref=0.2, cioe' 0.60 m di percorso (0.9 m a vx_max): un ostacolo
-    oltre quella distanza era semplicemente FUORI dall'orizzonte, la barriera
-    non lo vedeva, e il paesaggio non biforcava per un motivo che non ha niente
-    a che fare con il peso della barriera.
+    The pillar sits at 0.55 m because the horizon of the G1 profile used to be
+    N=15, dt=0.20, v_ref=0.2, i.e. 0.60 m of path (0.9 m at vx_max): an obstacle
+    beyond that distance was simply OUTSIDE the horizon, the barrier did not see
+    it, and the landscape did not bifurcate for a reason that has nothing to do
+    with the weight of the barrier.
 
-    [SIM] Col profilo attuale (dt = 0.35) l'orizzonte copre 1.05 m, quindi 0.55 m
-    e' ora ben dentro e il test resta valido — ma non e' piu' AL LIMITE, che era
-    il suo scopo. Il pilastro NON e' stato spostato di proposito: la figura
-    biforcazione_centred_pillar entra nel report tramite results_tex.py, e
-    cambiare la geometria dello scenario invaliderebbe silenziosamente il
-    confronto con le versioni precedenti. Per ritarare la prova al nuovo
-    orizzonte va spostato a ~0.95 m, rigenerando la figura.
+    [SIM] With the current profile (dt = 0.35) the horizon covers 1.05 m, so
+    0.55 m is now well inside and the test stays valid — but it is no longer AT
+    THE LIMIT, which was its purpose. The pillar has deliberately NOT been moved:
+    the figure biforcazione_centred_pillar enters the report through
+    results_tex.py, and changing the geometry of the scenario would silently
+    invalidate the comparison with previous versions. To recalibrate the test to
+    the new horizon it should move to ~0.95 m, regenerating the figure.
     """
     th = np.linspace(0, 2 * np.pi, 16, endpoint=False)
     obs = np.stack([0.55 + 0.14 * np.cos(th), 0.14 * np.sin(th)], 1)
@@ -267,7 +267,7 @@ def centred_pillar() -> Scenario:
 
 @_reg
 def narrow_gap() -> Scenario:
-    """Varco stretto fra due ostacoli: controprova, il minimo deve stare in mezzo."""
+    """Narrow gap between two obstacles: control case, the minimum must be in the middle."""
     obs = np.vstack([_wall((1.2, 0.45), (1.2, 2.0)),
                      _wall((1.2, -2.0), (1.2, -0.45))])
     return Scenario("narrow_gap", np.array([0.0, 0.0, 0.0]), obs,
@@ -276,7 +276,7 @@ def narrow_gap() -> Scenario:
 
 @_reg
 def corridor() -> Scenario:
-    """Corridoio con un pilastro sfalsato: caso realistico da magazzino."""
+    """Corridor with an offset pillar: a realistic warehouse case."""
     obs = np.vstack([_wall((-0.5, 1.1), (4.0, 1.1)),
                      _wall((-0.5, -1.1), (4.0, -1.1)),
                      _wall((1.8, -0.35), (1.8, 0.35))])
@@ -285,19 +285,19 @@ def corridor() -> Scenario:
 
 
 def _geom_footprint(ge, spacing=0.12, z_band=(0.15, 1.60)):
-    """Impronta 2D di un geom di mujoco_world, campionata in punti.
+    """2D footprint of a mujoco_world geom, sampled as points.
 
-    Si tiene solo cio' che interseca la fascia di quota che il filtro LiDAR
-    lascia passare (z_min/z_max di lidar_filter_g1.yaml): un geom tutto sopra o
-    tutto sotto quella fascia non arriva mai al pianificatore, e includerlo qui
-    renderebbe l'harness piu' pessimista del sistema vero.
+    Only what intersects the height band the LiDAR filter lets through is kept
+    (z_min/z_max of lidar_filter_g1.yaml): a geom entirely above or entirely below
+    that band never reaches the planner, and including it here would make the
+    harness more pessimistic than the real system.
 
-    Si campiona il PERIMETRO e non l'area: il LiDAR vede le superfici, non
-    l'interno, e una nuvola piena falserebbe sia la griglia gaussiana di A* sia
-    la barriera dell'MPC (che conta i punti piu' vicini).
+    The PERIMETER is sampled, not the area: the LiDAR sees surfaces, not the
+    inside, and a filled cloud would distort both the Gaussian grid of A* and the
+    MPC barrier (which counts the nearest points).
     """
-    # group 0 = decorazione (marcatori di goal/spawn): mujoco_world la tiene
-    # fuori da LIDAR_GROUP, quindi il ray-cast non la vede e il pianificatore
+    # group 0 = decoration (goal/spawn markers): mujoco_world keeps it out of
+    # LIDAR_GROUP, so the ray-cast does not see it and the planner
     # nemmeno. Escluderla qui e' cio' che rende l'harness coerente col simulatore.
     if ge.get("group") is not None and int(ge["group"]) == 0:
         return np.zeros((0, 2))
@@ -327,19 +327,18 @@ def _geom_footprint(ge, spacing=0.12, z_band=(0.15, 1.60)):
 
 
 def world_scenario(name: str, spacing: float = 0.12) -> Scenario:
-    """Uno Scenario dell'harness a partire da un mondo MuJoCo di g1_sim.
+    """A harness Scenario built from a MuJoCo world of g1_sim.
 
-    Serve a provare i mondi non convessi (long_wall, horseshoe, dead_end) senza
-    far girare MuJoCo, ROS e il LiDAR: stessa geometria, stessi spawn e goal.
+    It is there to test the non-convex worlds (long_wall, horseshoe, dead_end)
+    without running MuJoCo, ROS and the LiDAR: same geometry, same spawn and goal.
 
-    ATTENZIONE alla differenza di fedelta': qui gli ostacoli sono NOTI PER
-    INTERO fin dal primo ciclo, mentre nel sistema vero il robot ne vede solo
-    la porzione entro max_lidar_range (8 m) e in linea di vista, integrata da
-    `_persistent_map` di a_star_node. Su un ostacolo concavo la differenza NON
-    e' trascurabile: qui A* sa gia' che la U e' chiusa, sul robot deve
-    scoprirlo. Un esito positivo qui e' quindi condizione NECESSARIA, non
-    sufficiente — se fallisce anche con informazione perfetta, sul robot e'
-    senza speranza.
+    MIND the difference in fidelity: here the obstacles are known IN FULL from the
+    first cycle, while in the real system the robot sees only the portion within
+    max_lidar_range (8 m) and in line of sight, integrated by `_persistent_map` of
+    a_star_node. On a concave obstacle that difference is NOT negligible: here A*
+    already knows the U is closed, on the robot it has to find out. A positive
+    outcome here is therefore a NECESSARY condition, not a sufficient one — if it
+    fails even with perfect information, on the robot it is hopeless.
     """
     import os
     import sys as _sys
@@ -370,14 +369,14 @@ def get_scenario(name: str) -> Scenario:
 
 
 # ---------------------------------------------------------------------------
-# Riferimento globale: A* VERO, non una retta
+# Global reference: the REAL A*, not a straight line
 # ---------------------------------------------------------------------------
 def plan_astar(pose, goal, obstacles, raw: dict):
     """
-    Riferimento calcolato con il pianificatore del repo (stessa griglia
-    gaussiana, stessa A*), non con una retta. Senza questo, la visualizzazione
-    mostrerebbe un uomo di paglia: l'MPC da solo, con un riferimento che
-    attraversa gli ostacoli, non ha alcuna possibilita' di evitarli.
+    Reference computed with the planner of the repository (same Gaussian grid,
+    same A*), not with a straight line. Without this, the visualisation would show
+    a straw man: the MPC on its own, with a reference that goes through the
+    obstacles, has no chance of avoiding them.
     """
     grid = FixedGaussianGridMap(reso=float(raw["grid_reso"]),
                                 half_width=float(raw["grid_half_width"]),
@@ -391,28 +390,28 @@ def plan_astar(pose, goal, obstacles, raw: dict):
     return None if not path else np.asarray(path, dtype=float)[:, :2]
 
 
-# Raggio d'ingombro del G1 [m] (planner_params_g1.yaml: "ingombro del robot
-# ~0.35 m", da cui obs_r = 0.40).
+# Footprint radius of the G1 [m] (planner_params_g1.yaml: "robot footprint
+# ~0.35 m", from which obs_r = 0.40).
 BODY_RADIUS = 0.35
-# Sotto questa distanza il centro del robot e' cosi' vicino alla SUPERFICIE
-# campionata dell'ostacolo che la traiettoria l'ha attraversata: i punti sono
-# campionati ogni 0.12 m, quindi 0.15 m e' dentro lo spessore del muro.
+# Below this distance the robot centre is so close to the sampled SURFACE of the
+# obstacle that the trajectory has gone through it: the points are sampled every
+# 0.12 m, so 0.15 m is inside the thickness of the wall.
 PENETRATION_EPS = 0.15
 
 
 def check_collisions(traj_xy, obstacles) -> dict:
-    """Verifica geometrica che una traiettoria dell'harness sia percorribile.
+    """Geometric check that a harness trajectory is actually walkable.
 
-    SERVE PERCHE' `closed_loop` NON HA COLLISIONI: l'impianto integra il comando
-    e basta, esattamente come mujoco_sim in modalita' cinematica (i geom hanno
-    contype=conaffinity=0). Gli ostacoli agiscono solo come celle bloccate in A*
-    e come penalita' MORBIDA nel costo dell'MPC, e nessuna delle due e' un
-    vincolo rigido. Quando il ramo di ripiego di closed_loop punta l'ultimo
-    waypoint di A* con un controllore proporzionale, quel proporzionale ignora
-    gli ostacoli e il robot puo' passare DENTRO un muro arrivando al goal.
+    IT IS NEEDED BECAUSE `closed_loop` HAS NO COLLISIONS: the plant just
+    integrates the command, exactly like mujoco_sim in kinematic mode (the geoms
+    have contype=conaffinity=0). Obstacles act only as blocked cells in A* and as
+    a SOFT penalty in the MPC cost, and neither is a hard constraint. When the
+    fallback branch of closed_loop aims at the last A* waypoint with a
+    proportional controller, that proportional term ignores obstacles and the
+    robot can pass THROUGH a wall and reach the goal.
 
-    Un "goal raggiunto" senza questo controllo non vuol dire niente: va sempre
-    letto insieme a `attraversamento`.
+    A "goal reached" without this check means nothing: it must always be read
+    together with `attraversamento` (wall crossing).
     """
     d = clearance(traj_xy, obstacles)
     return {"clearance": d,
@@ -421,7 +420,7 @@ def check_collisions(traj_xy, obstacles) -> dict:
 
 
 def clearance(traj_xy, obstacles) -> float:
-    """Distanza minima fra la traiettoria percorsa e il piu' vicino ostacolo."""
+    """Minimum distance between the travelled trajectory and the nearest obstacle."""
     if obstacles is None or len(obstacles) == 0:
         return float("inf")
     d = np.linalg.norm(np.atleast_2d(traj_xy)[:, None, :]
@@ -440,10 +439,10 @@ def make_tracker(cfg: MPCConfig, record_iterates: bool = False) -> MPCTracker:
 
 
 def solve_at(tracker: MPCTracker, pose: np.ndarray, sc: Scenario):
-    """Un solve dell'MPC nella posa data, sul riferimento dello scenario."""
+    """One MPC solve at the given pose, on the reference of the scenario."""
     state = np.array([pose[0], pose[1], pose[2], 0.0, 0.0, 0.0])
     ref = sc.reference()
-    # il riferimento parte dal waypoint piu' vicino, come fa il nodo
+    # the reference starts at the nearest waypoint, as the node does
     i = int(np.argmin(np.linalg.norm(ref - pose[:2], axis=1)))
     return tracker.solve(state, [tuple(p) for p in ref[i:]], sc.obstacles)
 
@@ -452,18 +451,18 @@ def closed_loop(tracker: MPCTracker, sc: Scenario, steps: int = 60,
                 lookahead: float = None, kp: float = None, kp_yaw: float = None,
                 raw: dict = None, replan_every: int = 5):
     """
-    Simula l'anello chiuso come sul robot: l'MPC pubblica un setpoint a
-    `lookahead` metri, un controllore proporzionale lo insegue, l'impianto e'
-    lo stesso modello cinematico di mujoco_sim.
+    Simulates the closed loop as on the robot: the MPC publishes a setpoint
+    `lookahead` metres ahead, a proportional controller tracks it, and the plant
+    is the same kinematic model as mujoco_sim.
 
-    lookahead/kp/kp_yaw a None (default) li prende dal PROFILO, rispettivamente
-    da mpc_lookahead_dist, cmd_kp_xy, cmd_kp_yaw. Erano costanti fisse
-    (0.9/1.0/1.5) e il valore 0.9 non era quello deployato (0.45): con un
-    orizzonte che copre v_ref*N*dt = 0.60 m la predizione non raggiungeva MAI
-    il lookahead, il ramo di fallback scattava sul 100% dei cicli e il setpoint
-    veniva preso dall'ultimo waypoint di A*. In quelle condizioni l'uscita
-    dell'MPC non entrava in anello chiuso e ogni sweep su N/dt misurava il
-    passo dell'impianto, non l'orizzonte.
+    lookahead/kp/kp_yaw left at None (default) are taken from the PROFILE,
+    respectively from mpc_lookahead_dist, cmd_kp_xy, cmd_kp_yaw. They used to be
+    fixed constants (0.9/1.0/1.5) and the value 0.9 was not the deployed one
+    (0.45): with a horizon covering v_ref*N*dt = 0.60 m the prediction NEVER
+    reached the lookahead, the fallback branch fired on 100% of the cycles and the
+    setpoint was taken from the last A* waypoint. Under those conditions the MPC
+    output did not enter the closed loop and every sweep over N/dt measured the
+    plant step, not the horizon.
     """
     cfg = tracker.cfg
     if lookahead is None:
@@ -478,7 +477,7 @@ def closed_loop(tracker: MPCTracker, sc: Scenario, steps: int = 60,
     ref = None
     for step in range(steps):
         if raw is not None and step % replan_every == 0:
-            # orizzonte mobile: A* viene rilanciato periodicamente, come nel nodo
+            # rolling horizon: A* is re-run periodically, as in the node
             new = plan_astar(pose, sc.goal, sc.obstacles, raw)
             if new is not None and len(new) >= 2:
                 ref = new
@@ -486,9 +485,10 @@ def closed_loop(tracker: MPCTracker, sc: Scenario, steps: int = 60,
             sc.name, pose, sc.obstacles, sc.goal, ref, sc.extent)
         res = solve_at(tracker, pose, sc_step)
         pred = res.predicted_xy
-        # Selezione del setpoint, FEDELE a mpc_node: si cerca il primo nodo
-        # predetto oltre `lookahead`; se l'orizzonte non ci arriva si ripiega
-        # sull'ultimo waypoint di A*, puntandolo (non tenendo lo yaw corrente).
+        # Setpoint selection, FAITHFUL to mpc_node: it looks for the first
+        # predicted node beyond `lookahead`; if the horizon does not reach it, it
+        # falls back to the last A* waypoint, aiming at it (not keeping the current
+        # yaw).
         d = np.linalg.norm(pred - pose[:2], axis=1)
         hit = np.nonzero(d >= lookahead)[0]
         if hit.size:
@@ -504,11 +504,11 @@ def closed_loop(tracker: MPCTracker, sc: Scenario, steps: int = 60,
         hist["pred"].append(pred.copy()); hist["solve_ms"].append(res.solve_time_ms)
         hist["success"].append(res.success)
         hist["ref"].append(None if ref is None else ref.copy())
-        # controllore proporzionale in corpo + saturazioni di U_Sigma
+        # proportional controller in body frame + U_Sigma saturations
         e = tgt - pose[:2]
         c, s = np.cos(pose[2]), np.sin(pose[2])
         ex, ey = c * e[0] + s * e[1], -s * e[0] + c * e[1]
-        # il nodo insegue l'ORIENTAMENTO del setpoint, non la direzione verso di esso
+        # the node tracks the ORIENTATION of the setpoint, not the direction to it
         eyaw = np.arctan2(np.sin(tgt_yaw - pose[2]), np.cos(tgt_yaw - pose[2]))
         vx = np.clip(kp * ex, min(cfg.vx_min, 0.0), cfg.vx_max)
         vy = np.clip(kp * ey, -cfg.vy_max, cfg.vy_max)
@@ -526,19 +526,18 @@ def closed_loop(tracker: MPCTracker, sc: Scenario, steps: int = 60,
 
 
 # ---------------------------------------------------------------------------
-# Ambiente: matplotlib doppia
+# Environment: two matplotlib installations
 # ---------------------------------------------------------------------------
 def ensure_mpl3d():
     """
-    Su questa macchina convivono due matplotlib: 3.10.7 in ~/.local e 3.5.1 di
-    sistema. `mpl_toolkits` di sistema e' un pacchetto REGOLARE, e per le regole
-    di import di Python un pacchetto regolare trovato piu' avanti nel sys.path
-    batte una porzione di namespace trovata prima: quindi `mpl_toolkits.mplot3d`
-    viene risolto dalla 3.5.1 e fallisce contro l'API della 3.10
-    (`cannot import name 'docstring'`).
+    On this machine two matplotlib installations coexist: 3.10.7 in ~/.local and
+    the system 3.5.1. The system `mpl_toolkits` is a REGULAR package, and by the
+    Python import rules a regular package found later in sys.path beats a
+    namespace portion found earlier: so `mpl_toolkits.mplot3d` is resolved by
+    3.5.1 and fails against the 3.10 API (`cannot import name 'docstring'`).
 
-    Qui si forza la risoluzione accanto alla matplotlib effettivamente attiva.
-    La correzione vera e' ripulire l'ambiente, ma il tool non deve dipenderne.
+    Here the resolution is forced next to the matplotlib actually in use. The real
+    fix is to clean up the environment, but the tool must not depend on that.
     """
     import matplotlib
 
@@ -554,10 +553,10 @@ def ensure_mpl3d():
             mpl_toolkits.__path__.insert(0, cand)
     from mpl_toolkits.mplot3d import Axes3D
 
-    # Il registro delle proiezioni di matplotlib viene popolato all'import di
-    # `matplotlib.projections`, dentro un try/except silenzioso: se al momento
-    # dell'import mpl_toolkits era ancora quello sbagliato, '3d' resta assente
-    # per sempre. Va quindi registrata esplicitamente.
+    # The matplotlib projection registry is populated when
+    # `matplotlib.projections` is imported, inside a silent try/except: if
+    # mpl_toolkits was still the wrong one at import time, '3d' stays missing
+    # forever. So it has to be registered explicitly.
     from matplotlib.projections import projection_registry, register_projection
     if "3d" not in projection_registry._all_projection_types:
         register_projection(Axes3D)
@@ -565,22 +564,22 @@ def ensure_mpl3d():
 
 
 # ---------------------------------------------------------------------------
-# Salvataggio delle figure
+# Saving the figures
 # ---------------------------------------------------------------------------
 def save_figure(fig, out_png: str, dpi: int = 130) -> list[str]:
     """
-    Scrive la figura in PNG **e** in PDF, e restituisce i percorsi.
+    Writes the figure to PNG **and** to PDF, and returns the paths.
 
-    Il PNG serve per guardarla al volo; nel report va il PDF. Un raster a 130
-    dpi messo a piena larghezza su A4 e' visibilmente morbido, e accanto alle
-    figure vettoriali gia' presenti nel report la differenza si nota. Il PDF
-    e' vettoriale, scala a qualunque dimensione e di solito pesa meno.
+    The PNG is for a quick look; the PDF is what goes into the report. A raster at
+    130 dpi placed at full width on A4 is visibly soft, and next to the vector
+    figures already in the report the difference shows. The PDF is vector, scales
+    to any size and is usually smaller.
     """
     import os
     os.makedirs(os.path.dirname(out_png) or ".", exist_ok=True)
     fig.savefig(out_png, dpi=dpi)
     out_pdf = os.path.splitext(out_png)[0] + ".pdf"
-    # bbox_inches stretto: senza, il PDF porta i margini della figura e nel
-    # report resta un bordo bianco che nessun \includegraphics puo' togliere.
+    # tight bbox_inches: without it the PDF carries the figure margins and the
+    # report keeps a white border no \includegraphics can remove.
     fig.savefig(out_pdf, bbox_inches="tight")
     return [out_png, out_pdf]

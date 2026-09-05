@@ -187,8 +187,8 @@ python3 metrics/make_results.py --bag metrics/bags/<name>
 ```
 
 `make_results.py` writes `metrics/out/results.json`, `results.md` and the whole `metrics/out/tex/`
-tree — one LaTeX macro per scalar. The rule that holds this together: **no number in the report is
-ever typed by hand.** One writes `$\resPredDivergence$` and the value follows the code.
+tree — one LaTeX macro per scalar. The rule that holds here is that **no number in the report is
+ever typed by hand.** It was useful while working on the projecy, since one just run `$\resPredDivergence$` and the value of the metrics of the optimization program are then directly extracted.
 
 Measurements are grouped by class, because the class decides when they must be redone:
 

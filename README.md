@@ -9,11 +9,8 @@ robot, a rolling-horizon **A\*** search produces a collision-free reference on i
 velocity commands.
 
 The project is also the object of study: the deployed NLP is instrumented and measured — NLP
-structure and sparsity, KKT conditions and multipliers, exact ℓ¹ penalty, automatic
-differentiation against finite differences, horizon and control-horizon sweeps, Pareto front of
-the scalarisation, interior point against active set, and the prediction error that drives the
-robust constraint tightening. Every number in the report is generated from *the deployed
-modules*, never re-implemented.
+structure and sparsity, KKT conditions and multipliers, automatic
+differentiation against finite differences, horizon and control-horizon sweeps, interior point against active set. Every number in the report comes from this stack, tested in simulation and most of the its components have been also deployed on real hardware.
 
 ---
 
@@ -34,11 +31,7 @@ mujoco_sim  --/odom-----------> odom_to_pose_node --/robot_pose--+
                                                             /cmd_vel --> mujoco_sim
 ```
 
-The plant is **MuJoCo**, and it is the only simulator in this repository: there is no Gazebo and
-no Isaac world to run: everything below launches MuJoCo. In Gazebo the G1 would have no source of
-motion without writing one from scratch, and the gain of MuJoCo is methodological as much as
-practical — its kinematic plant *is* the model the MPC optimises over, so the model/plant mismatch
-is nil and the experiments measure the solver instead of the gait.
+The plant is **MuJoCo** and it is the only simulator in this repository. Some considerations of the project also come from Gazebo and Isaac simulations.
 
 The robot enters the chain in exactly two places: a parameter file and the name of the pose topic.
 No node of the algorithmic stack is platform-specific.

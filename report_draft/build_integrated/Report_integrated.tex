@@ -2765,13 +2765,13 @@ body-frame twist $u$ of Section~\ref{sec:platforms}. It closes the same graph in
 the Isaac Sim pipeline of Figure~\ref{fig:sim-isaac} drives the identical ROS~2 nodes of
 Section~\ref{sec:overview} that the Jetson runs onboard, so nothing about the controller changes between a
 run that is replayed and one that is not. And none of it depends on an a priori map or a SLAM back end: the
-planner searches a rolling occupancy grid built from the live LiDAR or stereo return, and the pose it plans
-against is instantaneous odometry rather than a correction against stored geometry. That last property is
+planner searches a rolling occupancy grid built from the live LiDAR or stereo return, and the pose is corrected
+by a local built occupancy grid. That last property is
 what makes the stack worth deploying outside a benchmark course: it is a candidate wherever building and
 keeping a map is the actual obstacle, planetary and other exploration settings where no prior map exists to
 build against, and general outdoor navigation where the terrain changes faster than a map of it stays valid.
 
-The natural continuations follow directly. Identify the actuator time constant under physics, which unblocks
+The future work involves: Identify the actuator time constant under physics, which unblocks
 both the sampling-time analysis and an honest re-measurement of the terminal constraint. Apply $u^\star_0$
 directly instead of through a look-ahead setpoint, so that improvements provable in the plan become
 observable in the trajectory. And revisit the input envelope before the cost weights, because that is where

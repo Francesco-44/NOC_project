@@ -965,6 +965,23 @@ projection selects a cell $\resFigProjGeo$~m of travel from the goal and the Euc
 different cell $\resFigEuclGeo$~m away, equally wrong, because in a straight line both are close to the
 goal; where two candidates tie, the choice is settled by numerical noise and reverses at the next cycle.
 
+% Figura dichiarata QUI, prima del paragrafo, ma con [!b]: cosi' LaTeX la puo'
+% ancora piazzare in fondo a pagina 13, sotto il paragrafo sulla distanza
+% geodetica. Dichiarandola dopo il paragrafo non ci sta piu' e slitta a pag. 14.
+\begin{figure}[!b]
+  \centering
+  \includegraphics[width=.90\textwidth]{fig_local_target.pdf}
+  \caption{The same scene, the same window and the same observed map; only the metric of
+  \eqref{eq:localgoalargmin} changes. The robot sits at the mouth of a horseshoe and the map is the one it
+  has actually accumulated by driving in, not the full world (light grey), which is what makes the failure
+  reproducible. Left: the deployed projection~\eqref{eq:localgoal} puts the target at the closed end, and
+  the $\arg\min$ of the Euclidean distance over the same free boundary cells lands beside it; the two
+  rules differ, the outcome does not, because both are $\sim\!30$~m of travel from the goal. Right: with the
+  geodesic $d_k$ the target moves to the far side of the lower arm, $\resFigGeoGeo$~m away, and the
+  \astar{} solution leaves the concavity. Drawn from the deployed planner and profile, not sketched.}
+  \label{fig:localtarget}
+\end{figure}
+
 \paragraph{The metric: geodesic distance.} The deployed rule keeps~\eqref{eq:localgoalargmin} and replaces
 $d_k$ with the \emph{geodesic} distance to the goal over the accumulated map. Write $\rho$ for the cell
 side, $\mathcal{B}_k$ for the cells lying within
@@ -1001,19 +1018,6 @@ implemented but carries zero weight in the deployed profile, for the reason meas
 Section~\ref{sec:memoryfix}.
 
 
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=.90\textwidth]{fig_local_target.pdf}
-  \caption{The same scene, the same window and the same observed map; only the metric of
-  \eqref{eq:localgoalargmin} changes. The robot sits at the mouth of a horseshoe and the map is the one it
-  has actually accumulated by driving in, not the full world (light grey), which is what makes the failure
-  reproducible. Left: the deployed projection~\eqref{eq:localgoal} puts the target at the closed end, and
-  the $\arg\min$ of the Euclidean distance over the same free boundary cells lands beside it; the two
-  rules differ, the outcome does not, because both are $\sim\!30$~m of travel from the goal. Right: with the
-  geodesic $d_k$ the target moves to the far side of the lower arm, $\resFigGeoGeo$~m away, and the
-  \astar{} solution leaves the concavity. Drawn from the deployed planner and profile, not sketched.}
-  \label{fig:localtarget}
-\end{figure}
 
 \paragraph{Commitment between replanning cycles.} Two boundary cells on opposite sides of an obstacle can
 carry almost the same geodesic cost while belonging to different homotopy classes. The $\arg\min$ then
@@ -1030,9 +1034,6 @@ depending on the world, with a worst case of $440$~ms, a tenth to a half of the
 $1$~Hz replanning period, and no load at all on the $8$~Hz MPC. The resulting grid path is finally
 resampled and smoothed with a moving average before it is handed to the MPC, to remove the zig-zag that the
 $8$-connected discretisation introduces.
-
-% [!b] forzato: la figura deve stare in fondo a pagina 13, PRIMA che cominci
-% 3.2. Con [htbp] LaTeX la rimandava a pagina 14, dopo l'inizio della sezione.
 
 \subsection{Model discretization}
 \label{sec:discretization}
@@ -1902,7 +1903,7 @@ iteration count stops being enough, and the fallback rather than the optimum dec
     Look-ahead             & $N\Delta t$ [s]    & \resHorizonSeconds & Heading       & $Q_\psi$   & $4.0$   \\
     Re-solve rate          & [Hz]               & $8$              & Terminal scale  & $\rho_T$   & $100.0$ \\
     Actuator lag           & $\tau$ [s]         & \resTauV         & Forward effort  & $R_{v_x}$  & $1.0$   \\
-    Integrator             &,                & mid-point        & Lateral effort  & $R_{v_y}$  & $6.0$   \\
+    Integrator             & --              & mid-point        & Lateral effort  & $R_{v_y}$  & $6.0$   \\
     Obstacle terms         & $M$                & \resMobs         & Yaw effort      & $R_\omega$ & $0.4$   \\
     Obstacle search radius & [m]                & \resObsCheckR    & Input rate      & $\Rjerk$   & $0.4$   \\
     \cmidrule(r){1-3}
@@ -1912,9 +1913,9 @@ iteration count stops being enough, and the fallback rather than the optimum dec
     Yaw rate      & $|\omega|$ [rad/s]       & $\le\resOmegaMax$ & \multicolumn{3}{l}{} \\
     Cruise speed  & $v_{\mathrm{ref}}$ [m/s] & \resVref          & \multicolumn{3}{l}{\textit{Solver (IPOPT)}} \\
     \cmidrule(r){1-3}
-    \multicolumn{3}{@{}l}{\textit{Grid and \astar{} layer}}      & Max iterations &,   & $40$ \\
-    Resolution     & $\delta$ [m]             & $0.20$           & Warm start     &,   & on \\
-    Half-width     & $h_w$ [m]                & $6.0$            & Print level    &,   & $0$ \\
+    \multicolumn{3}{@{}l}{\textit{Grid and \astar{} layer}}      & Max iterations & -- & $40$ \\
+    Resolution     & $\delta$ [m]             & $0.20$           & Warm start     & -- & on \\
+    Half-width     & $h_w$ [m]                & $6.0$            & Print level    & -- & $0$ \\
     Inflation      & $\sigma$ [m]             & $0.31$           & Graph          & \texttt{expand} & true \\
     Hard threshold & $P_{\mathrm{thr}}$       & $0.10$           & \multicolumn{3}{l}{} \\
     Edge weight    & $w_{\mathrm{obs}}$       & $35.0$           & \multicolumn{3}{l}{} \\
@@ -2385,20 +2386,20 @@ Figure~\ref{fig:escapegallery} shows the geometry and both trajectories, Table~\
     \toprule
     World & Target rule & Goal & Time [s] & Path [m] & Rev. & Clearance [m] \\
     \midrule
-    dead end                             & projection & no              &   , &  79.4 &  140 & 0.659 \\
+    dead end                             & projection & no              &     -- &  79.4 &  140 & 0.659 \\
                                          & geodesic   & yes             &   81.5 &  31.7 &    2 & 0.669 \\
     \midrule
-    horseshoe                            & projection & no              &   , &  93.4 &  117 & 1.919 \\
+    horseshoe                            & projection & no              &     -- &  93.4 &  117 & 1.919 \\
                                          & geodesic   & yes             &  100.4 &  38.5 &    2 & 0.853 \\
     \midrule
-    L-corridor                           & projection & no              &   , & 153.1 &  300 & 0.801 \\
+    L-corridor                           & projection & no              &     -- & 153.1 &  300 & 0.801 \\
                                          & geodesic   & yes             &  112.7 &  41.8 &    8 & 0.801 \\
     \midrule
     long wall, gap north                 & projection & yes             &   64.8 &  26.2 &   10 & 0.919 \\
                                          & geodesic   & yes             &   64.8 &  26.3 &   10 & 0.891 \\
     \midrule
-    long wall, gap south                 & projection & no              &   , &  13.6 &    6 & 0.268 \\
-                                         & geodesic   & no              &   , &  13.7 &    4 & 0.255 \\
+    long wall, gap south                 & projection & no              &     -- &  13.6 &    6 & 0.268 \\
+                                         & geodesic   & no              &     -- &  13.7 &    4 & 0.255 \\
     \midrule
     long wall, false occlusion           & projection & yes             &   51.8 &  21.3 &    8 & 0.768 \\
                                          & geodesic   & yes             &   52.5 &  21.5 &    8 & 0.786 \\
@@ -2715,6 +2716,21 @@ the body-frame twist $u$ that Section~\ref{sec:platforms} declares as the common
 platforms. Nothing in the optimization program crosses that boundary differently: the deployed profile
 \resProfile{}, the horizon $N=\resN$ at $\Delta t=\resDt$~s and the solver options of
 Section~\ref{sec:impl} are the ones analysed throughout this report.
+
+Real-time feasibility is the one property the deployment tests that no offline campaign can. The question is
+not average speed but whether each of the two programs closes within its own period on the board that
+carries it, the $8$~Hz tracker and the $1$~Hz replanner sharing the Orin with the perception nodes and the
+DDS traffic. On both machines they did: the stack ran on board at its nominal rates, with the solver
+returning inside the cycle often enough that the loop never degenerated into the fallback of
+Section~\ref{sec:impl}. That is deployment evidence and not a measurement: no per-cycle timing was
+instrumented on the Jetson, and every latency quoted in this report comes from the offline harness of
+Section~\ref{sec:setup}, on the machine that ran it. Those numbers are also why the claim is kept
+qualitative: on the recorded mission the $95$th percentile solve time is $157.9$~ms against the
+$\resCycleBudget$~ms period (Section~\ref{sec:horizon}), so the deployed profile does overrun on the hard
+cycles, and what keeps an overrun from becoming a fault is the supervisor rather than the solver. The
+reconfiguration recommended there, $N=26$ with $\Ninput=10$, lowers that tail from $59.3$ to $24.3$~ms in
+the synthetic sweep, and is not free: solver failures grade with the horizon, $\resFailPctN\%$ at
+$N=\resN$ against $\resFailPctNmid\%$ at $N=26$.
 
 \paragraph{On model mismatch, and why it was not analysed further.} The prediction model of
 Section~\ref{sec:model} is a planar holonomic agent standing in for a walking machine, so a systematic

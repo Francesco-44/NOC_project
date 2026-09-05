@@ -175,10 +175,11 @@ EKF   & extended Kalman filter           & PD    & proportional--derivative \\
 GP    & Gaussian process                 & PPO   & proximal policy optimization \\
 IK    & inverse kinematics               & QP    & quadratic program \\
 IMU   & inertial measurement unit        & RK2   & second-order Runge--Kutta (mid-point) \\
-KKT   & Karush--Kuhn--Tucker             & RL    & reinforcement learning \\
-L-BFGS & limited-memory Broyden--\allowbreak Fletcher--\allowbreak Goldfarb--\allowbreak Shanno & ROS & Robot Operating System \\
-LICQ  & linear independence constraint qualification & SLAM & simultaneous localization and mapping \\
-LiDAR & light detection and ranging      & SQP   & sequential quadratic programming \\
+KF    & (ordinary, i.e.\ non-extended) Kalman filter & RL    & reinforcement learning \\
+KKT   & Karush--Kuhn--Tucker             & ROS   & Robot Operating System \\
+L-BFGS & limited-memory Broyden--\allowbreak Fletcher--\allowbreak Goldfarb--\allowbreak Shanno & SLAM & simultaneous localization and mapping \\
+LICQ  & linear independence constraint qualification & SQP & sequential quadratic programming \\
+LiDAR & light detection and ranging      &       & \\
 LTI   & linear time-invariant            &       & \\
 \end{tabularx}
 
@@ -844,6 +845,32 @@ Three features of~\eqref{eq:ocp} then determine the whole design:
 \section{Formulation of the optimization program}
 \label{sec:formulation}
 
+\subsection{Division of labour: motion planning against trajectory optimisation}
+\label{sec:division}
+
+The two programs formulated in this chapter answer different questions, and confusing them is the most
+common misreading of the stack. \emph{\astar{} (Section~\ref{sec:astar}) is where obstacle avoidance is
+decided.} It searches the actual occupancy grid, so it is the only layer that ever asks which side of an
+obstacle to pass on, and it answers with a discrete, globally consistent path: a graph search needs no
+initial guess and cannot get trapped in the wrong homotopy class the way a gradient step can.
+\emph{The NMPC (Section~\ref{sec:shoot}) never re-asks that question.} Its job is narrower and local: given
+the \astar{} path as a reference, compute the sequence of commands that tracks it as closely as the
+dynamics~\eqref{eq:cons-dyn} and the input envelope~\eqref{eq:cons-vx}--\eqref{eq:cons-vyw} allow, while
+keeping the commanded twist smooth and dynamically feasible. The clearance term $\Jobs$ of~\eqref{eq:barrier}
+does add an obstacle cost to that program, but it is a local safety margin around a path already known to be
+clear, not a second avoidance layer: it is a smooth, soft penalty precisely because the hard, discrete
+decision has already been made upstream (Section~\ref{sec:l1} measures how close it comes to a hard
+constraint, and at what cost). Splitting the problem this way is also what keeps the NMPC solvable at
+$8$~Hz, since writing the discrete choice into the continuous program would need integer variables ---
+Section~\ref{sec:astar} makes that argument in full.
+
+The split is not free of failure modes of its own: \astar{} can commit to a bad choice that the NMPC then
+follows faithfully (Section~\ref{sec:localmin}), and the two layers can each leave their own local minimum in
+the smooth program (Section~\ref{sec:landscape}). But the roles stay fixed throughout --- motion planning
+happens once per replanning cycle, in the discrete layer; trajectory optimisation happens every control
+cycle, in the continuous one --- and every design choice in the rest of this chapter follows from which of
+the two questions it is answering.
+
 \subsection{Reference generation: \texorpdfstring{\astar{}}{A*} as a discrete program}
 \label{sec:astar}
 
@@ -1261,6 +1288,84 @@ to~\eqref{eq:barrier} is numerically zero. This apparently cosmetic detail is wh
 changes between cycles, so the symbolic factorisation and the warm start remain valid regardless of how
 cluttered the scene is.
 
+\subsubsection{Predicting moving obstacles: a constant-velocity Kalman filter}
+\label{sec:obspredict}
+
+Every $p_j$ in~\eqref{eq:barrier} is held fixed across the horizon: the node at $k=0$ and the node at $k=N$
+penalise distance to the \emph{same} LiDAR return. For the industrial scenes of Section~\ref{sec:setup} that
+is not a simplification, it is exact, a shelf does not move between two nodes of a
+$\resHorizonSeconds$~s horizon. It stops being exact the moment an obstacle does: a person crossing at a
+brisk $1.2$~m/s covers about $\resHorizonSeconds\times1.2\approx6$~m over the horizon, so anchoring the
+penalty at the position measured when the cycle started places it a body length or more behind where the
+person actually is by the time the tail of the horizon is evaluated (Fig.~\ref{fig:dynobs}).
+
+Closing that gap needs an estimate of $\dot p_j$, not just $p_j$, and the same design already deployed for
+this exact problem on this robot's perception stack, a constant-velocity Kalman filter per tracked cluster,
+supplies it. Writing the track state as $o_j=(p_{j,x},p_{j,y},v_{j,x},v_{j,y})^{\!\top}$, the predict step
+propagates it with the constant-velocity transition and a white-acceleration process noise $\Sigma_a$,
+\begin{equation}
+  F=\begin{pmatrix}I_2 & \Delta t\,I_2\\ 0 & I_2\end{pmatrix},\qquad
+  \hat o_j^- = F\hat o_j,\qquad \Sigma_j^- = F\Sigma_jF^{\!\top}+\Sigma_a,
+  \label{eq:kfpredict}
+\end{equation}
+and the update corrects it against the next associated cluster centroid $z_j$, with $H=(I_2\;\,0)$ and
+measurement noise $\Sigma_z$,
+\begin{equation}
+  S=H\Sigma_j^-H^{\!\top}+\Sigma_z,\quad K=\Sigma_j^-H^{\!\top}S^{-1},\quad
+  \hat o_j=\hat o_j^-+K(z_j-H\hat o_j^-),\quad \Sigma_j=(I-KH)\Sigma_j^-.
+  \label{eq:kfupdate}
+\end{equation}
+$\Sigma_z$ is dominated by centroid wander, not ranging error, a different slice of the same cluster is
+visible frame to frame, which moves its centroid far more than any single depth return does, so it is
+measured from the sensor rather than assumed, and association gates on how far a track could plausibly have
+moved since its last hit rather than on nearest-neighbour alone, which is what keeps a fast cluster from
+being dropped and restarted as a new track. There is deliberately no manoeuvre model: an object seen for a
+few seconds through a narrow field of view does not supply enough evidence to fit anything richer than a
+constant velocity without fitting the noise instead. The filter is also, deliberately, not
+\emph{extended}: the transition and the position measurement are both linear in $o_j$, so unlike the pose
+estimator of Section~\ref{sec:overview}, which fuses orientation and is genuinely nonlinear, the ordinary
+Kalman filter already suffices here~\cite{barshalom2001estimation}.
+
+The estimate enters~\eqref{eq:barrier} by replacing the static $p_j$ with a per-stage prediction,
+\begin{equation}
+  p_{j,k} \;=\; \hat p_j + k\,\Delta t\,\hat v_j, \qquad k=0,\dots,N,
+  \label{eq:obspredict}
+\end{equation}
+so the penalty is evaluated against where the obstacle is expected to be at each node rather than where it
+was measured at the start of the cycle. This costs nothing in the structure the rest of the chapter relies
+on: $M$ and $N$ are still fixed at build time, so the symbolic graph and its sparsity pattern
+(Section~\ref{sec:impl}) are untouched by~\eqref{eq:obspredict}; only the parameter buffer grows, from the
+$2M$ obstacle slots of Section~\ref{sec:impl} to $2M(N+1)$, written before every solve instead of once. One
+caution: \eqref{eq:obspredict} propagates the mean and drops $\Sigma_j$, and position uncertainty grows with
+$\tau^3$ under~\eqref{eq:kfpredict}, so a prediction six seconds out is markedly less trustworthy than one at
+the first node. Growing $\robs$ with the predicted node to compensate is the natural extension and is not
+implemented; the deployed profile does not yet track moving obstacles this way at all.
+
+\begin{figure}[htbp]
+  \centering
+  \subfloat[The dynamic obstacle, segmented\label{fig:dynobs-seg}]{%
+    \begin{minipage}{0.46\textwidth}\centering
+      \simshot{dynamic_obstacle_segmentation}{0.62}{the moving obstacle as
+        segmented by the tracker while passing in front of the robot: the
+        grey mask is the cluster whose centroid supplies the measurement
+        $z_j$ of~\eqref{eq:kfupdate}}
+    \end{minipage}}%
+  \hfill
+  \subfloat[The scene in simulation\label{fig:dynobs-isaac}]{%
+    \begin{minipage}{0.46\textwidth}\centering
+      \simshot{dynamic_obstacle_isaac}{0.62}{Isaac Sim: the walking figure and
+        the cylinder, both synthetic dynamic obstacles inserted into the
+        scene to exercise the tracker}
+    \end{minipage}}
+  \caption{The moving-obstacle scenario the filter of this section is built for. \textbf{(a)} the tracker's
+  own view as the obstacle passes: the grey mask is the segmented dynamic obstacle itself, not the floor or
+  the wall, and its centroid is the measurement $z_j$ that feeds~\eqref{eq:kfupdate}; sparse coloured points
+  are individual LiDAR/depth returns. \textbf{(b)} the corresponding Isaac Sim scene: the person-sized
+  walking figure together with a cylinder, both synthetic dynamic obstacles inserted into the simulation to
+  give the tracker something to segment, since nothing in the stock warehouse world moves on its own.}
+  \label{fig:dynobs}
+\end{figure}
+
 \subsubsection{The obstacle as a true constraint: exact \texorpdfstring{$\ell^1$}{l1} penalty}
 \label{sec:l1}
 
@@ -1488,8 +1593,8 @@ velocity ceiling of Section~\ref{sec:impl}.
 
 The formulation has no integral action and no disturbance estimator: the state~\eqref{eq:state} is not
 augmented with an input-disturbance model, and the reference is tracked in a purely
-proportional--predictive sense. Any constant unmodelled input --- a lateral drift of the gait, a slope, a
-bias in the commanded twist --- therefore produces a standing offset from the reference instead of being
+proportional--predictive sense. Any constant unmodelled input, a lateral drift of the gait, a slope, a
+bias in the commanded twist, therefore produces a standing offset from the reference instead of being
 integrated away, and no choice of $Q$ removes it. Two properties of the architecture are what make that
 acceptable here, and both are consequences of decisions taken for other reasons.
 
@@ -2626,15 +2731,6 @@ same stack closes without a LiDAR at all, the camera taking over localisation wh
 is untouched. A quantitative mismatch campaign --- inflating the plant parameters against the model and
 measuring what the closed loop loses --- would put a number on the margin this leaves, and is the natural
 continuation; it is not what the deployment evidence asked for.
-
-
-%=============================================================================
-\section{Discussion and limitations}
-\label{sec:discussion}
-
-% SEGNAPOSTO. Il contenuto di questa sezione e' stato rimosso il 2026-09-04 e
-% va riscritto. Il titolo e la label restano perche' il resto del report vi si
-% riferisce; l'ultima versione del testo e' in Report_integrated_backup3.tex.
 
 %=============================================================================
 \section{Conclusions}

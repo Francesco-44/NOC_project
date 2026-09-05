@@ -8,9 +8,9 @@
 
 \documentclass[11pt,a4paper]{article}
 
-%------------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,,,
 %	REQUIRED PACKAGES AND  CONFIGURATIONS
-%------------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,,,
 % PACKAGES FOR TITLES
 \usepackage{titlesec}
 \usepackage{color}
@@ -69,9 +69,9 @@
 \usepackage{fancyhdr}
 \usepackage{tcolorbox}
 
-%-------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,-
 %	NEW COMMANDS DEFINED
-%-------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,-
 \newcommand{\bea}{\begin{eqnarray}}
 \newcommand{\eea}{\end{eqnarray}}
 \newcommand{\e}[1]{\times 10^{#1}}
@@ -118,15 +118,15 @@
 
 \input{Configuration_files/config}
 
-% --- metriche generate da viz/make_results.py -------------------------------
+%, metriche generate da viz/make_results.py,,,,,,,,,,-
 % Macro numeriche e tabelle: rigenerate dal codice distribuito, non trascritte.
 \input{Metrics/metrics_macros}
 \renewcommand{\restabdir}{Metrics/tab}
 
 
-%-------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,-
 %	TITLE-PAGE INFORMATION
-%-------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,-
 \renewcommand{\title}{Rolling-Horizon $A^\star$ Planning and Nonlinear MPC for Map-Free Navigation of a Legged Robot}
 \newcommand{\course}{062047 -- Numerical Optimization for Control}
 \newcommand{\advisor}{Lorenzo Mario Fagiano}
@@ -152,7 +152,7 @@ Most of the design decisions in the project derive from theoretical consideratio
 
 \newcommand{\keywords}{Nonlinear Model Predictive Control, Interior-Point Optimization, Rolling-Horizon Planning, \astar{} Search, Map-Free Legged Robot Navigation, Bayesian Optimization}
 
-%-------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,-
 \begin{document}
 
 \input{Configuration_files/title_page_report}
@@ -263,7 +263,7 @@ implemented with Gaussian-process surrogates \cite{rasmussen2006gp,shahriari2016
 % \paragraph{Contributions of this report.}
 % \begin{enumerate}[label=(\roman*)]
 %   \item A complete and self-contained statement of the three optimization problems as they are actually
-%         implemented --- including the details that matter numerically and are usually left out of a system
+%         implemented, including the details that matter numerically and are usually left out of a system
 %         paper: sentinel padding of the obstacle parameters to freeze the NLP sparsity pattern, the
 %         non-negativity constraint on the forward velocity, the semi-definiteness of the stage weight, and
 %         the exact zero-order-hold discretization of the lag dynamics (Sections~\ref{sec:problem}
@@ -275,8 +275,8 @@ implemented with Gaussian-process surrogates \cite{rasmussen2006gp,shahriari2016
 %         explicit significance floor. It costs $67$ closed-loop rollouts, and it returns not only a tuned
 %         vector but eleven measured curves showing how much each weight is worth
 %         (Sections~\ref{sec:bo} and~\ref{sec:ofat}).
-%   \item A quantitative closed-loop study --- eleven parametric campaigns, all driving the \emph{production}
-%         CasADi/IPOPT tracker rather than a re-implementation --- of horizon length, sampling time, barrier
+%   \item A quantitative closed-loop study, eleven parametric campaigns, all driving the \emph{production}
+%         CasADi/IPOPT tracker rather than a re-implementation, of horizon length, sampling time, barrier
 %         shape, effort and rate penalties, barrier count, terminal weight, warm start and model mismatch,
 %         together with an ablation that identifies which weight group actually explains the tuning gain
 %         (Section~\ref{sec:performance}).
@@ -427,7 +427,7 @@ kinematics (IK) turns that position into joint angles, and a joint-level impedan
 \mathrm{RH}\}$ carries a normalised stride clock
 \begin{equation}
   \zeta_i(t)=\left(\frac{t}{\Tstr}-\zeta_i^{0}\right)\bmod 1\in[0,1),
-  \qquad \Tstr=\Tst+\Tsw ,
+  \qquad \Tstr=\Tst+\Tsw,
   \label{eq:gaitphase}
 \end{equation}
 where $\Tst$ and $\Tsw$ are the stance and swing durations and $\zeta_i^{0}$ is the phase offset of leg $i$.
@@ -444,9 +444,9 @@ $\tfrac{1}{2}\Tst\,(v_x^{\mathrm{cmd}},v_y^{\mathrm{cmd}},0)^{\!\top}$ and rotat
 by the half-stance yaw $\chi_g$ gives the foot displacement
 \begin{equation}
   \Delta\pf_i \;=\; R_z(\chi_g)\Big(\bar\pf_i+\tfrac{1}{2}\Tst\,
-                  \big(v_x^{\mathrm{cmd}},v_y^{\mathrm{cmd}},0\big)^{\!\top}\Big)-\bar\pf_i ,
+                  \big(v_x^{\mathrm{cmd}},v_y^{\mathrm{cmd}},0\big)^{\!\top}\Big)-\bar\pf_i,
   \qquad
-  \chi_g = 2\sin\!\Big(\tfrac{1}{4}\Tst\,\omega^{\mathrm{cmd}}\Big)\approx\tfrac{1}{2}\Tst\,\omega^{\mathrm{cmd}} ,
+  \chi_g = 2\sin\!\Big(\tfrac{1}{4}\Tst\,\omega^{\mathrm{cmd}}\Big)\approx\tfrac{1}{2}\Tst\,\omega^{\mathrm{cmd}},
   \label{eq:raibert}
 \end{equation}
 with $R_z(\cdot)$ the elementary rotation about the vertical axis.\footnote{The implementation obtains
@@ -455,7 +455,7 @@ distance from the trunk centre to the nominal foot; $d_c$ cancels, leaving~\eqre
 form on the right is the yaw swept in half a stance interval, as expected.} The step length and the heading of
 the foot trajectory of leg $i$ follow as
 \begin{equation}
-  L_i = 2\big\|\Delta\pf_i\big\|_2 ,
+  L_i = 2\big\|\Delta\pf_i\big\|_2,
   \qquad
   \chi_i=\operatorname{atan2}\big(\Delta\pf_{i,y},\,\Delta\pf_{i,x}\big),
   \label{eq:steplen}
@@ -479,7 +479,7 @@ in swing, parametrised by $\zeta_i^{\mathrm{sw}}=(\zeta_i-\beta)/(1-\beta)\in[0,
 of degree $11$ through twelve control points $b_j\in\R^2$,
 \begin{equation}
   (\xi,\eta)=\sum_{j=0}^{11}\binom{11}{j}
-             \big(\zeta_i^{\mathrm{sw}}\big)^{j}\big(1-\zeta_i^{\mathrm{sw}}\big)^{11-j}\,b_j ,
+             \big(\zeta_i^{\mathrm{sw}}\big)^{j}\big(1-\zeta_i^{\mathrm{sw}}\big)^{11-j}\,b_j,
   \label{eq:swing}
 \end{equation}
 whose horizontal spread is scaled by $L_i$ and whose vertical spread is scaled by the swing height
@@ -489,7 +489,7 @@ leg, $q_i^{\mathrm{ref}}=\mathrm{IK}_i(\pf_i)$, and a proportional--derivative (
 joints,
 \begin{equation}
   \mathcal{T}_i = K_P\big(q_i^{\mathrm{ref}}-q_i\big)+K_D\big(\dot q_i^{\mathrm{ref}}-\dot q_i\big)
-  \;=\;\bm{J}_i(q_i)^{\!\top}F_i ,
+  \;=\;\bm{J}_i(q_i)^{\!\top}F_i,
   \label{eq:impedance}
 \end{equation}
 where $\bm{J}_i$ is the foot Jacobian of leg $i$, set in bold to distinguish it from the MPC cost $J$ and
@@ -589,7 +589,7 @@ first-order lags, Eq.~\eqref{eq:lagcont}, whose time constants are chosen in Sec
 locomotion layers, the hand-designed one and the learned one, are approximated by the same small set of numbers.
 
 % This is the entire content of the ``robot-agnostic'' claim, and it is worth stating what it costs. The
-% abstraction discards leg dynamics, contact, footstep timing and the two nonlinearities named above --- the
+% abstraction discards leg dynamics, contact, footstep timing and the two nonlinearities named above, the
 % gait saturation of Section~\ref{sec:champ} and the stand gate of Section~\ref{sec:g1rl}. What survives is a
 % question of degree rather than of principle, and Section~\ref{sec:mismatch} answers it quantitatively by
 % inflating the plant lags by $60$--$67\%$ against the model and measuring what the closed loop loses.
@@ -609,14 +609,14 @@ locomotion layers, the hand-designed one and the learned one, are approximated b
     sig/.style={->, semithick},
     sl/.style={font=\scriptsize, inner sep=2.2pt},
   ]
-    % ------------------------------------------------------------------ planning
+    %,,,,,,,,,,,,,,,,,,,,,, planning
     \node[blk,  text width=46mm] (astar) at (0,7.0) {\astar{} search on the occupancy grid\\$1$~Hz};
     \node[hlblk,text width=46mm] (mpc)   at (0,4.9) {nonlinear MPC tracker\\$8$~Hz};
 
     \draw[sig] (0,8.05) -- node[sl,right] {goal $x_g$} (astar.north);
     \draw[sig] (astar) -- node[sl,right] {$x^{\mathrm{ref}}$} (mpc);
 
-    % --------------------------------------------------------- locomotion layer
+    %,,,,,,,,,,,,,,,,,,, locomotion layer
     \coordinate (split) at (0,1.15);
     \node[blk, text width=52mm] (champ) at (-3.8,0.30)
       {\textbf{Go2}: CHAMP gait generator\\
@@ -639,13 +639,13 @@ locomotion layers, the hand-designed one and the learned one, are approximated b
     \draw[sig] (split) -| ([xshift=12mm]champ.north);
     \draw[sig] (split) -| ([xshift=-12mm]rl.north);
 
-    % ------------------------------------------------------------------- plant
+    %,,,,,,,,,,,,,,,,,,,,,,- plant
     \node[blk, text width=28mm] (robot) at (0,-2.3) {robot $+$ ground};
     \draw[sig] ([xshift=12mm]champ.south) -- (robot.north west);
     \draw[sig] ([xshift=-12mm]rl.south)   -- (robot.north east);
     \node[sl] at (0,-1.35) {$\mathcal{T}$: joint torques};
 
-    % ---------------------------------------------------------------- feedback
+    %,,,,,,,,,,,,,,,,,,,,,- feedback
     \node[blk, text width=38mm] (est)  at (6.2,4.9) {state estimation (EKF)\\$\hat x$: pose $+$ body twist};
     \node[blk, text width=38mm] (grid) at (6.2,7.0) {Gaussian occupancy grid\\$\mathcal{P}_k$, rebuilt at $1$~Hz};
 
@@ -672,7 +672,7 @@ resolution $\delta=0.20$~m into $n_c=2h_w/\delta=60$ cells per axis. The occupan
 a Gaussian tail of the distance to the nearest return,
 \begin{equation}
   P(c) \;=\; 1-\Phi\!\left(\frac{d_{\min}(c,\mathcal{P}_k)}{\sigma}\right),
-  \qquad d_{\min}(c,\mathcal{P}_k)=\min_{p\in\mathcal{P}_k}\|c-p\|_2 ,
+  \qquad d_{\min}(c,\mathcal{P}_k)=\min_{p\in\mathcal{P}_k}\|c-p\|_2,
   \label{eq:grid}
 \end{equation}
 with $\Phi$ the standard normal cumulative distribution function,
@@ -861,14 +861,14 @@ does add an obstacle cost to that program, but it is a local safety margin aroun
 clear, not a second avoidance layer: it is a smooth, soft penalty precisely because the hard, discrete
 decision has already been made upstream (Section~\ref{sec:l1} measures how close it comes to a hard
 constraint, and at what cost). Splitting the problem this way is also what keeps the NMPC solvable at
-$8$~Hz, since writing the discrete choice into the continuous program would need integer variables ---
+$8$~Hz, since writing the discrete choice into the continuous program would need integer variables,
 Section~\ref{sec:astar} makes that argument in full.
 
 The split is not free of failure modes of its own: \astar{} can commit to a bad choice that the NMPC then
 follows faithfully (Section~\ref{sec:localmin}), and the two layers can each leave their own local minimum in
-the smooth program (Section~\ref{sec:landscape}). But the roles stay fixed throughout --- motion planning
+the smooth program (Section~\ref{sec:landscape}). But the roles stay fixed throughout, motion planning
 happens once per replanning cycle, in the discrete layer; trajectory optimisation happens every control
-cycle, in the continuous one --- and every design choice in the rest of this chapter follows from which of
+cycle, in the continuous one, and every design choice in the rest of this chapter follows from which of
 the two questions it is answering.
 
 \subsection{Reference generation: \texorpdfstring{\astar{}}{A*} as a discrete program}
@@ -1548,7 +1548,7 @@ velocity ceiling of Section~\ref{sec:impl}.
 % \end{table}
 
 % Three properties hold by construction and were checked rather than assumed. $\gamma(0)=\resBetaZero$ exactly,
-% because at the first node the state is fixed by an equality and there is nothing to hedge against --- the
+% because at the first node the state is fixed by an equality and there is nothing to hedge against, the
 % constraint is not tightened where tightening could only remove admissible motion. The margin is monotone
 % (\resBetaMonotone), as uncertainty is. And it reaches $\resBetaEnd$~m at the end of the horizon, the same
 % order as the safety radius itself. The offset at $k=0$ is subtracted before fitting, since
@@ -1567,13 +1567,13 @@ velocity ceiling of Section~\ref{sec:impl}.
 % Measured on the predicted trajectory, the outcomes separate cleanly. Where $\dsafe+\gamma$ stays below the
 % clearance the trajectory already keeps, the constraint is inactive and correctly does nothing. Where it
 % bites, the predicted clearance increases by up to $\resRobustBestDelta$~m with the slack still exactly zero:
-% the margin is \emph{respected}, not violated and paid for --- which is the whole point of pairing the tube
+% the margin is \emph{respected}, not violated and paid for, which is the whole point of pairing the tube
 % with the $\ell^1$ relaxation of Section~\ref{sec:l1}, since a tube that asks more than $\mathcal{U}$ can
 % deliver makes the penalty yield instead of making the program infeasible.
 
 % \paragraph{The limit of this measurement, and what it says about the architecture.} The effect is
 % \emph{not} observable in the closed loop of this harness: the executed clearance comes out identical with and
-% without tightening. The reason is the architecture described in Section~\ref{sec:overview} --- the loop is
+% without tightening. The reason is the architecture described in Section~\ref{sec:overview}, the loop is
 % closed by tracking a look-ahead setpoint on the predicted trajectory with a proportional law, which washes
 % out fine differences between MPC solutions. The tightening guarantees the margin \emph{in the plan}, and that
 % is where it has been verified. This is not a limitation of the technique but of the test bench, and it is the
@@ -1583,7 +1583,7 @@ velocity ceiling of Section~\ref{sec:impl}.
 % On the recorded industrial run the tightening is inert for a different and more instructive reason: at the
 % tightest cycles the robot sits about $0.6$~m from the obstacles and cannot move away. Raising $\dsafe$ grows
 % the slack but does not move the trajectory. The binding constraint is not the threshold, it is
-% $\mathcal{U}$ --- the same asymmetry found in Section~\ref{sec:l1} and quantified in Section~\ref{sec:kkt}.
+% $\mathcal{U}$, the same asymmetry found in Section~\ref{sec:l1} and quantified in Section~\ref{sec:kkt}.
 % Three independent measurements arrive at the same conclusion, which is the strongest form the report has for
 % saying that the input set, not the cost, is where this system is limited.
 
@@ -1613,8 +1613,8 @@ applied to the robot.
 
 The standard remedy remains available and is worth stating precisely, because it is the natural
 continuation rather than an oversight. Augmenting the state with an integrated tracking error and
-optimizing the input increment $\Delta u_k$ instead of $u_k$ --- the velocity-form MPC of
-\cite{rawlings2017mpc,pannocchia2003offsetfree} --- restores offset-free tracking, at the price of
+optimizing the input increment $\Delta u_k$ instead of $u_k$, the velocity-form MPC of
+\cite{rawlings2017mpc,pannocchia2003offsetfree}, restores offset-free tracking, at the price of
 carrying $u_{k-1}$ in the state. That price is not only dimensional: Section~\ref{sec:shoot} omits the
 rate penalty between the previously applied command and $u_0$ precisely so that the program does not
 inherit a memory of its own past output, and the velocity form would reintroduce exactly that memory. The
@@ -1901,7 +1901,7 @@ iteration count stops being enough, and the fallback rather than the optimum dec
     Look-ahead             & $N\Delta t$ [s]    & \resHorizonSeconds & Heading       & $Q_\psi$   & $4.0$   \\
     Re-solve rate          & [Hz]               & $8$              & Terminal scale  & $\rho_T$   & $100.0$ \\
     Actuator lag           & $\tau$ [s]         & \resTauV         & Forward effort  & $R_{v_x}$  & $1.0$   \\
-    Integrator             & ---                & mid-point        & Lateral effort  & $R_{v_y}$  & $6.0$   \\
+    Integrator             &,                & mid-point        & Lateral effort  & $R_{v_y}$  & $6.0$   \\
     Obstacle terms         & $M$                & \resMobs         & Yaw effort      & $R_\omega$ & $0.4$   \\
     Obstacle search radius & [m]                & \resObsCheckR    & Input rate      & $\Rjerk$   & $0.4$   \\
     \cmidrule(r){1-3}
@@ -1911,9 +1911,9 @@ iteration count stops being enough, and the fallback rather than the optimum dec
     Yaw rate      & $|\omega|$ [rad/s]       & $\le\resOmegaMax$ & \multicolumn{3}{l}{} \\
     Cruise speed  & $v_{\mathrm{ref}}$ [m/s] & \resVref          & \multicolumn{3}{l}{\textit{Solver (IPOPT)}} \\
     \cmidrule(r){1-3}
-    \multicolumn{3}{@{}l}{\textit{Grid and \astar{} layer}}      & Max iterations & ---   & $40$ \\
-    Resolution     & $\delta$ [m]             & $0.20$           & Warm start     & ---   & on \\
-    Half-width     & $h_w$ [m]                & $6.0$            & Print level    & ---   & $0$ \\
+    \multicolumn{3}{@{}l}{\textit{Grid and \astar{} layer}}      & Max iterations &,   & $40$ \\
+    Resolution     & $\delta$ [m]             & $0.20$           & Warm start     &,   & on \\
+    Half-width     & $h_w$ [m]                & $6.0$            & Print level    &,   & $0$ \\
     Inflation      & $\sigma$ [m]             & $0.31$           & Graph          & \texttt{expand} & true \\
     Hard threshold & $P_{\mathrm{thr}}$       & $0.10$           & \multicolumn{3}{l}{} \\
     Edge weight    & $w_{\mathrm{obs}}$       & $35.0$           & \multicolumn{3}{l}{} \\
@@ -2221,7 +2221,7 @@ and aggregating conservatively (mean time, worst clearance, worst tail time), se
 the deployed one. The best, $N=26$, $\Delta t=0.35$~s, $\Ninput=10$, matches the deployed time to goal and
 clearance at $24.3$~ms of tail solve time against $59.3$, with $192$ decision variables against $141$: a
 longer look-ahead in a cheaper program. This is the report's cleanest evidence that the two horizons are
-separate design parameters, and it answers what the first campaign left open --- a long horizon costs through
+separate design parameters, and it answers what the first campaign left open, a long horizon costs through
 its variable count, not through its length.
 
 \paragraph{On move blocking.} The deployed profile does not use blocking, and computation is the resource it
@@ -2233,7 +2233,7 @@ supports making before the next recording campaign. One implementation detail ma
 be imposed on the free columns only, not repeated over the blocked steps, or the duplicate rows violate LICQ
 and break the multiplier analysis of Section~\ref{sec:kkt}.
 
-% ---------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,,
 % DA APPLICARE PRIMA DELLA PROSSIMA REGISTRAZIONE (misurato 2026-08-29):
 %   mpc_N: 26   mpc_dt: 0.35   mpc_N_c: 10
 % in src/a_star_mpc_planner/config/planner_params_g1.yaml.
@@ -2243,7 +2243,7 @@ and break the multiplier analysis of Section~\ref{sec:kkt}.
 % tabella derivata. Va cambiato, poi rifatta la corsa, poi l'intera pipeline
 % delle metriche (viz/bag_source, cost_field, prediction_error, decision_plane,
 % i sette script satellite, e make_results per ultimo).
-% ---------------------------------------------------------------------------
+%,,,,,,,,,,,,,,,,,,,,,,,,,
 
 \paragraph{How far these numbers carry.} These worlds are synthetic with static obstacles, so the clearance
 margin the look-ahead buys would matter more, not less, against moving obstacles or a slower discrete layer.
@@ -2277,14 +2277,14 @@ Tail solve times are comparable only within one campaign, not across the two rep
 %   \includegraphics[width=\textwidth]{pareto_front}
 %   \caption{Sampling of the weight simplex: the achieved objectives for each scalarisation, the non-dominated
 %   set, and the utopia point. The metrics used to \emph{evaluate} the solutions use fixed weights, not the
-%   sampled ones --- otherwise each point of the simplex would be judged by a different yardstick.}
+%   sampled ones, otherwise each point of the simplex would be judged by a different yardstick.}
 %   \label{fig:pareto}
 % \end{figure}
 
 % Over $\resParetoPoints$ points of the simplex, $\resParetoNondom$ are non-dominated, and the front is not
 % convex (convex: \resParetoConvex). The weighted-sum scalarisation therefore cannot reach all of it: the
 % points that lie in a non-convex stretch of the front are optimal, yet no choice of $\kappa$
-% in~\eqref{eq:scalar} returns them. This is why the property is worth measuring rather than assuming --- a
+% in~\eqref{eq:scalar} returns them. This is why the property is worth measuring rather than assuming, a
 % weight sweep steps over that part of the front instead of tracing it, and reports the gap as absent.
 
 % The relative excursions say which objectives actually respond: accuracy moves by $\resParetoRelAcc\%$ across
@@ -2292,7 +2292,7 @@ Tail solve times are comparable only within one campaign, not across the two rep
 % genuinely under the control of the weights. Time and effort are nearly fixed, and Section~\ref{sec:pathfollow}
 % explains why: in path-parametrised mode the solver saturates $v_{x,\max}$ almost everywhere, so the duration
 % of the mission is decided by the kinematics and the input bounds rather than by the tuning. The trade-off is
-% real but mild, and the practical conclusion is that weight tuning is not where this system is limited ---
+% real but mild, and the practical conclusion is that weight tuning is not where this system is limited,
 % unlike the control horizon, which Section~\ref{sec:nc} shows to be leaving a factor of two in solve time on
 % the table.
 
@@ -2384,20 +2384,20 @@ Figure~\ref{fig:escapegallery} shows the geometry and both trajectories, Table~\
     \toprule
     World & Target rule & Goal & Time [s] & Path [m] & Rev. & Clearance [m] \\
     \midrule
-    dead end                             & projection & no              &    --- &  79.4 &  140 & 0.659 \\
+    dead end                             & projection & no              &   , &  79.4 &  140 & 0.659 \\
                                          & geodesic   & yes             &   81.5 &  31.7 &    2 & 0.669 \\
     \midrule
-    horseshoe                            & projection & no              &    --- &  93.4 &  117 & 1.919 \\
+    horseshoe                            & projection & no              &   , &  93.4 &  117 & 1.919 \\
                                          & geodesic   & yes             &  100.4 &  38.5 &    2 & 0.853 \\
     \midrule
-    L-corridor                           & projection & no              &    --- & 153.1 &  300 & 0.801 \\
+    L-corridor                           & projection & no              &   , & 153.1 &  300 & 0.801 \\
                                          & geodesic   & yes             &  112.7 &  41.8 &    8 & 0.801 \\
     \midrule
     long wall, gap north                 & projection & yes             &   64.8 &  26.2 &   10 & 0.919 \\
                                          & geodesic   & yes             &   64.8 &  26.3 &   10 & 0.891 \\
     \midrule
-    long wall, gap south                 & projection & no              &    --- &  13.6 &    6 & 0.268 \\
-                                         & geodesic   & no              &    --- &  13.7 &    4 & 0.255 \\
+    long wall, gap south                 & projection & no              &   , &  13.6 &    6 & 0.268 \\
+                                         & geodesic   & no              &   , &  13.7 &    4 & 0.255 \\
     \midrule
     long wall, false occlusion           & projection & yes             &   51.8 &  21.3 &    8 & 0.768 \\
                                          & geodesic   & yes             &   52.5 &  21.5 &    8 & 0.786 \\
@@ -2728,8 +2728,8 @@ open loop, and the drift a purely proprioceptive estimate would accumulate over 
 bounded by the structure the sensor keeps seeing. The visual--inertial front-end of
 Figure~\ref{fig:sim-isaac} is not what the deployed stack runs on: it is shown to make the point that the
 same stack closes without a LiDAR at all, the camera taking over localisation while the rest of the graph
-is untouched. A quantitative mismatch campaign --- inflating the plant parameters against the model and
-measuring what the closed loop loses --- would put a number on the margin this leaves, and is the natural
+is untouched. A quantitative mismatch campaign, inflating the plant parameters against the model and
+measuring what the closed loop loses, would put a number on the margin this leaves, and is the natural
 continuation; it is not what the deployment evidence asked for.
 
 %=============================================================================

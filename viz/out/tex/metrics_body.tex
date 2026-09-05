@@ -152,14 +152,14 @@ At $N\in\{15, 40\}$ the two parametrisations converge to \emph{different} minima
 
 \resNote{Feeds Report \texttt{sec:solver} / \texttt{sec:impl}, which currently assert that ``exact derivatives are available from CasADi's AD'' without measuring the alternative.}
 
-At a representative solve the objective has $\resDerivNvar$ variables. One evaluation of the objective costs $\resTimeF~\mu$s and one full gradient by reverse-mode algorithmic differentiation $\resTimeGrad~\mu$s, i.e.\ $\resADratio$ objective evaluations (median of repeated pairs, range $\resADratioMin$--$\resADratioMax$), independently of the number of variables. The same gradient by finite differences costs $\resFDforwardEvals$ evaluations one-sided and $\resFDcentralEvals$ central, and is less accurate at every step size: the best relative error reachable is $\resFDforwardErr$ one-sided and $\resFDcentralErr$ central (Table~\ref{res:tab:fd}), against machine precision for AD.
+At a representative solve the objective has $\resDerivNvar$ variables. One evaluation of the objective costs $\resTimeF~\mu$s and one full gradient by reverse-mode algorithmic differentiation $\resTimeGrad~\mu$s, i.e.\ $\resADratio$ objective evaluations (median of repeated pairs, range $\resADratioMin$--$\resADratioMax$), independently of the number of variables. The same gradient by finite differences costs $\resFDforwardEvals$ evaluations forward and $\resFDcentralEvals$ central, and is less accurate at every step size: the best relative error reachable is $\resFDforwardErr$ forward and $\resFDcentralErr$ central (Table~\ref{res:tab:fd}), against machine precision for AD.
 
 The cost is the argument that closes the question for a real-time loop: central differences alone would consume $\resFDcentralBudget\%$ of the $\resCycleBudget$~ms cycle budget, for a gradient that is worse. The ratio itself is a micro-benchmark on $\sim100~\mu$s timings and its second digit is not meaningful; what is stable, and is the point, is that it stays a small constant.
 
 \begin{table}[htbp]
   \centering
   \small
-  \caption{Accuracy of the finite-difference gradient against the step size, measured against the AD gradient. The optimum sits at $h=1.49\times 10^{-8}$ one-sided (theory: $\sqrt{\varepsilon}=1.49\times 10^{-8}$) and $h=6.06\times 10^{-6}$ central (theory: $\varepsilon^{1/3}=6.06\times 10^{-6}$).}
+  \caption{Accuracy of the finite-difference gradient against the step size, measured against the AD gradient. The optimum sits at $h=1.49\times 10^{-8}$ forward (theory: $\sqrt{\varepsilon}=1.49\times 10^{-8}$) and $h=6.06\times 10^{-6}$ central (theory: $\varepsilon^{1/3}=6.06\times 10^{-6}$).}
   \label{res:tab:fd}
   \restab{fd}
 \end{table}

@@ -1622,7 +1622,7 @@ def sec_solver_compare(extra: dict, M: Macros) -> list[str]:
             return r"\emph{fail} (" + t + ")"
         return f'{_ms(r["sqp"]["ms"], r["sqp"]["ms"] < r["ipopt"]["ms"])} / {r["sqp"]["iter"]}'
 
-    rows = [[solver_regime(r["regime"]), str(r.get("caso", "")), str(r["n_ineq"]),
+    rows = [[solver_regime(r["regime"]), esc(r.get("caso", "")), str(r["n_ineq"]),
              f'{_ms(r["ipopt"]["ms"], r["ipopt"]["ms"] <= r["sqp"]["ms"])} / {r["ipopt"]["iter"]}',
              _sqp_cell(r),
              m(fx(r["sqp"]["ms"] / r["ipopt"]["ms"], 1) + r"\times")
@@ -1954,7 +1954,54 @@ def sec_robust(extra: dict, M: Macros) -> list[str]:
 # testa al documento e' costruita da questa stessa lista, quindi non puo'
 # divergere dalle sezioni effettivamente presenti.
 # ---------------------------------------------------------------------------
+def sec_report_macros(extra: dict, M: Macros) -> list[str]:
+    """
+    Macro citate dal corpo del report ma non prodotte da nessuna altra sezione.
+
+    Non emette blocco: restituisce sempre [], quindi non compare in
+    metrics_body.tex ne' nella tabella di corrispondenza. Esiste solo perche'
+    Report_integrated.tex le usa e senza queste il documento NON COMPILA
+    ("Undefined control sequence"), che e' esattamente il modo in cui il
+    disallineamento fra prosa e pipeline si era manifestato.
+    """
+    M.group("macro citate dal report")
+
+    # --- campagna orizzonte estesa (horizon_sweep_ext.json) -----------------
+    # "solves" = passi di controllo, non run: una run e' un anello chiuso di
+    # `passi` cicli e ogni ciclo e' un solve. `tasso_successo` e' la frazione
+    # di quei solve andati a buon fine, quindi i fallimenti sono
+    # passi*(1-tasso_successo). Contare le run darebbe 108 e direbbe un'altra
+    # cosa: quante missioni, non quanti problemi risolti.
+    d = extra.get("horizon_ext")
+    if d and d.get("righe"):
+        righe = d["righe"]
+        tot = sum(r["passi"] for r in righe)
+        fail = sum(r["passi"] * (1.0 - r["tasso_successo"]) for r in righe)
+        M.add("resSweepSolves", str(tot), "solve totali della campagna estesa")
+        M.add("resSweepFails", fx(fail, 0), "solve falliti")
+        for nome, N in (("resFailPctN", 15), ("resFailPctNmid", 26),
+                        ("resFailPctNbig", 40)):
+            sel = [r for r in righe if r["N"] == N]
+            if not sel:
+                continue
+            t = sum(r["passi"] for r in sel)
+            f = sum(r["passi"] * (1.0 - r["tasso_successo"]) for r in sel)
+            M.add(nome, fx(100.0 * f / t, 1), f"fallimenti a N={N} [%]")
+
+    # --- costo di costruzione dell'NLP --------------------------------------
+    # MISURATE A MANO, non ricavabili da results.json: nessuna sezione della
+    # roadmap le produce. Rimisurarle con
+    #     python3 viz/measure_nlp_build.py
+    # e riportarle qui. Sono l'unico numero del file non calcolato dai dati:
+    # dipendono dalla macchina, e vanno rifatte se cambia il profilo.
+    M.add("resNops", "3603", "istruzioni scalari di f e g dopo expand, N=15")
+    M.add("resColdDep", "0.5", "primo solve a freddo, configurazione deployata [s]")
+    M.add("resColdMax", "0.6", "primo solve a freddo, N=40 [s]")
+    return []
+
+
 SPECS = [
+    (sec_report_macros, "res:extra", "Macros cited by the report", "-"),
     (sec_discretisation, "res:disc", "Model discretisation, truncation order",
      "sec:discretization"),
     (sec_prediction, "res:pred", "Open-loop prediction error",
@@ -1982,7 +2029,7 @@ SPECS = [
 ]
 
 _EXTRA_SECTIONS = {sec_horizon, sec_pareto, sec_solver_compare, sec_shooting,
-                   sec_control_horizon, sec_robust}
+                   sec_control_horizon, sec_robust, sec_report_macros}
 
 BODY_HEADER = r"""% ============================================================================
 % metrics_body.tex — GENERATO AUTOMATICAMENTE, NON MODIFICARE A MANO
@@ -2223,6 +2270,7 @@ def load_extra(results_path: str) -> dict:
     out = {}
     d = os.path.dirname(os.path.abspath(results_path))
     for key, fname in (("horizon", "horizon_sweep.json"),
+                       ("horizon_ext", "horizon_sweep_ext.json"),
                        ("pareto", "pareto_front.json"),
                        ("solver", "solver_compare.json"),
                        ("shooting", "shooting_compare.json"),

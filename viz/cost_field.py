@@ -40,6 +40,7 @@ Uso
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import os
 import sys
 
@@ -75,95 +76,265 @@ def _surface_z(C, log):
     return np.log10(C - C.min() + 1.0) if log else C
 
 
-def figure(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, show=True):
+# ---------------------------------------------------------------------------
+# Tavolozza — una sola, condivisa da tutti i pannelli
+# ---------------------------------------------------------------------------
+# Criterio: il CAMPO sta sul fondo e deve restare PALLIDO, perche' sopra ci
+# vanno sette oggetti diversi che devono leggersi tutti. L'informazione di
+# livello non si perde: la porta il tratteggio delle isolinee, non il colore.
+# I colori delle sovrapposizioni sono presi dalla scala di Okabe-Ito, che
+# resta distinguibile con qualunque forma di daltonismo e in bianco e nero.
+C_FIELD_LO = 0.00      # estremi del troncamento di Blues per il riempimento
+C_FIELD_HI = 0.62
+C_ISO      = "#2B4C72"  # isolinee
+C_LIDAR    = "#101010"  # ritorni LiDAR
+C_EXEC     = "#D62728"  # traiettoria eseguita (e pallino del robot)
+C_HORIZON  = "#000000"  # orizzonte MPC (con alone bianco)
+C_REF      = "#009E73"  # riferimento A* del ciclo mostrato
+C_REF_LAST = "#CC79A7"  # riferimento A* dell'ultimo ciclo
+C_REACH    = "#E69F00"  # insieme raggiungibile (arancio: il campo e' blu)
+C_MIN      = "#7A3FA8"  # minimi locali spuri
+C_GOAL     = "#FFC20A"  # goal (e minimo che ci coincide)
+C_JSTAR    = "#1F3B73"  # J* nel pannello (c)
+C_SOLVE    = "#D55E00"  # tempo di soluzione nel pannello (c)
+
+
+def _field_cmap():
+    """Blues troncata: bianco -> blu medio, mai vicino al nero.
+
+    Con la mappa intera (o con viridis, che era la scelta precedente) la valle
+    del riferimento diventa scura quanto i punti LiDAR che le stanno sopra, e
+    la cresta degli ostacoli diventa chiara quanto la linea bianca
+    dell'orizzonte: entrambi gli oggetti spariscono nel fondo proprio dove
+    contano. Troncando in alto il fondo resta sempre piu' chiaro di qualunque
+    sovrapposizione.
+    """
+    import matplotlib as mpl
+    from matplotlib.colors import LinearSegmentedColormap
+    try:                                  # matplotlib >= 3.6
+        base = mpl.colormaps["Blues"]
+    except AttributeError:                # 3.5 di sistema
+        base = mpl.cm.get_cmap("Blues")
+    return LinearSegmentedColormap.from_list(
+        "campo", base(np.linspace(C_FIELD_LO, C_FIELD_HI, 256)))
+
+
+def _halo(lw=3.0, fg="white"):
+    """Alone chiaro: rende leggibile una linea scura anche sulle creste."""
+    import matplotlib.patheffects as pe
+    return [pe.withStroke(linewidth=lw, foreground=fg)]
+
+
+def extent_covering(ext, *point_sets, margin=1.2):
+    """Allarga `ext` finche' contiene tutti i punti dati, piu' un margine.
+
+    Serve perche' con una bag il campo viene costruito attorno a UN ciclo,
+    mentre la traiettoria eseguita copre l'intera missione: senza allargare,
+    meta' del percorso finisce fuori dal campo e il pannello (b) mostra una
+    banda bianca al posto del costo.
+    """
+    xs, ys = [ext[0], ext[1]], [ext[2], ext[3]]
+    for pts in point_sets:
+        if pts is None:
+            continue
+        P = np.asarray(pts, dtype=float).reshape(-1, 2)
+        if not len(P):
+            continue
+        xs += [P[:, 0].min() - margin, P[:, 0].max() + margin]
+        ys += [P[:, 1].min() - margin, P[:, 1].max() + margin]
+    return (min(xs), max(xs), min(ys), max(ys))
+
+
+def figure(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, show=True,
+           focus=0):
+    """
+    I tre pannelli della figura 'paesaggio'.
+
+    `focus` e' l'indice del ciclo a cui si riferiscono il pallino del robot,
+    l'orizzonte MPC e l'insieme raggiungibile. Con una bag e' il ciclo su cui
+    e' centrato il campo: disegnare il robot al ciclo 0 sopra un campo
+    costruito su un altro ciclo (com'era prima) fa apparire l'insieme
+    raggiungibile in un angolo, scollegato da tutto il resto.
+    """
     import matplotlib.pyplot as plt
-    from matplotlib import cm
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
     common.ensure_mpl3d()
 
+    cmap = _field_cmap()
     Z = _surface_z(C, log)
-    zlab = "log10(c - c_min + 1)" if log else "c(x, y)"
+    zlab = ("$\\log_{10}(c - c_{\\min} + 1)$" if log else "$c(x,y)$")
     poses = hist["pose"]
+    k = int(np.clip(focus, 0, len(poses) - 1))
+    pose_k = poses[k]
+    pred = np.asarray(hist["pred"][k], dtype=float)
     reach = common.reachable_mask(np.stack([X.ravel(), Y.ravel()], 1),
-                                  poses[0], cfg).reshape(X.shape)
+                                  pose_k, cfg).reshape(X.shape)
+    traj = poses[:, :2]
+    ciclo = "first cycle" if k == 0 else f"cycle {k}"
 
-    fig = plt.figure(figsize=(17, 5.8))
-
-    # ---- (a) superficie 3-D ------------------------------------------------
-    ax = fig.add_subplot(1, 3, 1, projection="3d")
-    ax.plot_surface(X, Y, Z, cmap=cm.viridis, linewidth=0, antialiased=True,
-                    alpha=0.85, rcount=90, ccount=90, rasterized=True)
+    fig = plt.figure(figsize=(14.4, 8.8))
+    gs = fig.add_gridspec(2, 2, width_ratios=[1.0, 1.30],
+                          height_ratios=[1.06, 0.88],
+                          left=0.05, right=0.905, top=0.905, bottom=0.075,
+                          wspace=0.15, hspace=0.34)
 
     def zof(p):
         i = np.clip(np.searchsorted(xs, p[0]) - 1, 0, len(xs) - 1)
         j = np.clip(np.searchsorted(ys, p[1]) - 1, 0, len(ys) - 1)
         return Z[i, j]
 
-    traj = poses[:, :2]
+    # ---- (a) superficie 3-D ------------------------------------------------
+    ax = fig.add_subplot(gs[0, 0], projection="3d")
+    ax.plot_surface(X, Y, Z, cmap=cmap, linewidth=0, antialiased=True,
+                    alpha=0.97, rcount=110, ccount=110, rasterized=True)
     ax.plot(traj[:, 0], traj[:, 1], [zof(p) for p in traj],
-            color="red", lw=3.0, zorder=10, label="executed trajectory")
-    pred = hist["pred"][0]
+            color=C_EXEC, lw=2.6, zorder=10, path_effects=_halo(4.0),
+            label="executed trajectory")
     ax.plot(pred[:, 0], pred[:, 1], [zof(p) for p in pred],
-            color="white", lw=1.6, ls="--", label="MPC horizon (first cycle)")
-    ax.scatter([traj[0, 0]], [traj[0, 1]], [zof(traj[0])], color="red", s=70,
-               depthshade=False, label="robot")
-    ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
-    ax.set_zlabel(zlab, labelpad=8)
-    ax.tick_params(labelsize=7)
-    ax.set_title(f"(a) c(x,y) — {sc.name}", pad=2)
-    ax.legend(loc="upper left", fontsize=7)
-    ax.view_init(elev=52, azim=-125)
+            color=C_HORIZON, lw=2.0, ls="--", zorder=11,
+            path_effects=_halo(3.4), label=f"MPC horizon ({ciclo})")
+    ax.scatter([pose_k[0]], [pose_k[1]], [zof(pose_k[:2])], color=C_EXEC, s=55,
+               edgecolors="white", linewidths=0.8, depthshade=False,
+               zorder=12, label="robot")
+    ax.scatter([sc.goal[0]], [sc.goal[1]], [zof(sc.goal)], marker="*", s=190,
+               c=C_GOAL, edgecolors="k", linewidths=0.6, depthshade=False,
+               zorder=12, label="goal")
+    ax.set_xlabel("x [m]", labelpad=2)
+    ax.set_ylabel("y [m]", labelpad=2)
+    ax.set_zlabel(zlab, labelpad=10)
+    ax.tick_params(labelsize=8, pad=1)
+    ax.set_title(f"(a) cost surface $c(x,y)$ — {sc.name}", fontsize=11, pad=-6)
+    ax.legend(loc="upper left", bbox_to_anchor=(0.02, 0.97), fontsize=8,
+              frameon=False, handlelength=1.8, labelspacing=0.3)
+    ax.view_init(elev=48, azim=-125)
+    # gli assi 3-D sprecano un terzo del riquadro in margini: senza zoom il
+    # pannello (a) resta grande la meta' degli altri due
+    try:
+        ax.set_box_aspect((1.0, 1.0, 0.62), zoom=1.30)
+    except TypeError:                     # matplotlib 3.5
+        ax.set_box_aspect((1.0, 1.0, 0.62))
 
     # ---- (b) curve di livello dall'alto ------------------------------------
-    ax2 = fig.add_subplot(1, 3, 2)
-    cs = ax2.contourf(X, Y, Z, levels=40, cmap=cm.viridis, rasterized=True)
-    ax2.contour(X, Y, Z, levels=18, colors="k", linewidths=0.3, alpha=0.35)
-    fig.colorbar(cs, ax=ax2, fraction=0.046, pad=0.02, label=zlab)
+    ax2 = fig.add_subplot(gs[:, 1])
+    lv = np.linspace(float(Z.min()), float(Z.max()), 25)
+    cs = ax2.contourf(X, Y, Z, levels=lv, cmap=cmap, extend="neither")
+    # NB: il riempimento resta vettoriale. contourf ignora rasterized (lo
+    # dice con una UserWarning), e rasterizzarlo per zorder costerebbe la
+    # nitidezza in stampa senza far risparmiare granche': con 25 livelli il
+    # PDF sta comunque sotto il mezzo megabyte.
+    ax2.contour(X, Y, Z, levels=lv[::2], colors=C_ISO, linewidths=0.5,
+                alpha=0.6)
+
+    # insieme raggiungibile: regione, non solo bordo
     ax2.contourf(X, Y, reach.astype(float), levels=[0.5, 1.5],
-                 colors=["none"], hatches=["////"], alpha=0.0, rasterized=True)
-    ax2.contour(X, Y, reach.astype(float), levels=[0.5], colors="deepskyblue",
-                linewidths=2.0)
-    ax2.scatter(sc.obstacles[:, 0], sc.obstacles[:, 1], s=5, c="k", label="LiDAR returns")
+                 colors=[C_REACH], alpha=0.14, zorder=2)
+    ax2.contour(X, Y, reach.astype(float), levels=[0.5], colors=C_REACH,
+                linewidths=2.2, zorder=3)
+
+    ax2.scatter(sc.obstacles[:, 0], sc.obstacles[:, 1], s=5, c=C_LIDAR,
+                zorder=4, label="LiDAR returns (obstacles)")
+
     refs = hist.get("ref")
-    if refs is not None and refs[0] is not None:
-        ax2.plot(refs[0][:, 0], refs[0][:, 1], color="orange", lw=1.4, ls="-.",
-                 label="A* reference (first)")
+    if refs is not None and refs[k] is not None:
+        ax2.plot(refs[k][:, 0], refs[k][:, 1], color=C_REF, lw=2.0, ls="--",
+                 zorder=5, path_effects=_halo(3.4),
+                 label=f"A$^\\star$ reference ({ciclo})")
         last = next((r for r in refs[::-1] if r is not None), None)
-        if last is not None and not np.array_equal(last, refs[0]):
-            ax2.plot(last[:, 0], last[:, 1], color="magenta", lw=1.2, ls=":",
-                     label="A* reference (last)")
-    ax2.plot(traj[:, 0], traj[:, 1], color="red", lw=2.4, label="executed path")
-    ax2.plot(pred[:, 0], pred[:, 1], "--", color="w", lw=1.6, label="MPC horizon")
-    ax2.scatter([sc.goal[0]], [sc.goal[1]], marker="*", s=180, c="gold",
-                edgecolors="k", label="goal", zorder=5)
-    ax2.scatter([traj[0, 0]], [traj[0, 1]], s=70, c="red", edgecolors="w",
-                label="robot", zorder=5)
+        if last is not None and not np.array_equal(last, refs[k]):
+            ax2.plot(last[:, 0], last[:, 1], color=C_REF_LAST, lw=2.0, ls=":",
+                     zorder=5, path_effects=_halo(3.4),
+                     label="A$^\\star$ reference (last cycle)")
+    ax2.plot(traj[:, 0], traj[:, 1], color=C_EXEC, lw=2.8, zorder=6,
+             path_effects=_halo(4.2), label="executed path")
+    ax2.plot(pred[:, 0], pred[:, 1], ls="--", color=C_HORIZON, lw=2.2,
+             zorder=7, path_effects=_halo(3.6),
+             label=f"MPC horizon ({ciclo})")
+    ax2.scatter([sc.goal[0]], [sc.goal[1]], marker="*", s=300, c=C_GOAL,
+                edgecolors="k", linewidths=0.8, zorder=9, label="goal")
+    ax2.scatter([pose_k[0]], [pose_k[1]], s=110, c=C_EXEC, edgecolors="k",
+                linewidths=0.8, zorder=9, label=f"robot ({ciclo})")
+
+    n_spurii = 0
     for (mx, my, mc) in local_minima(C, xs, ys):
         is_goal = np.hypot(mx - sc.goal[0], my - sc.goal[1]) < 0.45
-        ax2.scatter([mx], [my], marker="v", s=95,
-                    c="lime" if is_goal else "orangered", edgecolors="k", zorder=6)
-    ax2.set_aspect("equal"); ax2.set_xlabel("x [m]"); ax2.set_ylabel("y [m]")
-    ax2.set_title("(b) level sets  $\\triangledown$ local minima  --- reachable set", pad=6)
-    ax2.legend(loc="upper right", fontsize=7)
+        n_spurii += (not is_goal)
+        ax2.scatter([mx], [my], marker="v", s=110,
+                    c=(C_GOAL if is_goal else C_MIN), edgecolors="k",
+                    linewidths=0.8, zorder=8)
+
+    cax = ax2.inset_axes([1.02, 0.0, 0.022, 1.0])
+    cb = fig.colorbar(cs, cax=cax)
+    cb.set_label(zlab + "\ncolour scale shared by (a) and (b)", fontsize=9)
+    from matplotlib.ticker import MaxNLocator
+    cb.locator = MaxNLocator(nbins=7)
+    cb.update_ticks()
+    cb.ax.tick_params(labelsize=8)
+    cb.solids.set_rasterized(True)
+
+    ax2.set_aspect("equal")
+    ax2.set_xlim(xs[0], xs[-1])
+    ax2.set_ylim(ys[0], ys[-1])
+    ax2.set_xlabel("x [m]")
+    ax2.set_ylabel("y [m]")
+    ax2.tick_params(labelsize=9)
+    ax2.set_title("(b) level sets of $c$, local minima and reachable set",
+                  fontsize=11, pad=8)
+
+    h, l = ax2.get_legend_handles_labels()
+    h += [Line2D([], [], ls="", marker="v", ms=9, mfc=C_MIN, mec="k",
+                 label="local minimum (spurious)"),
+          Line2D([], [], ls="", marker="v", ms=9, mfc=C_GOAL, mec="k",
+                 label="local minimum at goal"),
+          Patch(facecolor=C_REACH, alpha=0.30, edgecolor=C_REACH, lw=1.5,
+                label=f"reachable set in {cfg.N*cfg.dt:.1f} s")]
+    l += [x.get_label() for x in h[len(l):]]
+    ax2.legend(h, l, loc="upper center", bbox_to_anchor=(0.5, -0.085),
+               ncol=3, fontsize=9, frameon=False, columnspacing=1.4,
+               handlelength=2.2)
 
     # ---- (c) il costo VERO lungo il tempo ---------------------------------
-    ax3 = fig.add_subplot(1, 3, 3)
+    ax3 = fig.add_subplot(gs[1, 0])
     t = np.arange(len(hist["cost"])) * cfg.dt
-    ax3.plot(t, hist["cost"], color="navy", lw=1.8)
-    ax3.set_xlabel("time [s]"); ax3.set_ylabel("$J^\\star$ (optimal cost per cycle)")
-    ax3.set_title("(c) $J^\\star$ per control cycle")
-    ax3.grid(alpha=0.3)
     axb = ax3.twinx()
-    axb.plot(t, hist["solve_ms"], color="darkorange", lw=1.0, alpha=0.75)
-    axb.set_ylabel("solve [ms]", color="darkorange")
-    axb.axhline(cfg.dt * 1000, color="darkorange", ls=":", lw=1.0)
+    axb.fill_between(t, 0.0, hist["solve_ms"], color=C_SOLVE, alpha=0.18,
+                     lw=0, zorder=1)
+    axb.plot(t, hist["solve_ms"], color=C_SOLVE, lw=1.0, alpha=0.9, zorder=2)
+    axb.axhline(cfg.dt * 1000, color=C_SOLVE, ls=":", lw=1.2)
+    axb.annotate(f"budget {cfg.dt*1000:.0f} ms", (t[-1], cfg.dt * 1000),
+                 xytext=(-4, 3), textcoords="offset points", ha="right",
+                 fontsize=8, color=C_SOLVE)
+    axb.set_ylabel("solve time [ms]", color=C_SOLVE, fontsize=10)
+    axb.tick_params(axis="y", colors=C_SOLVE, labelsize=9)
+    axb.set_ylim(0, max(cfg.dt * 1000, float(np.max(hist["solve_ms"]))) * 1.35)
+    axb.set_zorder(1)
 
-    fig.suptitle(f"Panel 1 --- navigation cost landscape  ($N$={cfg.N}, "
-                 f"dt={cfg.dt} W_obs={cfg.W_obs_sigmoid:g} obs_r={cfg.obs_r:g}",
-                 fontsize=11)
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    ax3.plot(t, hist["cost"], color=C_JSTAR, lw=1.6, zorder=3)
+    ax3.axvline(k * cfg.dt, color=C_EXEC, ls="--", lw=1.2, alpha=0.8, zorder=4)
+    ax3.annotate(f"field shown here ({ciclo})", (k * cfg.dt, 1.0),
+                 xycoords=("data", "axes fraction"), xytext=(3, -10),
+                 textcoords="offset points", fontsize=8, color=C_EXEC,
+                 va="top",
+                 ha="left" if k * cfg.dt < 0.6 * t[-1] else "right")
+    ax3.set_xlabel("time [s]")
+    ax3.set_ylabel("$J^\\star$ per cycle", color=C_JSTAR, fontsize=10)
+    ax3.tick_params(axis="y", colors=C_JSTAR, labelsize=9)
+    ax3.tick_params(axis="x", labelsize=9)
+    ax3.set_xlim(t[0], t[-1] if len(t) > 1 else t[0] + 1)
+    ax3.set_title("(c) optimal cost $J^\\star$ and solve time per control cycle",
+                  fontsize=11, pad=6)
+    ax3.grid(alpha=0.25, zorder=0)
+    ax3.set_facecolor("none")
+    ax3.set_zorder(2)
+
+    fig.suptitle("Navigation cost landscape "
+                 f"($N={cfg.N}$, $\\Delta t={cfg.dt:g}$ s, "
+                 f"$W_\\mathrm{{obs}}={cfg.W_obs_sigmoid:g}$, "
+                 f"$r_\\mathrm{{obs}}={cfg.obs_r:g}$ m)",
+                 fontsize=13, y=0.975)
     if out:
         os.makedirs(os.path.dirname(out), exist_ok=True)
-        common.save_figure(fig, out, 140)
+        common.save_figure(fig, out, 160)
         print(f"salvato: {out}")
     if show:
         plt.show()
@@ -172,8 +343,6 @@ def figure(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, show=True):
 
 def animate(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, fps=8, stride=1):
     import matplotlib.pyplot as plt
-    from matplotlib import cm
-    common.ensure_mpl3d()
     from matplotlib.animation import FuncAnimation, PillowWriter
     common.ensure_mpl3d()
 
@@ -187,24 +356,24 @@ def animate(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, fps=8, stride=1)
 
     fig = plt.figure(figsize=(11, 5))
     ax = fig.add_subplot(1, 2, 1, projection="3d")
-    ax.plot_surface(X, Y, Z, cmap=cm.viridis, alpha=0.8, linewidth=0,
+    ax.plot_surface(X, Y, Z, cmap=_field_cmap(), alpha=0.9, linewidth=0,
                     rcount=70, ccount=70, rasterized=True)
     ax.set_xlabel("x [m]"); ax.set_ylabel("y [m]")
     ax.set_zlabel("log10(c - c_min + 1)" if log else "c")
     ax.view_init(elev=52, azim=-125)
-    dot, = ax.plot([], [], [], "o", color="red", ms=9)
-    ln, = ax.plot([], [], [], color="crimson", lw=2.0)
-    pr, = ax.plot([], [], [], "--", color="w", lw=1.4)
+    dot, = ax.plot([], [], [], "o", color=C_EXEC, ms=9)
+    ln, = ax.plot([], [], [], color=C_EXEC, lw=2.0)
+    pr, = ax.plot([], [], [], "--", color=C_HORIZON, lw=1.6)
 
     ax2 = fig.add_subplot(1, 2, 2)
-    ax2.contourf(X, Y, Z, levels=40, cmap=cm.viridis, rasterized=True)
-    ax2.scatter(sc.obstacles[:, 0], sc.obstacles[:, 1], s=5, c="k")
-    ax2.scatter([sc.goal[0]], [sc.goal[1]], marker="*", s=170, c="gold",
+    ax2.contourf(X, Y, Z, levels=40, cmap=_field_cmap())
+    ax2.scatter(sc.obstacles[:, 0], sc.obstacles[:, 1], s=5, c=C_LIDAR)
+    ax2.scatter([sc.goal[0]], [sc.goal[1]], marker="*", s=170, c=C_GOAL,
                 edgecolors="k", zorder=5)
     ax2.set_aspect("equal"); ax2.set_xlabel("x [m]"); ax2.set_ylabel("y [m]")
-    dot2, = ax2.plot([], [], "o", color="red", ms=8, zorder=6)
-    ln2, = ax2.plot([], [], color="crimson", lw=2.0)
-    pr2, = ax2.plot([], [], "--", color="w", lw=1.4)
+    dot2, = ax2.plot([], [], "o", color=C_EXEC, ms=8, zorder=6)
+    ln2, = ax2.plot([], [], color=C_EXEC, lw=2.0)
+    pr2, = ax2.plot([], [], "--", color=C_HORIZON, lw=1.6)
     reach_art = [None]
     ttl = ax2.set_title("")
 
@@ -230,7 +399,7 @@ def animate(sc, cfg, hist, xs, ys, X, Y, C, log=True, out=None, fps=8, stride=1)
                 for c_ in getattr(reach_art[0], "collections", []):
                     c_.remove()
         m = common.reachable_mask(P, p, cfg).reshape(X.shape).astype(float)
-        reach_art[0] = ax2.contour(X, Y, m, levels=[0.5], colors="deepskyblue",
+        reach_art[0] = ax2.contour(X, Y, m, levels=[0.5], colors=C_REACH,
                                    linewidths=1.8)
         ttl.set_text(f"t = {k*cfg.dt:.1f} s    J* = {hist['cost'][k]:.0f}")
         return ln, dot, pr, ln2, dot2, pr2
@@ -300,7 +469,16 @@ def main() -> int:
                               for f in frs], dtype=object),
             "ref": np.array([f.path for f in frs], dtype=object),
         }
+        # il campo e' costruito attorno al ciclo k, ma la traiettoria copre
+        # l'intera missione: senza allargare l'estensione meta' del percorso
+        # cadrebbe fuori dal campo (banda bianca nel pannello (b))
+        sc = dataclasses.replace(
+            sc, extent=extent_covering(sc.extent, hist_bag["pose"][:, :2],
+                                       *[r for r in hist_bag["ref"]
+                                         if r is not None]))
+        focus = k
     else:
+        focus = 0
         hist_bag = None
         sc = common.get_scenario(args.scenario)
         ref_xy = common.plan_astar(sc.pose, sc.goal, sc.obstacles, raw)
@@ -378,7 +556,8 @@ def main() -> int:
                 stride=args.anim_stride)
     figure(sc, cfg, hist, xs, ys, X, Y, C, log=not args.linear,
            out=os.path.join(OUT, f"pannello1_{tag}.png"),
-           show=not (args.no_show or not os.environ.get("DISPLAY")))
+           show=not (args.no_show or not os.environ.get("DISPLAY")),
+           focus=focus)
     return 0
 
 

@@ -28,12 +28,14 @@ FIGURES = (
     ("errore_predizione_*.pdf",         "prediction_error.pdf"),
     ("biforcazione_centred_pillar.pdf", "bifurcation.pdf"),
     ("horizon_sweep.pdf",               "horizon_sweep.pdf"),
+    ("fig_horizon_compare.pdf",         "fig_horizon_compare.pdf"),
     ("pareto_front.pdf",                "pareto_front.pdf"),
     ("pannello1_bag_*.pdf",             "cost_landscape.pdf"),
     ("pannello2_*_merit.pdf",           "decision_plane.pdf"),
     ("fig_grid_profile_g1.pdf",         "fig_grid_profile_g1.pdf"),
     ("fig_local_target.pdf",            "fig_local_target.pdf"),
     ("fig_barrier_shape.pdf",           "fig_barrier_shape.pdf"),
+    ("fig_escape_gallery.pdf",          "fig_escape_gallery.pdf"),
 )
 
 DEST_DEFAULT = os.path.join(_REPO, "report_draft", "build_integrated", "Metrics")

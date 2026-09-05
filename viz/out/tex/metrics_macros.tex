@@ -57,6 +57,16 @@
 \resdef{resPathMode}{time}
 \resdef{resTerminalMode}{none}
 
+% --- macro citate dal report ---------------------------------------------
+\resdef{resSweepSolves}{8688} % solve totali della campagna estesa
+\resdef{resSweepFails}{308} % solve falliti
+\resdef{resFailPctN}{0.7}   % fallimenti a N=15 [%]
+\resdef{resFailPctNmid}{3.5} % fallimenti a N=26 [%]
+\resdef{resFailPctNbig}{6.5} % fallimenti a N=40 [%]
+\resdef{resNops}{3603}      % istruzioni scalari di f e g dopo expand, N=15
+\resdef{resColdDep}{0.5}    % primo solve a freddo, configurazione deployata [s]
+\resdef{resColdMax}{0.6}    % primo solve a freddo, N=40 [s]
+
 % --- discretizzazione (ordine di troncamento) ----------------------------
 \resdef{resOrderEuler}{1.00}   % ordine misurato, Euler
 \resdef{resOrderMidpoint}{2.00} % ordine misurato, punto medio
@@ -140,8 +150,11 @@
 % --- interior point contro active set ------------------------------------
 \resdef{resSolverIneqLow}{60}    % disuguaglianze, regime piccolo
 \resdef{resSolverIneqHigh}{300}  % disuguaglianze, regime grande
+\resdef{resSolverRatioMin}{1.2}  % vantaggio minimo del punto interno, regime piccolo
 \resdef{resSolverRatioLow}{2.2}  % vantaggio del punto interno, regime piccolo
-\resdef{resSolverRatioHigh}{68.2} % vantaggio del punto interno, regime grande
+\resdef{resSolverRatioHigh}{63.6} % vantaggio del punto interno, regime grande
+\resdef{resSolverSqpFail}{3}     % run in cui l'SQP non risolve il QP
+\resdef{resSolverRuns}{6}        % run del confronto
 \resdef{resSolverSameMinima}{no}
 
 % --- condizioni di ottimalita' lungo la missione -------------------------

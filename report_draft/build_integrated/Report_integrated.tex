@@ -1938,7 +1938,7 @@ answer different questions.
 \emph{Replay from recorded missions.} The recorded data are a full run of the G1 in the industrial world:
 the poses, the LiDAR scans, the \astar{} paths and the MPC predictions as they were published. Replaying it
 gives real operating points, with the geometry and the clutter the robot actually met, and is what
-Section~\ref{sec:kkt} uses. Its size is worth stating, because every replay figure in this report is a
+Section~\ref{sec:kkt} uses. Its size is worth stating, because every replay figure is a
 sample from it rather than a single measurement: the mission spans $695$ control cycles, $201$ of them with
 the robot in motion and an \astar{} reference long enough to re-solve against. The analyses below draw
 from those $201$, and each reports the spread over its sample rather than a representative cycle. What the
@@ -1947,28 +1947,16 @@ replay cannot answer is counterfactual questions.
 \emph{Closed-loop synthetic scenarios.} For counterfactuals (what if the horizon were shorter, what if the
 weights were different) the harness runs full missions in scripted worlds, with a ray-marched planar
 LiDAR and the discrete model of Section~\ref{sec:discretization} as the plant. This is what
-Sections~\ref{sec:horizon} and~\ref{sec:nc} use. Two of these worlds recur: \emph{narrow gap}, two obstacles with a gap between
-them, and \emph{U-trap}, a concavity open towards the robot.
+Section~\ref{sec:horizon} uses. Three of these worlds recur: \emph{narrow gap}, two obstacles with a gap
+between them; \emph{U-trap}, a concavity open towards the robot; and \emph{corridor}, a straight passage with
+a staggered pillar in it, used in the three-parameter sweep of Section~\ref{sec:horizon}.
 
-A third family is used only in Section~\ref{sec:nonconvex}, because it probes a different layer: ten worlds,
+A further family of worlds is used only in Section~\ref{sec:nonconvex}, because it probes a different layer: ten worlds,
 six of which place a \emph{non-convex} obstacle between the robot and the goal and four of which only look as
 though they do. They are run with \emph{limited perception}: the robot sees only out to the LiDAR range and
 only what is not occluded, and accumulates what it sees. That last detail is not a refinement but the whole
 experiment, because with the obstacle known in advance the discrete planner never enters the trap and the
 failure under study does not occur.
-
-A correction to an earlier reading of the second family, which the report would be weaker for omitting.
-Previous versions of this section reported that in \emph{U-trap} the minimum clearance came out at zero in
-essentially every configuration tested, and concluded that the world discriminated on time and computation
-but said nothing about safety. That reading was an artefact of the harness, not a property of the world: the
-replay loop selected its setpoint at a look-ahead distance that no longer matched the deployed one, so the
-fallback proportional law took over and the output of the MPC was discarded on every cycle. With the
-look-ahead read from the profile, the grazing configurations are confined to the very short horizons
-($7$ of the $25$ combinations in \emph{U-trap}, all of them at $N\Delta t\le 2$~s, and none at all in
-\emph{narrow gap}), and the median clearance is $0.856$~m. The clearance axis therefore does discriminate, and
-Section~\ref{sec:horizon} reads it. The general lesson is worth keeping: a harness that silently bypasses the
-controller under test reports plausible numbers, and the only thing that exposed it was a quantity,
-clearance, that had no business being identical across configurations.
 
 \subsection{The cost landscape in state and decision space}
 \label{sec:landscape}
@@ -2019,158 +2007,126 @@ platform, with $v_{y,\max}=\resVyMax$~m/s against a forward bound of $\resVxMax$
 admitted only at a fraction of that, the region is markedly asymmetric about
 the heading. The cost is what chooses inside it; the input set is what draws it.
 
-\paragraph{The decision space.} The two basins the discrete layer leaves behind when it does not
-commit are visible directly in the decision space, and Fig.~\ref{fig:decplane} shows them. Plotting a function of $\resNvar$ variables requires choosing a two-dimensional section, and a
-random one would almost surely contain nothing: the plane here is built to contain the structure. The program
-is solved twice, warm-started to the left and to the right, giving the two minima $z^\star_L$ and $z^\star_R$;
-the initial iterate supplies a third anchor; and the affine plane through those three points contains both
-minima \emph{by construction}. The IPOPT iterates then project onto it exactly, since orthogonal projection
-onto an affine subspace is exact, which is why this figure can show the path from $z^0$ to $z^\star$ and
-Fig.~\ref{fig:landscape} cannot.
+% \paragraph{The decision space.} The two basins the discrete layer leaves behind when it does not
+% commit are visible directly in the decision space, and Fig.~\ref{fig:decplane} shows them. Plotting a function of $\resNvar$ variables requires choosing a two-dimensional section, and a
+% random one would almost surely contain nothing: the plane here is built to contain the structure. The program
+% is solved twice, warm-started to the left and to the right, giving the two minima $z^\star_L$ and $z^\star_R$;
+% the initial iterate supplies a third anchor; and the affine plane through those three points contains both
+% minima \emph{by construction}. The IPOPT iterates then project onto it exactly, since orthogonal projection
+% onto an affine subspace is exact, which is why this figure can show the path from $z^0$ to $z^\star$ and
+% Fig.~\ref{fig:landscape} cannot.
 
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\textwidth]{decision_plane}
-  \caption{The objective in the decision space $\R^{\resNvar}$, on a plane constructed to contain both local
-  minima of the recorded cycle. \textbf{(a)} the surface; \textbf{(b)} its level sets with the two minima
-  ($\star$), the initial iterate ($\blacksquare$) and the IPOPT iterates joining them. What is plotted is not
-  the objective $f$ but the $\ell^1$ merit function~\cite{fagiano2025noc} $T_1(z)=f(z)+\sigma\|c(z)\|_1$: in the simultaneous
-  parametrisation $X$ and $U$ are independent variables tied by the dynamic equalities, so a generic point of
-  the plane is \emph{not} dynamically feasible and a plot of $f$ alone would show a landscape the solver never
-  traverses. The merit function is what the line search actually decreases.}
-  \label{fig:decplane}
-\end{figure}
+% \begin{figure}[htbp]
+%   \centering
+%   \includegraphics[width=\textwidth]{decision_plane}
+%   \caption{The objective in the decision space $\R^{\resNvar}$, on a plane constructed to contain both local
+%   minima of the recorded cycle. \textbf{(a)} the surface; \textbf{(b)} its level sets with the two minima
+%   ($\star$), the initial iterate ($\blacksquare$) and the IPOPT iterates joining them. What is plotted is not
+%   the objective $f$ but the $\ell^1$ merit function~\cite{fagiano2025noc} $T_1(z)=f(z)+\sigma\|c(z)\|_1$: in the simultaneous
+%   parametrisation $X$ and $U$ are independent variables tied by the dynamic equalities, so a generic point of
+%   the plane is \emph{not} dynamically feasible and a plot of $f$ alone would show a landscape the solver never
+%   traverses. The merit function is what the line search actually decreases.}
+%   \label{fig:decplane}
+% \end{figure}
 
-The choice of what to plot is itself a point about the formulation. Under multiple shooting the states are
-decision variables, so almost every point of the plane violates Eq.~\eqref{eq:cons-dyn}; the objective is
-defined there but meaningless, because no trajectory of the plant corresponds to it. The $\ell^1$ merit
-function (objective plus weighted constraint violation) is defined everywhere, agrees with the objective
-on the feasible manifold, and is the function whose decrease the line search enforces. Plotting it is the
-honest choice, and it also makes the figure legible: the funnel visible in panel~(b) is the constraint
-violation being driven to zero, and the iterates run down it before moving along the bottom towards the
-minimum. That two-phase shape is the geometry of a filter line-search method, and it is the same mechanism
-that Section~\ref{sec:l1} exploits when it makes the obstacle constraint exact.
+% The choice of what to plot is itself a point about the formulation. Under multiple shooting the states are
+% decision variables, so almost every point of the plane violates Eq.~\eqref{eq:cons-dyn}; the objective is
+% defined there but meaningless, because no trajectory of the plant corresponds to it. The $\ell^1$ merit
+% function (objective plus weighted constraint violation) is defined everywhere, agrees with the objective
+% on the feasible manifold, and is the function whose decrease the line search enforces. Plotting it is the
+% honest choice, and it also makes the figure legible: the funnel visible in panel~(b) is the constraint
+% violation being driven to zero, and the iterates run down it before moving along the bottom towards the
+% minimum. That two-phase shape is the geometry of a filter line-search method, and it is the same mechanism
+% that Section~\ref{sec:l1} exploits when it makes the obstacle constraint exact.
 
-\subsection{Prediction horizon and sampling time}
+\subsection{Horizon design: prediction horizon, sampling time and control horizon}
 \label{sec:horizon}
-
-Before sweeping the two parameters, a word on what does \emph{not} select $\Delta t$. The standard
-criterion picks the sampling step from the bandwidth of the plant; on the deployed profile there is no pole
-to oversample, because Section~\ref{sec:model} sets $\tau=\resTauV$~s and the velocity update collapses to
-$v_{k+1}=u_k$. Two other quantities bind. The first is geometric: the inter-sample
-condition~\eqref{eq:intersample} sits at $v_{x,\max}\Delta t/\robs=0.35$, a factor of three in hand. The
-second is computational, and reading the campaign at \emph{constant look-ahead} isolates it. At
-$N\Delta t\approx4$--$5$~s, varying $\Delta t$ from $0.10$ to $0.40$~s gives times to goal between $17.4$
-and $17.6$~s and worst-case clearances between $0.787$ and $0.814$~m, both inside run-to-run scatter, while
-the tail solve time falls from $46.3$ to $17.1$~ms. Across a factor of four in the step the closed loop
-does not move and only the price does, so $\Delta t$ is selected on cost, and the deployed value sits where
-that cost flattens. The caveat is the one of Section~\ref{sec:setup}: the plant of this harness is the
-discrete model itself, so the cut measures the price of the step and not the fidelity of the prediction.
-
-The two horizon parameters are not interchangeable. The product $N\Delta t$ sets how far the controller sees,
-$N$ alone sets how much the solve costs, and $\Delta t$ alone sets how faithfully the prediction is
-integrated. They were therefore swept jointly, in closed loop, over $\resHorizonConfigs$ configurations.
-
-\begin{table}[htbp]
-  \centering
-  \small
-  \caption{%
-  Horizon campaign, world \emph{narrow gap}. Bold: the deployed configuration $N=15$, $\Delta
-  t=0.35$~s.}
-  \label{res:tab:horizon:narrowgap}
-  \restab{horizon_narrowgap}
-\end{table}
-\begin{table}[htbp]
-  \centering
-  \small
-  \caption{%
-  Horizon campaign, world \emph{U-trap}. Bold: the deployed configuration $N=15$, $\Delta t=0.35$~s.}
-  \label{res:tab:horizon:utrap}
-  \restab{horizon_utrap}
-\end{table}
-
-\begin{figure}[htbp]
-  \centering
-  \includegraphics[width=\textwidth]{horizon_sweep}
-  \caption{Joint sweep of the prediction horizon $N$ and the sampling time $\Delta t$ in closed loop. The
-  deployed configuration is marked. Cost is governed by $N$; closed-loop quality is governed by the product
-  $N\Delta t$, and not monotonically.}
-  \label{fig:horizon}
-\end{figure}
-
-The result is a trade and not a dominance, and stating it as one matters because an earlier version of this
-section did not. Grouped at $N\Delta t=\resHorizonSplit$~s, the short-horizon configurations reach the goal in
-$\resHorizonLowT$~s against $\resHorizonHighT$~s for the long-horizon ones, so on time the short horizon
-wins, and by a wide margin. On safety the ordering reverses, and far more sharply: the worst-case clearance
-in the short group is $\resHorizonLowC$~m against $\resHorizonHighC$~m in the long one. Every configuration
-that grazes has $N\Delta t\le 2$~s. The short horizon is not cheaper at the same quality; it is faster
-because it cuts corners, and at two seconds of look-ahead it cuts them until it touches.
-
-The mechanism behind the time half is the one that produces the failure of Section~\ref{sec:localmin}: the
-reference extends over a path that the discrete layer will replan anyway, so a longer horizon commits the
-controller to tracking a target already due to change. What the clearance half adds is the limit of that
-argument. Delegating avoidance to the discrete layer works only while the layer is fast enough and the world
-is static; the horizon is what buys the margin when it is not. Section~\ref{sec:nc} separates the explanation
-from its competitor (simply too many decision variables), and reports which one the data supports.
-
-Ranking the configurations on the three objectives that matter (time to goal, worst-case clearance, tail
-solve time) leaves $\resHorizonNondom$ non-dominated points, and the deployed $N=\resN$, $\Delta t=\resDt$~s
-is \emph{dominated} (\resHorizonDepNondom), but by exactly one configuration, and narrowly:
-$N=15$, $\Delta t=0.30$~s reaches the goal in $16.9$~s against $17.0$, with clearance $0.814$~m against
-$0.811$, at $20.4$~ms of tail solve time against $\resHorizonDepTail$~ms. Three milliseconds and three
-millimetres are not a reason to retune.
-
-The cheapest non-dominated point is a different matter and must not be read as a recommendation. It is
-$N=\resHorizonCheapN$, $\Delta t=\resHorizonCheapDt$~s at $\resHorizonCheapPtail$~ms, which survives the
-ranking only because non-dominance is a weak relation: it is faster and cheaper, and it has zero clearance.
-It is in the front because nothing beats it on all three axes at once, not because it is deployable.
-
-Where the horizon genuinely can be improved is by adding the third parameter, and Section~\ref{sec:nc}
-does. Sweeping $N$, $\Delta t$ and the control horizon $\Ninput$ jointly over three scenarios finds seven
-configurations that dominate the deployed one, the best of them halving the tail solve time at identical time
-to goal and identical clearance. That result comes from the control horizon, not from the prediction horizon,
-which is the distinction this section cannot make on its own.
-
-A caution on all of the above. These are synthetic scenarios with static obstacles and frequent replanning,
-and the clearance column is what keeps the short-horizon configurations honest here; with dynamic obstacles
-or a slower planner the margin the horizon buys would matter more, not less. The result is a reason to run
-the comparison on real missions, not a reason to retune from a table.
-
-\subsection{Control horizon and move blocking}
 \label{sec:nc}
 
-Section~\ref{sec:horizon} leaves a diagnostic question open, because there $N$ governs two things at once:
-how far the controller looks, and how many free inputs it has. Freeing only the first $\Ninput$ inputs and
-holding the rest at the last free value separates them, the prediction still runs to $N$, but the program
-carries fewer variables.
+Three parameters shape the program: $N\Delta t$ sets how far the controller sees, $N$ sets how many
+variables it carries, and the control horizon $\Ninput$ frees only the first $\Ninput$ inputs and holds the
+rest fixed, shrinking the program without shortening the prediction. $\Delta t$ is not chosen from plant
+bandwidth, Section~\ref{sec:model} gives a first-order lag with no pole to oversample, but from the
+geometric inter-sample bound~\eqref{eq:intersample}, which leaves a factor of three of margin at the deployed
+values. Two closed-loop campaigns settle the rest: one over $(N,\Delta t)$, one adding $\Ninput$.
 
-\begin{table}[htbp]
+% \begin{table}[htbp]
+%   \centering
+%   \small
+%   \caption{%
+%   Horizon campaign, world \emph{narrow gap}. Bold: the deployed configuration $N=15$, $\Delta
+%   t=0.35$~s.}
+%   \label{res:tab:horizon:narrowgap}
+%   \restab{horizon_narrowgap}
+% \end{table}
+% \begin{table}[htbp]
+%   \centering
+%   \small
+%   \caption{%
+%   Horizon campaign, world \emph{U-trap}. Bold: the deployed configuration $N=15$, $\Delta t=0.35$~s.}
+%   \label{res:tab:horizon:utrap}
+%   \restab{horizon_utrap}
+% \end{table}
+
+\begin{figure}[htbp]
   \centering
-  \small
-  \caption{%
-  Closed-loop outcome against the control horizon at fixed prediction horizon.}
-  \label{res:tab:nc}
-  \restab{nc}
-\end{table}
+  \includegraphics[width=\textwidth]{fig_horizon_compare}
+  \caption{The deployed configuration against the cheapest one the campaign returns. \textbf{(a)},
+  \textbf{(b)} the executed trajectories in the two worlds, with the point of minimum clearance marked. At
+  $N=15$, $\Delta t=0.35$~s the controller routes around the obstacle in both; at $N=5$, $\Delta t=0.10$~s it
+  drives straight at the goal, which in \emph{narrow gap} means taking the gap down its centreline and in
+  \emph{U-trap} means passing \emph{through} the back wall. \textbf{(c)} minimum clearance against the
+  look-ahead $N\Delta t$ for all $\resHorizonConfigs$ runs of the campaign: the transition is between $2.5$
+  and $3$~s and it does not depend on which $(N,\Delta t)$ pair realises the look-ahead. \textbf{(d)} the
+  tail solve time against $N$, the only parameter that governs it. The two highlighted configurations are the
+  same in all four panels.}
+  \label{fig:horizoncompare}
+\end{figure}
 
-The result splits in two, and the first half must be stated more carefully than the headline suggests.
-Cutting the degrees of freedom is \emph{strictly} free (time to goal and minimum clearance both unchanged
-while the tail solve time falls) in only $\resNcFreeCases$ of the $\resNcCases$ paired cases, where the
-saving reaches $\resNcBestRatio\times$ at $N=\resNcBestN$. Elsewhere it is cheap rather than free: at
-$N=15$ in \emph{narrow gap}, $\Ninput=10$ costs $8$~mm of clearance ($0.803$ against $0.811$~m) at the same time
-to goal, for a tail solve time of $17.6$~ms against $19.0$. The input-parametrisation argument holds (the
-degrees of freedom past the first few are largely not what the closed loop is using), but on this sweep it
-buys a small margin, not a free lunch.
+Fig.~\ref{fig:horizoncompare} carries the first campaign, and two readings from it are what matter.
+\emph{Safety is governed by the look-ahead $N\Delta t$ alone, with a sharp threshold near $3$~s} (panel~c):
+below it the controller cannot see an obstacle in time to react, and drives at the goal regardless of what
+is in the way, which panels~(a)--(b) show costing nothing in \emph{narrow gap} but a collision in
+\emph{U-trap}; above it every configuration clears by a comfortable, flat margin no matter how $N$ and
+$\Delta t$ split the product. \emph{Cost is governed by $N$ alone} (panel~d): solve time climbs with $N$ and
+barely moves with $\Delta t$, so the cheapest way to reach a given look-ahead is a large $\Delta t$ and a
+small $N$. The deployed $N\Delta t=\resHorizonSeconds$~s sits at roughly twice the safety threshold, and
+ranking every configuration on time, clearance and solve time together leaves it beaten by only one other
+point, and only marginally, nothing on this campaign is worth switching to.
 
-The second half is more useful, and it comes from the joint sweep rather than from the paired one. Varying
-$N$, $\Delta t$ and $\Ninput$ together over \emph{narrow gap}, \emph{U-trap} and \emph{corridor}, and aggregating the
-three conservatively (mean time, \emph{worst} clearance, \emph{worst} tail time), seven configurations
-dominate the deployed one. The best is $N=26$, $\Delta t=0.35$~s, $\Ninput=10$: identical time to goal
-($20.65$~s) and identical worst-case clearance ($0.658$~m) as the deployed $N=15$, $\Delta t=0.35$~s with all
-inputs free, at $24.3$~ms of tail solve time against $59.3$, less than half, with $192$ decision variables
-against $141$. The prediction horizon is nearly twice as long \emph{and} the program is cheaper, because the
-extra length is spent on prediction while the variable count is held down by the blocking. This is the
-cleanest measurement in the report of the claim that the two horizons are separate design parameters.
+% \begin{table}[htbp]
+%   \centering
+%   \small
+%   \caption{%
+%   Closed-loop outcome against the control horizon at fixed prediction horizon.}
+%   \label{res:tab:nc}
+%   \restab{nc}
+% \end{table}
+
+\paragraph{Control horizon.} The first campaign cannot separate the two roles of $N$, since looking further
+and carrying more variables are there the same move. A second campaign does, over $\resNcCases$ paired cases
+at fixed prediction horizon: cutting the degrees of freedom is \emph{strictly} free, time and clearance
+unchanged while solve time falls, in only $\resNcFreeCases$ of them; elsewhere clearance is what pays, and it
+recovers smoothly as $\Ninput$ grows, from $0.301$~m at $\Ninput=1$ to the full $0.811$~m by $\Ninput=10$ at
+$N=15$ in \emph{narrow gap}. About ten free inputs is enough to negotiate the corner; the rest can be frozen
+almost for free.
+
+\paragraph{The three parameters together.} Sweeping $N$, $\Delta t$ and $\Ninput$ jointly over three worlds
+and aggregating conservatively (mean time, worst clearance, worst tail time), seven configurations dominate
+the deployed one. The best, $N=26$, $\Delta t=0.35$~s, $\Ninput=10$, matches the deployed time to goal and
+clearance at $24.3$~ms of tail solve time against $59.3$, with $192$ decision variables against $141$: a
+longer look-ahead in a cheaper program. This is the report's cleanest evidence that the two horizons are
+separate design parameters, and it answers what the first campaign left open --- a long horizon costs through
+its variable count, not through its length.
+
+\paragraph{On move blocking.} The deployed profile does not use blocking, and computation is the resource it
+is short of: on the recorded mission the $95$th percentile solve time is $157.9$~ms against a
+$\resCycleBudget$~ms cycle budget, so the loop misses its period on the hard cycles. The control horizon
+above, one free block followed by one long one, is the degenerate case of blocking and is exactly what
+recovers the period in the joint sweep; adopting it at $\Ninput=10$ with $N=26$ is the change this section
+supports making before the next recording campaign. One implementation detail matters: the input bounds must
+be imposed on the free columns only, not repeated over the blocked steps, or the duplicate rows violate LICQ
+and break the multiplier analysis of Section~\ref{sec:kkt}.
 
 % ---------------------------------------------------------------------------
 % DA APPLICARE PRIMA DELLA PROSSIMA REGISTRAZIONE (misurato 2026-08-29):
@@ -2184,29 +2140,9 @@ cleanest measurement in the report of the claim that the two horizons are separa
 % i sette script satellite, e make_results per ultimo).
 % ---------------------------------------------------------------------------
 
-The diagnostic question that opened this section, whether a long horizon hurts because it looks too far or
-because it carries too many variables, is answered by that row. The variables were the cost: holding the
-look-ahead at $9.1$~s while blocking the inputs recovers the computation without shortening the prediction.
-What remains unmeasured is the regime where the look-ahead itself degrades the closed loop, since no horizon
-tested here does so once the clearance axis is read correctly.
-
-\paragraph{On move blocking.} Holding the input constant over blocks of increasing length is the standard way
-to recover computation without shortening the horizon, and it is not used in the deployed profile. Earlier
-versions of this report defended that as a considered choice, on the grounds that the useful horizon was
-short and that computation was not the binding resource. The measurements above withdraw both grounds. The
-useful horizon is not short once clearance is read correctly, and computation is binding: on the recorded run
-the deployed configuration reaches a $95$th percentile of $157.9$~ms against a cycle budget of
-$\resCycleBudget$~ms, so the loop is already missing its period. The control horizon above is the degenerate
-case of move blocking (one free block followed by one long one), and it is exactly what recovers the
-period in the joint sweep. The honest statement is therefore that move blocking is absent for historical
-reasons and that the evidence now supports adding it, in its degenerate form at $\Ninput=10$, as the change
-to make before the next campaign.
-
-\paragraph{Input bounds on blocked inputs.} Imposing the input bounds on all $N$ steps when
-the inputs past $\Ninput$ are the same repeated expression generates duplicate rows with identical gradients.
-If active, they violate LICQ and make the multipliers non-unique, breaking exactly the analysis of
-Section~\ref{sec:kkt}. The bounds must be imposed on the free columns only, and with that correction LICQ and
-strict complementarity hold for every $\Ninput$.
+\paragraph{How far these numbers carry.} These worlds are synthetic with static obstacles, so the clearance
+margin the look-ahead buys would matter more, not less, against moving obstacles or a slower discrete layer.
+Tail solve times are comparable only within one campaign, not across the two reported here.
 
 % \subsection{Multi-objective scalarisation}
 % \label{sec:pareto}
@@ -2469,7 +2405,7 @@ The procedure of Section~\ref{sec:bo} was run in full~\cite{ortolani2026bo}, but
 deploys. The reason is availability rather than principle: the quadruped is no longer accessible, and the
 campaign is priced in rollouts ($11m+1$ closed-loop missions), which there has been neither the time nor
 the hardware window to repeat on the G1 alongside the horizon and kinematics studies of
-Sections~\ref{sec:horizon} and~\ref{sec:nc}. The sweep is reported here because what it tests is the
+Section~\ref{sec:horizon}. The sweep is reported here because what it tests is the
 \emph{prediction} of Section~\ref{sec:bo}, which is platform-independent; the optima it returns are not
 claimed to be current.
 

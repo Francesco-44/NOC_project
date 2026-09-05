@@ -16,19 +16,23 @@ differentiation against finite differences, horizon and control-horizon sweeps, 
 
 ## What runs
 
-```
-mujoco_sim  --/odom-----------> odom_to_pose_node --/robot_pose--+
-            --/livox/lidar--> lidar_filter_node                  |
-                                  |                              |
-                                  +--/lidar/points_filtered------+
-                                                 |               |
-                                                 v               v
-                                           a_star_node -----> mpc_node
-                                           /a_star/path    /mpc/next_setpoint
-                                                                 |
-                                                 setpoint_to_cmd_vel_node
-                                                                 |
-                                                            /cmd_vel --> mujoco_sim
+```mermaid
+flowchart LR
+    mujoco_sim(("mujoco_sim<br/>(MuJoCo plant)"))
+    odom_to_pose_node["odom_to_pose_node"]
+    lidar_filter_node["lidar_filter_node"]
+    a_star_node["a_star_node"]
+    mpc_node["mpc_node"]
+    setpoint_to_cmd_vel_node["setpoint_to_cmd_vel_node"]
+
+    mujoco_sim -->|/odom| odom_to_pose_node
+    mujoco_sim -->|/livox/lidar| lidar_filter_node
+    odom_to_pose_node -->|/robot_pose| a_star_node
+    odom_to_pose_node -->|/robot_pose| mpc_node
+    lidar_filter_node -->|/lidar/points_filtered| a_star_node
+    a_star_node -->|/a_star/path| mpc_node
+    mpc_node -->|/mpc/next_setpoint| setpoint_to_cmd_vel_node
+    setpoint_to_cmd_vel_node -->|/cmd_vel| mujoco_sim
 ```
 
 The plant is **MuJoCo** and it is the only simulator in this repository. Some considerations of the project also come from Gazebo and Isaac simulations.
